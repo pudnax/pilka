@@ -1,0 +1,14 @@
+[package]
+name = "pilka"
+version = "0.1.0"
+authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ash = "0.31.0"
+bytemuck = "1.4.1"
+color-eyre = "0.5.8"
+eyre = "0.6.3"
+ultraviolet = "0.7.5"
