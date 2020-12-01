@@ -7,26 +7,26 @@ use ash::{
     vk, Instance,
 };
 use eyre::*;
-use std::ffi::CStr;
+use std::{ffi::CStr, lazy::SyncLazy};
 
 /// Static and lazy initialized array of needed validation layers.
 /// Appear only on debug builds.
-static LAYERS: std::lazy::SyncLazy<[&CStr; 1]> = std::lazy::SyncLazy::new(|| {
-    [if cfg!(debug_assertions) {
-        CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap()
-    } else {
-        CStr::from_bytes_with_nul(b"\0").unwrap()
-    }]
+static LAYERS: SyncLazy<Vec<&'static CStr>> = SyncLazy::new(|| {
+    let mut layers: Vec<&'static CStr> = vec![];
+    if cfg!(debug_assertions) {
+        layers.push(CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap());
+    }
+    layers
 });
 
 /// Static and lazy initialized array of needed extensions.
 /// Appear only on debug builds.
-static EXTS: std::lazy::SyncLazy<[&CStr; 1]> = std::lazy::SyncLazy::new(|| {
-    [if cfg!(debug_assertions) {
-        DebugUtils::name()
-    } else {
-        CStr::from_bytes_with_nul(b"\0").unwrap()
-    }]
+static EXTS: SyncLazy<Vec<&'static CStr>> = SyncLazy::new(|| {
+    let mut exts: Vec<&'static CStr> = vec![];
+    if cfg!(debug_assertions) {
+        exts.push(DebugUtils::name());
+    }
+    exts
 });
 
 fn main() -> Result<()> {
@@ -41,6 +41,7 @@ fn main() -> Result<()> {
         None => vk::make_version(1, 0, 0),
     };
 
+    // Find approciate validation layers from available.
     let available_layers = entry.enumerate_instance_layer_properties()?;
     let validation_layers = LAYERS
         .iter()
@@ -59,6 +60,7 @@ fn main() -> Result<()> {
         })
         .collect::<Vec<_>>();
 
+    // Find approciate extensions from available.
     let exist_exts = entry.enumerate_instance_extension_properties()?;
     let extensions = EXTS
         .iter()
@@ -90,7 +92,64 @@ fn main() -> Result<()> {
         .enabled_layer_names(&validation_layers)
         .enabled_extension_names(&extensions);
 
-    let instance = unsafe { entry.create_instance(&instance_info, None)? };
+    let instance = unsafe { entry.create_instance(&instance_info, None) }?;
+
+    let phys_devices = unsafe { instance.enumerate_physical_devices() }?;
+
+    // Choose physical device assuming that we want to choose discrete GPU.
+    let (physical_device, device_properties, device_features) = {
+        let mut chosen = Err(vk::Result::ERROR_INITIALIZATION_FAILED);
+        for p in phys_devices {
+            let properties = unsafe { instance.get_physical_device_properties(p) };
+            let features = unsafe { instance.get_physical_device_features(p) };
+            if properties.device_type == vk::PhysicalDeviceType::DISCRETE_GPU {
+                chosen = Ok((p, properties, features));
+            }
+        }
+        chosen
+    }?;
+
+    // Choose graphics and transfer queue familities.
+    let queuefamilyproperties =
+        unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
+    let mut found_graphics_q_index = None;
+    let mut found_transfer_q_index = None;
+    for (index, qfam) in queuefamilyproperties.iter().enumerate() {
+        if qfam.queue_count > 0 && qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+        // && surfaces.get_physical_device_surface_support(physical_device, index)?
+        {
+            found_graphics_q_index = Some(index as u32);
+        }
+        if qfam.queue_count > 0
+            && qfam.queue_flags.contains(vk::QueueFlags::TRANSFER)
+            && (found_transfer_q_index.is_none()
+                || !qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS))
+        {
+            found_transfer_q_index = Some(index as u32);
+        }
+    }
+
+    let priorities = [1.0f32];
+    let queue_infos = [
+        vk::DeviceQueueCreateInfo::builder()
+            .queue_family_index(found_graphics_q_index.unwrap())
+            .queue_priorities(&priorities)
+            .build(),
+        vk::DeviceQueueCreateInfo::builder()
+            .queue_family_index(found_transfer_q_index.unwrap())
+            .queue_priorities(&priorities)
+            .build(),
+    ];
+
+    let device_extension_name_pointers: Vec<*const i8> =
+        vec![ash::extensions::khr::Swapchain::name().as_ptr()];
+
+    let device_info = vk::DeviceCreateInfo::builder()
+        .enabled_layer_names(&validation_layers)
+        .enabled_extension_names(&device_extension_name_pointers)
+        .enabled_features(&device_features)
+        .queue_create_infos(&queue_infos);
+    let device = unsafe { instance.create_device(physical_device, &device_info, None) }?;
 
     Ok(())
 }
