@@ -8,7 +8,15 @@ edition = "2018"
 
 [dependencies]
 ash = "0.31.0"
+breadx = "0.0.5"
 bytemuck = "1.4.1"
 color-eyre = "0.5.8"
 eyre = "0.6.3"
+tracing-log = "0.1.1"
 ultraviolet = "0.7.5"
+
+[profile.release]
+lto = 'thin'
+
+[profile.dev.package.'*']
+opt-level = 3
