@@ -1,19 +1,18 @@
 #![feature(once_cell)]
 use ash::{
-    extensions::{
-        ext::DebugUtils,
-        khr::{Surface, WaylandSurface, Win32Surface, XlibSurface},
-    },
-    version::{
-        DeviceV1_0, EntryV1_0, EntryV1_1, EntryV1_2, InstanceV1_0, InstanceV1_1, InstanceV1_2,
-    },
-    vk, Instance,
+    extensions::{ext::DebugUtils, khr::Surface},
+    version::{EntryV1_0, InstanceV1_0},
+    vk,
 };
 use eyre::*;
-use std::{
-    ffi::{c_void, CStr},
-    lazy::SyncLazy,
-};
+
+#[cfg(debug_assertions)]
+use pilka_dyn::*;
+
+#[cfg(not(debug_assertions))]
+use pilka_incremental::*;
+
+use std::{ffi::CStr, lazy::SyncLazy};
 
 /// Static and lazy initialized array of needed validation layers.
 /// Appear only on debug builds.
