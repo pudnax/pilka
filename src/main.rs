@@ -1,13 +1,19 @@
 #![feature(once_cell)]
 use ash::{
-    extensions::ext::DebugUtils,
+    extensions::{
+        ext::DebugUtils,
+        khr::{Surface, WaylandSurface, Win32Surface, XlibSurface},
+    },
     version::{
         DeviceV1_0, EntryV1_0, EntryV1_1, EntryV1_2, InstanceV1_0, InstanceV1_1, InstanceV1_2,
     },
     vk, Instance,
 };
 use eyre::*;
-use std::{ffi::CStr, lazy::SyncLazy};
+use std::{
+    ffi::{c_void, CStr},
+    lazy::SyncLazy,
+};
 
 /// Static and lazy initialized array of needed validation layers.
 /// Appear only on debug builds.
@@ -25,6 +31,7 @@ static EXTS: SyncLazy<Vec<&'static CStr>> = SyncLazy::new(|| {
     let mut exts: Vec<&'static CStr> = vec![];
     if cfg!(debug_assertions) {
         exts.push(DebugUtils::name());
+        exts.push(Surface::name());
     }
     exts
 });
@@ -32,6 +39,14 @@ static EXTS: SyncLazy<Vec<&'static CStr>> = SyncLazy::new(|| {
 fn main() -> Result<()> {
     // Initialize error hook.
     color_eyre::install()?;
+
+    let engine_name = CStr::from_bytes_with_nul(b"Ruchka Engine\0")?;
+    let app_name = CStr::from_bytes_with_nul(b"Pilka\0")?;
+
+    let event_loop = winit::event_loop::EventLoop::new();
+    let window = winit::window::Window::new(&event_loop)?;
+    window.set_title(&app_name.to_string_lossy());
+    let surface_extensions = ash_window::enumerate_required_extensions(&window)?;
 
     let entry = ash::Entry::new()?;
 
@@ -62,6 +77,7 @@ fn main() -> Result<()> {
 
     // Find approciate extensions from available.
     let exist_exts = entry.enumerate_instance_extension_properties()?;
+    SyncLazy::force(&EXTS);
     let extensions = EXTS
         .iter()
         .filter_map(|&ext| {
@@ -77,10 +93,9 @@ fn main() -> Result<()> {
                     None
                 })
         })
+        .chain(surface_extensions.iter().map(|s| s.as_ptr()))
         .collect::<Vec<_>>();
 
-    let engine_name = CStr::from_bytes_with_nul(b"Ruchka Engine\0")?;
-    let app_name = CStr::from_bytes_with_nul(b"Pilka\0")?;
     let app_info = vk::ApplicationInfo::builder()
         .api_version(version)
         .engine_name(engine_name)
@@ -93,6 +108,8 @@ fn main() -> Result<()> {
         .enabled_extension_names(&extensions);
 
     let instance = unsafe { entry.create_instance(&instance_info, None) }?;
+
+    let surface = unsafe { ash_window::create_surface(&entry, &instance, &window, None) }?;
 
     let phys_devices = unsafe { instance.enumerate_physical_devices() }?;
 
