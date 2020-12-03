@@ -29,6 +29,13 @@ macro_rules! offset_of {
     }};
 }
 
+#[repr(C)]
+#[derive(Clone, Debug, Copy)]
+struct Vertex {
+    pos: [f32; 4],
+    color: [f32; 4],
+}
+
 /// Static and lazy initialized array of needed validation layers.
 /// Appear only on debug builds.
 static LAYERS: SyncLazy<Vec<&'static CStr>> = SyncLazy::new(|| {
@@ -189,6 +196,8 @@ fn main() -> Result<()> {
         }
         chosen
     }?;
+    let device_memory_properties =
+        unsafe { instance.get_physical_device_memory_properties(physical_device) };
 
     // Choose graphics and transfer queue familities.
     let queuefamilyproperties =
@@ -363,5 +372,126 @@ fn main() -> Result<()> {
             .collect::<VkResult<Vec<_>>>()
     }?;
 
+    let index_buffer_data = [0u32, 1, 2];
+    let index_buffer_info = vk::BufferCreateInfo::builder()
+        .size(std::mem::size_of_val(&index_buffer_data) as u64)
+        .usage(vk::BufferUsageFlags::INDEX_BUFFER)
+        .sharing_mode(vk::SharingMode::EXCLUSIVE);
+
+    let index_buffer = unsafe { device.create_buffer(&index_buffer_info, None) }?;
+    let index_buffer_memory_req = unsafe { device.get_buffer_memory_requirements(index_buffer) };
+    let index_buffer_memory_index = find_memorytype_index(
+        &index_buffer_memory_req,
+        &device_memory_properties,
+        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+    )
+    .with_context(|| "Won't find memory type.")?;
+
+    let index_allocate_info = vk::MemoryAllocateInfo::builder()
+        .allocation_size(index_buffer_memory_req.size)
+        .memory_type_index(index_buffer_memory_index);
+    let index_buffer_memory = unsafe { device.allocate_memory(&index_allocate_info, None) }?;
+    let index_ptr = unsafe {
+        device.map_memory(
+            index_buffer_memory,
+            0,
+            index_buffer_memory_req.size,
+            vk::MemoryMapFlags::empty(),
+        )
+    }?;
+    let mut index_slice = unsafe {
+        ash::util::Align::new(
+            index_ptr,
+            std::mem::align_of::<u32>() as u64,
+            index_buffer_memory_req.size,
+        )
+    };
+    index_slice.copy_from_slice(&index_buffer_data);
+    unsafe { device.unmap_memory(index_buffer_memory) };
+    unsafe { device.bind_buffer_memory(index_buffer, index_buffer_memory, 0) }?;
+
+    let vertex_input_buffer_info = vk::BufferCreateInfo::builder()
+        .size(3 * std::mem::size_of::<Vertex>() as u64)
+        .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
+        .sharing_mode(vk::SharingMode::EXCLUSIVE);
+
+    let vertex_input_buffer = unsafe { device.create_buffer(&vertex_input_buffer_info, None) }?;
+    let vertex_input_buffer_memory_req =
+        unsafe { device.get_buffer_memory_requirements(vertex_input_buffer) };
+
+    let vertex_input_buffer_memory_index = find_memorytype_index(
+        &vertex_input_buffer_memory_req,
+        &device_memory_properties,
+        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+    )
+    .with_context(|| "Won't find memory type.")?;
+
+    let vertex_buffer_allocate_info = vk::MemoryAllocateInfo::builder()
+        .allocation_size(vertex_input_buffer_memory_req.size)
+        .memory_type_index(vertex_input_buffer_memory_index);
+
+    let vertex_input_buffer_memory =
+        unsafe { device.allocate_memory(&vertex_buffer_allocate_info, None) }?;
+
+    let vertices = [
+        Vertex {
+            pos: [-1.0, 1.0, 0.0, 1.0],
+            color: [0.0, 1.0, 0.0, 1.0],
+        },
+        Vertex {
+            pos: [1.0, 1.0, 0.0, 1.0],
+            color: [0.0, 0.0, 1.0, 1.0],
+        },
+        Vertex {
+            pos: [0.0, -1.0, 0.0, 1.0],
+            color: [1.0, 0.0, 0.0, 1.0],
+        },
+    ];
+
+    let vert_ptr = unsafe {
+        device.map_memory(
+            vertex_input_buffer_memory,
+            0,
+            vertex_input_buffer_memory_req.size,
+            vk::MemoryMapFlags::empty(),
+        )
+    }?;
+
+    let mut vert_align = unsafe {
+        ash::util::Align::new(
+            vert_ptr,
+            std::mem::align_of::<Vertex>() as u64,
+            vertex_input_buffer_memory_req.size,
+        )
+    };
+    vert_align.copy_from_slice(&vertices);
+    unsafe { device.unmap_memory(vertex_input_buffer_memory) };
+    unsafe { device.bind_buffer_memory(vertex_input_buffer, vertex_input_buffer_memory, 0) }?;
+
     Ok(())
+}
+
+pub fn find_memorytype_index(
+    memory_req: &vk::MemoryRequirements,
+    memory_prop: &vk::PhysicalDeviceMemoryProperties,
+    flags: vk::MemoryPropertyFlags,
+) -> Option<u32> {
+    memory_prop.memory_types[..memory_prop.memory_type_count as _]
+        .iter()
+        .enumerate()
+        .inspect(|(index, mt)| {
+            println!(
+                "bit: {},\nmemory type: {:?}\nmemory req: {:?},\nproperty_flags & flags: {:?}\nlast == flags: {:?}",
+                1 << index,
+                mt,
+                memory_req,
+                mt.property_flags & flags,
+                mt.property_flags & flags == flags
+            )
+        })
+        .find(|(index, memory_type)| {
+            (1 << index) & memory_req.memory_type_bits != 0
+                && (memory_type.property_flags & flags) == flags
+        })
+        .map(|(index, _memory_type)| index as _)
 }
