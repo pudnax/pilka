@@ -17,13 +17,17 @@ use pilka_dyn::*;
 #[cfg(not(feature = "dynamic"))]
 use pilka_incremental::*;
 
-use std::{borrow::Cow, ffi::CStr, lazy::SyncLazy};
+use std::{
+    borrow::Cow,
+    ffi::{CStr, CString},
+    lazy::SyncLazy,
+};
 
 macro_rules! offset_of {
     ($base:path, $field:ident) => {{
         #[allow(unused_unsafe)]
         unsafe {
-            let b: $base = mem::zeroed();
+            let b: $base = std::mem::zeroed();
             (&b.$field as *const _ as isize) - (&b as *const _ as isize)
         }
     }};
@@ -468,6 +472,171 @@ fn main() -> Result<()> {
     unsafe { device.unmap_memory(vertex_input_buffer_memory) };
     unsafe { device.bind_buffer_memory(vertex_input_buffer, vertex_input_buffer_memory, 0) }?;
 
+    let mut compiler =
+        shaderc::Compiler::new().with_context(|| "Failed to create shader compiler")?;
+    let vs_data = compiler.compile_into_spirv(
+        include_str!("./../shaders/shader.vert"),
+        shaderc::ShaderKind::Vertex,
+        "shaders/shader.vert",
+        "main",
+        None,
+    )?;
+    let vs_data = vs_data.as_binary_u8();
+    let mut vs_data = std::io::Cursor::new(vs_data);
+    let vs_code = ash::util::read_spv(&mut vs_data)?;
+    let vs_info = vk::ShaderModuleCreateInfo::builder().code(&vs_code);
+    let fs_data = compiler.compile_into_spirv(
+        include_str!("./../shaders/shader.frag"),
+        shaderc::ShaderKind::Vertex,
+        "shaders/shader.frag",
+        "main",
+        None,
+    )?;
+    let fs_data = fs_data.as_binary_u8();
+    let mut fs_data = std::io::Cursor::new(fs_data);
+    let fs_code = ash::util::read_spv(&mut fs_data)?;
+    let fs_info = vk::ShaderModuleCreateInfo::builder().code(&fs_code);
+
+    let vertex_shader_module = unsafe { device.create_shader_module(&vs_info, None) }?;
+
+    let fragment_shader_module = unsafe { device.create_shader_module(&fs_info, None) }?;
+
+    let layout_create_info = vk::PipelineLayoutCreateInfo::default();
+
+    let pipeline_layout = unsafe { device.create_pipeline_layout(&layout_create_info, None) }?;
+
+    let shader_entry_name = CString::new("main").unwrap();
+    let shader_stage_create_infos = [
+        vk::PipelineShaderStageCreateInfo {
+            module: vertex_shader_module,
+            p_name: shader_entry_name.as_ptr(),
+            stage: vk::ShaderStageFlags::VERTEX,
+            ..Default::default()
+        },
+        vk::PipelineShaderStageCreateInfo {
+            s_type: vk::StructureType::PIPELINE_SHADER_STAGE_CREATE_INFO,
+            module: fragment_shader_module,
+            p_name: shader_entry_name.as_ptr(),
+            stage: vk::ShaderStageFlags::FRAGMENT,
+            ..Default::default()
+        },
+    ];
+    let vertex_input_binding_descriptions = [vk::VertexInputBindingDescription {
+        binding: 0,
+        stride: std::mem::size_of::<Vertex>() as u32,
+        input_rate: vk::VertexInputRate::VERTEX,
+    }];
+    let vertex_input_attribute_descriptions = [
+        vk::VertexInputAttributeDescription {
+            location: 0,
+            binding: 0,
+            format: vk::Format::R32G32B32A32_SFLOAT,
+            offset: offset_of!(Vertex, pos) as u32,
+        },
+        vk::VertexInputAttributeDescription {
+            location: 1,
+            binding: 0,
+            format: vk::Format::R32G32B32A32_SFLOAT,
+            offset: offset_of!(Vertex, color) as u32,
+        },
+    ];
+
+    let vertex_input_state_info = vk::PipelineVertexInputStateCreateInfo {
+        vertex_attribute_description_count: vertex_input_attribute_descriptions.len() as u32,
+        p_vertex_attribute_descriptions: vertex_input_attribute_descriptions.as_ptr(),
+        vertex_binding_description_count: vertex_input_binding_descriptions.len() as u32,
+        p_vertex_binding_descriptions: vertex_input_binding_descriptions.as_ptr(),
+        ..Default::default()
+    };
+    let vertex_input_assembly_state_info = vk::PipelineInputAssemblyStateCreateInfo {
+        topology: vk::PrimitiveTopology::TRIANGLE_LIST,
+        ..Default::default()
+    };
+    let viewports = [vk::Viewport {
+        x: 0.0,
+        y: 0.0,
+        width: extent.width as f32,
+        height: extent.height as f32,
+        min_depth: 0.0,
+        max_depth: 1.0,
+    }];
+    let scissors = [vk::Rect2D {
+        offset: vk::Offset2D { x: 0, y: 0 },
+        extent,
+    }];
+    let viewport_state_info = vk::PipelineViewportStateCreateInfo::builder()
+        .scissors(&scissors)
+        .viewports(&viewports);
+
+    let rasterization_info = vk::PipelineRasterizationStateCreateInfo {
+        front_face: vk::FrontFace::COUNTER_CLOCKWISE,
+        line_width: 1.0,
+        polygon_mode: vk::PolygonMode::FILL,
+        ..Default::default()
+    };
+    let multisample_state_info = vk::PipelineMultisampleStateCreateInfo {
+        rasterization_samples: vk::SampleCountFlags::TYPE_1,
+        ..Default::default()
+    };
+    let noop_stencil_state = vk::StencilOpState {
+        fail_op: vk::StencilOp::KEEP,
+        pass_op: vk::StencilOp::KEEP,
+        depth_fail_op: vk::StencilOp::KEEP,
+        compare_op: vk::CompareOp::ALWAYS,
+        ..Default::default()
+    };
+    let depth_state_info = vk::PipelineDepthStencilStateCreateInfo {
+        depth_test_enable: 1,
+        depth_write_enable: 1,
+        depth_compare_op: vk::CompareOp::LESS_OR_EQUAL,
+        front: noop_stencil_state,
+        back: noop_stencil_state,
+        max_depth_bounds: 1.0,
+        ..Default::default()
+    };
+    let color_blend_attachment_states = [vk::PipelineColorBlendAttachmentState {
+        blend_enable: 0,
+        src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
+        dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_DST_COLOR,
+        color_blend_op: vk::BlendOp::ADD,
+        src_alpha_blend_factor: vk::BlendFactor::ZERO,
+        dst_alpha_blend_factor: vk::BlendFactor::ZERO,
+        alpha_blend_op: vk::BlendOp::ADD,
+        color_write_mask: vk::ColorComponentFlags::all(),
+    }];
+    let color_blend_state = vk::PipelineColorBlendStateCreateInfo::builder()
+        .logic_op(vk::LogicOp::CLEAR)
+        .attachments(&color_blend_attachment_states);
+
+    let dynamic_state = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+    let dynamic_state_info =
+        vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_state);
+
+    let graphic_pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
+        .stages(&shader_stage_create_infos)
+        .vertex_input_state(&vertex_input_state_info)
+        .input_assembly_state(&vertex_input_assembly_state_info)
+        .viewport_state(&viewport_state_info)
+        .rasterization_state(&rasterization_info)
+        .multisample_state(&multisample_state_info)
+        .depth_stencil_state(&depth_state_info)
+        .color_blend_state(&color_blend_state)
+        .dynamic_state(&dynamic_state_info)
+        .layout(pipeline_layout)
+        .render_pass(renderpass);
+
+    let graphics_pipelines = unsafe {
+        device
+            .create_graphics_pipelines(
+                vk::PipelineCache::null(),
+                &[graphic_pipeline_info.build()],
+                None,
+            )
+            .expect("Unable to create graphics pipeline")
+    };
+
+    let graphic_pipeline = graphics_pipelines[0];
+
     Ok(())
 }
 
@@ -479,16 +648,6 @@ pub fn find_memorytype_index(
     memory_prop.memory_types[..memory_prop.memory_type_count as _]
         .iter()
         .enumerate()
-        .inspect(|(index, mt)| {
-            println!(
-                "bit: {},\nmemory type: {:?}\nmemory req: {:?},\nproperty_flags & flags: {:?}\nlast == flags: {:?}",
-                1 << index,
-                mt,
-                memory_req,
-                mt.property_flags & flags,
-                mt.property_flags & flags == flags
-            )
-        })
         .find(|(index, memory_type)| {
             (1 << index) & memory_req.memory_type_bits != 0
                 && (memory_type.property_flags & flags) == flags

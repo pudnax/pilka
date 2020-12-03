@@ -19,6 +19,7 @@ eyre = "0.6.3"
 ultraviolet = "0.7.5"
 pilka_dyn = { path = "libs/pilka_dyn", optional = true }
 pilka_incremental = { path = "libs/pilka_incremental" }
+shaderc = "0.7.0"
 
 [profile.release]
 lto = 'thin'
