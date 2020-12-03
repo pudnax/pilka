@@ -4,7 +4,8 @@ use ash::{
         ext::DebugUtils,
         khr::{Surface, Swapchain},
     },
-    version::{EntryV1_0, InstanceV1_0},
+    prelude::VkResult,
+    version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
     vk,
 };
 use eyre::*;
@@ -16,7 +17,7 @@ use pilka_dyn::*;
 #[cfg(not(feature = "dynamic"))]
 use pilka_incremental::*;
 
-use std::{ffi::CStr, lazy::SyncLazy};
+use std::{borrow::Cow, ffi::CStr, lazy::SyncLazy};
 
 /// Static and lazy initialized array of needed validation layers.
 /// Appear only on debug builds.
@@ -37,6 +38,35 @@ static EXTS: SyncLazy<Vec<&'static CStr>> = SyncLazy::new(|| {
     }
     exts
 });
+
+unsafe extern "system" fn vulkan_debug_callback(
+    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _user_data: *mut std::os::raw::c_void,
+) -> vk::Bool32 {
+    let callback_data = &*p_callback_data;
+    let message_id_number: i32 = callback_data.message_id_number as i32;
+
+    let message_id_name = if callback_data.p_message_id_name.is_null() {
+        Cow::from("")
+    } else {
+        CStr::from_ptr(callback_data.p_message_id_name).to_string_lossy()
+    };
+
+    let message = if callback_data.p_message.is_null() {
+        Cow::from("")
+    } else {
+        CStr::from_ptr(callback_data.p_message).to_string_lossy()
+    };
+
+    println!(
+        "{:?}:\n{:?} [{} ({})] : {}\n",
+        message_severity, message_type, message_id_name, message_id_number, message,
+    );
+
+    vk::FALSE
+}
 
 fn main() -> Result<()> {
     // Initialize error hook.
@@ -111,15 +141,34 @@ fn main() -> Result<()> {
 
     let instance = unsafe { entry.create_instance(&instance_info, None) }?;
 
+    let (_dbg_loader, _dbg_callbk) = if cfg!(debug_assertions) {
+        let dbg_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+            .message_severity(
+                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
+            )
+            .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
+            .pfn_user_callback(Some(vulkan_debug_callback));
+        let dbg_loader = DebugUtils::new(&entry, &instance);
+        let dbg_callbk = unsafe {
+            dbg_loader
+                .create_debug_utils_messenger(&dbg_info, None)
+                .unwrap()
+        };
+        (Some(dbg_loader), Some(dbg_callbk))
+    } else {
+        (None, None)
+    };
+
     // Make surface and surface loader.
     let surface = unsafe { ash_window::create_surface(&entry, &instance, &window, None) }?;
-    let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
+    let surface_loader = Surface::new(&entry, &instance);
 
     // Acuire all availble device for this machine.
     let phys_devices = unsafe { instance.enumerate_physical_devices() }?;
 
     // Choose physical device assuming that we want to choose discrete GPU.
-    let (physical_device, device_properties, device_features) = {
+    let (physical_device, _device_properties, device_features) = {
         let mut chosen = Err(vk::Result::ERROR_INITIALIZATION_FAILED);
         for p in phys_devices {
             let properties = unsafe { instance.get_physical_device_properties(p) };
@@ -186,19 +235,22 @@ fn main() -> Result<()> {
         surface_loader.get_physical_device_surface_present_modes(physical_device, surface)
     }?;
 
+    // TODO: Choose reasonable format or seive out UNDEFINED.
     let formats =
         unsafe { surface_loader.get_physical_device_surface_formats(physical_device, surface) }?[0];
+    let surface_format = formats.format;
 
     // This swapchain of 'images' used for sending picture into the screen,
     // so we're choosing graphics queue family.
     let graphics_queue_familty_index = [found_graphics_q_index.unwrap()];
     // We've choosed `COLOR_ATTACHMENT` for the same reason like with queue famility.
     let swapchain_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC;
+    let extent = surface_capabilities.current_extent;
     let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
         .surface(surface)
-        .image_format(formats.format)
+        .image_format(surface_format)
         .image_usage(swapchain_usage)
-        .image_extent(surface_capabilities.current_extent)
+        .image_extent(extent)
         .image_color_space(formats.color_space)
         .min_image_count(
             3.max(surface_capabilities.min_image_count)
