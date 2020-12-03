@@ -9,6 +9,7 @@ use ash::{
 };
 use eyre::*;
 
+// TODO: Make final decision about dynamic linking and it performance.
 #[cfg(feature = "dynamic")]
 use pilka_dyn::*;
 
@@ -110,9 +111,11 @@ fn main() -> Result<()> {
 
     let instance = unsafe { entry.create_instance(&instance_info, None) }?;
 
+    // Make surface and surface loader.
     let surface = unsafe { ash_window::create_surface(&entry, &instance, &window, None) }?;
     let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
 
+    // Acuire all availble device for this machine.
     let phys_devices = unsafe { instance.enumerate_physical_devices() }?;
 
     // Choose physical device assuming that we want to choose discrete GPU.
@@ -178,21 +181,23 @@ fn main() -> Result<()> {
     let surface_capabilities = unsafe {
         surface_loader.get_physical_device_surface_capabilities(physical_device, surface)
     }?;
-    dbg!(&surface_capabilities);
 
     let present_modes = unsafe {
         surface_loader.get_physical_device_surface_present_modes(physical_device, surface)
     }?;
-    dbg!(&present_modes);
 
     let formats =
         unsafe { surface_loader.get_physical_device_surface_formats(physical_device, surface) }?[0];
-    dbg!(&formats);
+
+    // This swapchain of 'images' used for sending picture into the screen,
+    // so we're choosing graphics queue family.
     let graphics_queue_familty_index = [found_graphics_q_index.unwrap()];
+    // We've choosed `COLOR_ATTACHMENT` for the same reason like with queue famility.
+    let swapchain_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC;
     let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
         .surface(surface)
         .image_format(formats.format)
-        .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC)
+        .image_usage(swapchain_usage)
         .image_extent(surface_capabilities.current_extent)
         .image_color_space(formats.color_space)
         .min_image_count(
