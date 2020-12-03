@@ -1,15 +1,18 @@
 #![feature(once_cell)]
 use ash::{
-    extensions::{ext::DebugUtils, khr::Surface},
+    extensions::{
+        ext::DebugUtils,
+        khr::{Surface, Swapchain},
+    },
     version::{EntryV1_0, InstanceV1_0},
     vk,
 };
 use eyre::*;
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dynamic")]
 use pilka_dyn::*;
 
-#[cfg(not(debug_assertions))]
+#[cfg(not(feature = "dynamic"))]
 use pilka_incremental::*;
 
 use std::{ffi::CStr, lazy::SyncLazy};
@@ -30,7 +33,6 @@ static EXTS: SyncLazy<Vec<&'static CStr>> = SyncLazy::new(|| {
     let mut exts: Vec<&'static CStr> = vec![];
     if cfg!(debug_assertions) {
         exts.push(DebugUtils::name());
-        exts.push(Surface::name());
     }
     exts
 });
@@ -109,6 +111,7 @@ fn main() -> Result<()> {
     let instance = unsafe { entry.create_instance(&instance_info, None) }?;
 
     let surface = unsafe { ash_window::create_surface(&entry, &instance, &window, None) }?;
+    let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
 
     let phys_devices = unsafe { instance.enumerate_physical_devices() }?;
 
@@ -131,9 +134,15 @@ fn main() -> Result<()> {
     let mut found_graphics_q_index = None;
     let mut found_transfer_q_index = None;
     for (index, qfam) in queuefamilyproperties.iter().enumerate() {
-        if qfam.queue_count > 0 && qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-        // && surfaces.get_physical_device_surface_support(physical_device, index)?
-        {
+        if qfam.queue_count > 0 && qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS) && {
+            unsafe {
+                surface_loader.get_physical_device_surface_support(
+                    physical_device,
+                    index as u32,
+                    surface,
+                )
+            }?
+        } {
             found_graphics_q_index = Some(index as u32);
         }
         if qfam.queue_count > 0
@@ -157,8 +166,7 @@ fn main() -> Result<()> {
             .build(),
     ];
 
-    let device_extension_name_pointers: Vec<*const i8> =
-        vec![ash::extensions::khr::Swapchain::name().as_ptr()];
+    let device_extension_name_pointers: Vec<*const i8> = vec![Swapchain::name().as_ptr()];
 
     let device_info = vk::DeviceCreateInfo::builder()
         .enabled_layer_names(&validation_layers)
@@ -166,6 +174,41 @@ fn main() -> Result<()> {
         .enabled_features(&device_features)
         .queue_create_infos(&queue_infos);
     let device = unsafe { instance.create_device(physical_device, &device_info, None) }?;
+
+    let surface_capabilities = unsafe {
+        surface_loader.get_physical_device_surface_capabilities(physical_device, surface)
+    }?;
+    dbg!(&surface_capabilities);
+
+    let present_modes = unsafe {
+        surface_loader.get_physical_device_surface_present_modes(physical_device, surface)
+    }?;
+    dbg!(&present_modes);
+
+    let formats =
+        unsafe { surface_loader.get_physical_device_surface_formats(physical_device, surface) }?[0];
+    dbg!(&formats);
+    let graphics_queue_familty_index = [found_graphics_q_index.unwrap()];
+    let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+        .surface(surface)
+        .image_format(formats.format)
+        .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC)
+        .image_extent(surface_capabilities.current_extent)
+        .image_color_space(formats.color_space)
+        .min_image_count(
+            3.max(surface_capabilities.min_image_count)
+                .min(surface_capabilities.max_image_count),
+        )
+        .image_array_layers(surface_capabilities.max_image_array_layers)
+        .queue_family_indices(&graphics_queue_familty_index)
+        .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .composite_alpha(surface_capabilities.supported_composite_alpha)
+        .present_mode(present_modes[0])
+        .clipped(true)
+        .pre_transform(surface_capabilities.current_transform);
+
+    let swapchain_loader = Swapchain::new(&instance, &device);
+    let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
 
     Ok(())
 }
