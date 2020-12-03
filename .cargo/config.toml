@@ -20,3 +20,7 @@ rustflags = ["-Zshare-generics=y"]
 # In most cases the gains are negligible, but if you are on macos and have slow compile times you should see significant gains.
 #[profile.dev]
 #debug = 1
+
+[build]
+target-dir = 'target'
+rustflags = ["-Cprefer-dynamic", "-C target-cpu=native"]
