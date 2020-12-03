@@ -19,6 +19,16 @@ use pilka_incremental::*;
 
 use std::{borrow::Cow, ffi::CStr, lazy::SyncLazy};
 
+macro_rules! offset_of {
+    ($base:path, $field:ident) => {{
+        #[allow(unused_unsafe)]
+        unsafe {
+            let b: $base = mem::zeroed();
+            (&b.$field as *const _ as isize) - (&b as *const _ as isize)
+        }
+    }};
+}
+
 /// Static and lazy initialized array of needed validation layers.
 /// Appear only on debug builds.
 static LAYERS: SyncLazy<Vec<&'static CStr>> = SyncLazy::new(|| {
@@ -266,6 +276,92 @@ fn main() -> Result<()> {
 
     let swapchain_loader = Swapchain::new(&instance, &device);
     let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
+    let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
+    let amount_of_images = present_images.len() as u32;
+
+    let present_image_views = {
+        present_images
+            .iter()
+            .map(|&image| {
+                let create_view_info = vk::ImageViewCreateInfo::builder()
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(surface_format)
+                    .components(vk::ComponentMapping {
+                        // Why not BGRA?
+                        r: vk::ComponentSwizzle::R,
+                        g: vk::ComponentSwizzle::G,
+                        b: vk::ComponentSwizzle::B,
+                        a: vk::ComponentSwizzle::A,
+                    })
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: 0,
+                        level_count: 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    })
+                    .image(image);
+                unsafe { device.create_image_view(&create_view_info, None) }
+            })
+            .collect::<VkResult<Vec<_>>>()
+    }?;
+
+    let semaphore_create_info = vk::SemaphoreCreateInfo::default();
+
+    let present_complete_semaphore =
+        unsafe { device.create_semaphore(&semaphore_create_info, None) }?;
+    let rendering_complete_semaphore =
+        unsafe { device.create_semaphore(&semaphore_create_info, None) }?;
+
+    let renderpass_attachments = [vk::AttachmentDescription::builder()
+        .format(surface_format)
+        .samples(vk::SampleCountFlags::TYPE_1)
+        .load_op(vk::AttachmentLoadOp::CLEAR)
+        .store_op(vk::AttachmentStoreOp::STORE)
+        .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+        .build()];
+    let color_attachment_refs = [vk::AttachmentReference::builder()
+        .attachment(0)
+        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+        .build()];
+
+    let dependencies = [vk::SubpassDependency::builder()
+        .src_subpass(vk::SUBPASS_EXTERNAL)
+        .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+        .dst_access_mask(
+            vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+        )
+        .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+        .build()];
+
+    let subpasses = [vk::SubpassDescription::builder()
+        .color_attachments(&color_attachment_refs)
+        .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+        .build()];
+
+    let renderpass_create_info = vk::RenderPassCreateInfo::builder()
+        .attachments(&renderpass_attachments)
+        .subpasses(&subpasses)
+        .dependencies(&dependencies);
+
+    let renderpass = unsafe { device.create_render_pass(&renderpass_create_info, None) }?;
+
+    let framebuffers = {
+        present_image_views
+            .iter()
+            .map(|&present_image_view| {
+                let framebuffer_attachments = [present_image_view];
+                let framebuffer_create_info = vk::FramebufferCreateInfo::builder()
+                    .render_pass(renderpass)
+                    .attachments(&framebuffer_attachments)
+                    .width(extent.width)
+                    .height(extent.height)
+                    .layers(1);
+
+                unsafe { device.create_framebuffer(&framebuffer_create_info, None) }
+            })
+            .collect::<VkResult<Vec<_>>>()
+    }?;
 
     Ok(())
 }
