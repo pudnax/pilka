@@ -10,6 +10,8 @@ use ash::{
 };
 use eyre::*;
 
+use winit::platform::desktop::EventLoopExtDesktop;
+
 // TODO: Make final decision about dynamic linking and it performance.
 #[cfg(feature = "dynamic")]
 use pilka_dyn::*;
@@ -96,7 +98,7 @@ fn main() -> Result<()> {
     let engine_name = CStr::from_bytes_with_nul(b"Ruchka Engine\0")?;
     let app_name = CStr::from_bytes_with_nul(b"Pilka\0")?;
 
-    let event_loop = winit::event_loop::EventLoop::new();
+    let mut event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::Window::new(&event_loop)?;
     window.set_title(&app_name.to_string_lossy());
     let surface_extensions = ash_window::enumerate_required_extensions(&window)?;
@@ -150,10 +152,10 @@ fn main() -> Result<()> {
         .collect::<Vec<_>>();
 
     let app_info = vk::ApplicationInfo::builder()
-        .api_version(version)
+        .application_name(app_name)
         .engine_name(engine_name)
         .engine_version(vk::make_version(0, 1, 0))
-        .application_name(app_name);
+        .api_version(version);
 
     let instance_info = vk::InstanceCreateInfo::builder()
         .application_info(&app_info)
@@ -166,7 +168,7 @@ fn main() -> Result<()> {
         let dbg_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .message_severity(
                 vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING, // | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
             )
             .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
             .pfn_user_callback(Some(vulkan_debug_callback));
@@ -282,16 +284,15 @@ fn main() -> Result<()> {
         .image_array_layers(surface_capabilities.max_image_array_layers)
         .queue_family_indices(&graphics_queue_familty_index)
         .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .pre_transform(surface_capabilities.current_transform)
         .composite_alpha(surface_capabilities.supported_composite_alpha)
         .present_mode(present_modes[0])
-        .clipped(true)
-        .pre_transform(surface_capabilities.current_transform);
+        .clipped(true);
 
     let swapchain_loader = Swapchain::new(&instance, &device);
     let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
-    let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
-    let amount_of_images = present_images.len() as u32;
 
+    let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
     let present_image_views = {
         present_images
             .iter()
@@ -352,6 +353,7 @@ fn main() -> Result<()> {
         .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
         .build()];
 
+    // Depth textute? Never heard about it.
     let renderpass_create_info = vk::RenderPassCreateInfo::builder()
         .attachments(&renderpass_attachments)
         .subpasses(&subpasses)
@@ -483,11 +485,13 @@ fn main() -> Result<()> {
     )?;
     let vs_data = vs_data.as_binary_u8();
     let mut vs_data = std::io::Cursor::new(vs_data);
+    // TODO: Switch to wgou variant.
     let vs_code = ash::util::read_spv(&mut vs_data)?;
     let vs_info = vk::ShaderModuleCreateInfo::builder().code(&vs_code);
+
     let fs_data = compiler.compile_into_spirv(
         include_str!("./../shaders/shader.frag"),
-        shaderc::ShaderKind::Vertex,
+        shaderc::ShaderKind::Fragment,
         "shaders/shader.frag",
         "main",
         None,
@@ -505,7 +509,7 @@ fn main() -> Result<()> {
 
     let pipeline_layout = unsafe { device.create_pipeline_layout(&layout_create_info, None) }?;
 
-    let shader_entry_name = CString::new("main").unwrap();
+    let shader_entry_name = CString::new("main")?;
     let shader_stage_create_infos = [
         vk::PipelineShaderStageCreateInfo {
             module: vertex_shader_module,
@@ -521,6 +525,7 @@ fn main() -> Result<()> {
             ..Default::default()
         },
     ];
+
     let vertex_input_binding_descriptions = [vk::VertexInputBindingDescription {
         binding: 0,
         stride: std::mem::size_of::<Vertex>() as u32,
@@ -548,6 +553,7 @@ fn main() -> Result<()> {
         p_vertex_binding_descriptions: vertex_input_binding_descriptions.as_ptr(),
         ..Default::default()
     };
+
     let vertex_input_assembly_state_info = vk::PipelineInputAssemblyStateCreateInfo {
         topology: vk::PrimitiveTopology::TRIANGLE_LIST,
         ..Default::default()
@@ -578,22 +584,7 @@ fn main() -> Result<()> {
         rasterization_samples: vk::SampleCountFlags::TYPE_1,
         ..Default::default()
     };
-    let noop_stencil_state = vk::StencilOpState {
-        fail_op: vk::StencilOp::KEEP,
-        pass_op: vk::StencilOp::KEEP,
-        depth_fail_op: vk::StencilOp::KEEP,
-        compare_op: vk::CompareOp::ALWAYS,
-        ..Default::default()
-    };
-    let depth_state_info = vk::PipelineDepthStencilStateCreateInfo {
-        depth_test_enable: 1,
-        depth_write_enable: 1,
-        depth_compare_op: vk::CompareOp::LESS_OR_EQUAL,
-        front: noop_stencil_state,
-        back: noop_stencil_state,
-        max_depth_bounds: 1.0,
-        ..Default::default()
-    };
+
     let color_blend_attachment_states = [vk::PipelineColorBlendAttachmentState {
         blend_enable: 0,
         src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
@@ -619,23 +610,25 @@ fn main() -> Result<()> {
         .viewport_state(&viewport_state_info)
         .rasterization_state(&rasterization_info)
         .multisample_state(&multisample_state_info)
-        .depth_stencil_state(&depth_state_info)
         .color_blend_state(&color_blend_state)
         .dynamic_state(&dynamic_state_info)
         .layout(pipeline_layout)
         .render_pass(renderpass);
 
     let graphics_pipelines = unsafe {
-        device
-            .create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                &[graphic_pipeline_info.build()],
-                None,
-            )
-            .expect("Unable to create graphics pipeline")
-    };
+        device.create_graphics_pipelines(
+            vk::PipelineCache::null(),
+            &[graphic_pipeline_info.build()],
+            None,
+        )
+    }
+    .expect("Unable to create graphics pipeline");
 
     let graphic_pipeline = graphics_pipelines[0];
+
+    event_loop.run_return(|event, _, control_flow| {
+        *control_flow = winit::event_loop::ControlFlow::Poll;
+    });
 
     Ok(())
 }
