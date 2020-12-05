@@ -663,19 +663,19 @@ fn main() -> Result<()> {
             // }
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                // WindowEvent::KeyboardInput {
-                //     input:
-                //         KeyboardInput {
-                //             virtual_keycode: Some(keycode),
-                //             state: ElementState::Pressed,
-                //             ..
-                //         },
-                //     ..
-                // } => {
-                //     if VirtualKeyCode::Escape == keycode {
-                //         *control_flow = ControlFlow::Exit;
-                //     }
-                // }
+                WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            virtual_keycode: Some(keycode),
+                            state: ElementState::Pressed,
+                            ..
+                        },
+                    ..
+                } => {
+                    if VirtualKeyCode::Escape == keycode {
+                        *control_flow = ControlFlow::Exit;
+                    }
+                }
                 _ => {}
             },
             Event::MainEventsCleared => {
@@ -812,8 +812,23 @@ fn main() -> Result<()> {
 
     println!("End window event loop");
 
-    unsafe { device.device_wait_idle() }.unwrap();
     unsafe {
+        device.device_wait_idle().unwrap();
+        for pipeline in graphics_pipelines {
+            device.destroy_pipeline(pipeline, None);
+        }
+        device.destroy_pipeline_layout(pipeline_layout, None);
+        device.destroy_shader_module(vertex_shader_module, None);
+        device.destroy_shader_module(fragment_shader_module, None);
+        device.free_memory(index_buffer_memory, None);
+        device.destroy_buffer(index_buffer, None);
+        device.free_memory(vertex_input_buffer_memory, None);
+        device.destroy_buffer(vertex_input_buffer, None);
+        for framebuffer in framebuffers {
+            device.destroy_framebuffer(framebuffer, None);
+        }
+        device.destroy_render_pass(renderpass, None);
+
         device.device_wait_idle().unwrap();
         device.destroy_semaphore(present_complete_semaphore, None);
         device.destroy_semaphore(rendering_complete_semaphore, None);
