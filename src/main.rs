@@ -10,7 +10,11 @@ use ash::{
 };
 use eyre::*;
 
-use winit::platform::desktop::EventLoopExtDesktop;
+use winit::{
+    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event_loop::ControlFlow,
+    platform::desktop::EventLoopExtDesktop,
+};
 
 // TODO: Make final decision about dynamic linking and it performance.
 #[cfg(feature = "dynamic")]
@@ -628,6 +632,33 @@ fn main() -> Result<()> {
 
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
+        match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                *control_flow = ControlFlow::Exit;
+            }
+            Event::WindowEvent {
+                event: WindowEvent::KeyboardInput { input, .. },
+                ..
+            } => {
+                if let KeyboardInput {
+                    state: ElementState::Pressed,
+                    virtual_keycode: Some(keycode),
+                    ..
+                } = input
+                {
+                    match keycode {
+                        VirtualKeyCode::Escape => {
+                            *control_flow = ControlFlow::Exit;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
     });
 
     Ok(())
