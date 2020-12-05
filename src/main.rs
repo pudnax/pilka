@@ -272,6 +272,7 @@ fn main() -> Result<()> {
     // This swapchain of 'images' used for sending picture into the screen,
     // so we're choosing graphics queue family.
     let graphics_queue_familty_index = [found_graphics_q_index.unwrap()];
+    let present_queue = unsafe { device.get_device_queue(graphics_queue_familty_index[0], 0) };
     // We've choosed `COLOR_ATTACHMENT` for the same reason like with queue famility.
     let swapchain_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC;
     let extent = surface_capabilities.current_extent;
@@ -295,6 +296,25 @@ fn main() -> Result<()> {
 
     let swapchain_loader = Swapchain::new(&instance, &device);
     let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
+
+    let pool_create_info = vk::CommandPoolCreateInfo::builder()
+        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+        .queue_family_index(found_graphics_q_index.unwrap());
+
+    let pool = unsafe { device.create_command_pool(&pool_create_info, None).unwrap() };
+
+    // TODO: Need only one
+    let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+        .command_buffer_count(2)
+        .command_pool(pool)
+        .level(vk::CommandBufferLevel::PRIMARY);
+
+    let command_buffers = unsafe {
+        device
+            .allocate_command_buffers(&command_buffer_allocate_info)
+            .unwrap()
+    };
+    let draw_command_buffer = command_buffers[1];
 
     let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
     let present_image_views = {
@@ -323,6 +343,10 @@ fn main() -> Result<()> {
             })
             .collect::<VkResult<Vec<_>>>()
     }?;
+
+    let fence_create_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
+
+    let draw_commands_reuse_fence = unsafe { device.create_fence(&fence_create_info, None)? };
 
     let semaphore_create_info = vk::SemaphoreCreateInfo::default();
 
@@ -633,39 +657,175 @@ fn main() -> Result<()> {
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
         match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                *control_flow = ControlFlow::Exit;
-            }
-            Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                state: ElementState::Pressed,
-                                virtual_keycode: Some(VirtualKeyCode::Escape),
-                                ..
-                            },
-                        ..
-                    },
-                ..
-            } => *control_flow = ControlFlow::Exit,
-            Event::WindowEvent {
-                event: WindowEvent::KeyboardInput { input, .. },
-                ..
-            } => {
-                if let KeyboardInput {
-                    state: ElementState::Pressed,
-                    virtual_keycode: Some(_keycode),
+            // What @.@
+            // Event::NewEvents(_) => {
+            //     inputs.wheel_delta = 0.0;
+            // }
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            virtual_keycode: Some(keycode),
+                            state: ElementState::Pressed,
+                            ..
+                        },
                     ..
-                } = input
-                {}
+                } => {
+                    if VirtualKeyCode::Escape == keycode {
+                        *control_flow = ControlFlow::Exit;
+                    }
+                }
+                _ => {}
+            },
+            Event::MainEventsCleared => {
+                let (present_index, _) = unsafe {
+                    swapchain_loader.acquire_next_image(
+                        swapchain,
+                        std::u64::MAX,
+                        present_complete_semaphore,
+                        vk::Fence::null(),
+                    )
+                }
+                .unwrap();
+                let clear_values = [vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 0.0],
+                    },
+                }];
+
+                let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+                    .render_pass(renderpass)
+                    .framebuffer(framebuffers[present_index as usize])
+                    .render_area(vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent,
+                    })
+                    .clear_values(&clear_values);
+
+                // Start command queue
+                unsafe {
+                    device
+                        .wait_for_fences(&[draw_commands_reuse_fence], true, std::u64::MAX)
+                        .expect("Failed to wait for fences");
+                    device
+                        .reset_fences(&[draw_commands_reuse_fence])
+                        .expect("Failed to reset fences");
+                    device
+                        .reset_command_buffer(
+                            draw_command_buffer,
+                            vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+                        )
+                        .expect("Failed to reset command buffer");
+                }
+
+                let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+                    .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+                unsafe {
+                    device
+                        .begin_command_buffer(draw_command_buffer, &command_buffer_begin_info)
+                        .expect("Failed to begin command buffer.");
+                    // Action
+                    device.cmd_begin_render_pass(
+                        draw_command_buffer,
+                        &render_pass_begin_info,
+                        vk::SubpassContents::INLINE,
+                    );
+                    device.cmd_bind_pipeline(
+                        draw_command_buffer,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        graphic_pipeline,
+                    );
+                    device.cmd_set_viewport(draw_command_buffer, 0, &viewports);
+                    device.cmd_set_scissor(draw_command_buffer, 0, &scissors);
+                    device.cmd_bind_vertex_buffers(
+                        draw_command_buffer,
+                        0,
+                        &[vertex_input_buffer],
+                        &[0],
+                    );
+                    device.cmd_bind_index_buffer(
+                        draw_command_buffer,
+                        index_buffer,
+                        0,
+                        vk::IndexType::UINT32,
+                    );
+                    device.cmd_draw_indexed(
+                        draw_command_buffer,
+                        index_buffer_data.len() as u32,
+                        1,
+                        0,
+                        0,
+                        1,
+                    );
+                    // Or draw without the index buffer
+                    // device.cmd_draw(draw_command_buffer, 3, 1, 0, 0);
+                    device.cmd_end_render_pass(draw_command_buffer);
+                    // End action
+                    device
+                        .end_command_buffer(draw_command_buffer)
+                        .expect("Failed to end command buffer");
+                }
+
+                let command_buffers = vec![draw_command_buffer];
+
+                let wait_semaphores = &[present_complete_semaphore];
+                let signal_semaphores = &[rendering_complete_semaphore];
+
+                let submit_info = vk::SubmitInfo::builder()
+                    .wait_semaphores(wait_semaphores)
+                    .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
+                    .command_buffers(&command_buffers)
+                    .signal_semaphores(signal_semaphores);
+
+                unsafe {
+                    device
+                        .queue_submit(
+                            present_queue,
+                            &[submit_info.build()],
+                            draw_commands_reuse_fence,
+                        )
+                        .expect("Failed to start queue");
+                }
+                // End with command queue
+
+                let wait_semaphors = [rendering_complete_semaphore];
+                let swapchains = [swapchain];
+                let image_indices = [present_index];
+                let present_info = vk::PresentInfoKHR::builder()
+                    .wait_semaphores(&wait_semaphors)
+                    .swapchains(&swapchains)
+                    .image_indices(&image_indices);
+
+                unsafe {
+                    swapchain_loader
+                        .queue_present(present_queue, &present_info)
+                        .expect("Failed to queue present of images.")
+                };
             }
+            // Event::LoopDestroyed => unsafe { base.device.device_wait_idle() }.unwrap(),
             _ => {}
         }
     });
+
+    unsafe {
+        device.device_wait_idle().unwrap();
+        device.destroy_semaphore(present_complete_semaphore, None);
+        device.destroy_semaphore(rendering_complete_semaphore, None);
+        device.destroy_fence(draw_commands_reuse_fence, None);
+        for &image_view in present_image_views.iter() {
+            device.destroy_image_view(image_view, None);
+        }
+        device.destroy_command_pool(pool, None);
+        swapchain_loader.destroy_swapchain(swapchain, None);
+        device.destroy_device(None);
+        surface_loader.destroy_surface(surface, None);
+        _dbg_loader
+            .unwrap()
+            .destroy_debug_utils_messenger(_dbg_callbk.unwrap(), None);
+        instance.destroy_instance(None);
+    }
 
     Ok(())
 }
