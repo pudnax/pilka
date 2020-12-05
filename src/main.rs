@@ -663,19 +663,19 @@ fn main() -> Result<()> {
             // }
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                WindowEvent::KeyboardInput {
-                    input:
-                        KeyboardInput {
-                            virtual_keycode: Some(keycode),
-                            state: ElementState::Pressed,
-                            ..
-                        },
-                    ..
-                } => {
-                    if VirtualKeyCode::Escape == keycode {
-                        *control_flow = ControlFlow::Exit;
-                    }
-                }
+                // WindowEvent::KeyboardInput {
+                //     input:
+                //         KeyboardInput {
+                //             virtual_keycode: Some(keycode),
+                //             state: ElementState::Pressed,
+                //             ..
+                //         },
+                //     ..
+                // } => {
+                //     if VirtualKeyCode::Escape == keycode {
+                //         *control_flow = ControlFlow::Exit;
+                //     }
+                // }
                 _ => {}
             },
             Event::MainEventsCleared => {
@@ -790,25 +790,29 @@ fn main() -> Result<()> {
                 }
                 // End with command queue
 
-                let wait_semaphors = [rendering_complete_semaphore];
+                let wait_semaphores = [rendering_complete_semaphore];
                 let swapchains = [swapchain];
                 let image_indices = [present_index];
                 let present_info = vk::PresentInfoKHR::builder()
-                    .wait_semaphores(&wait_semaphors)
+                    .wait_semaphores(&wait_semaphores)
                     .swapchains(&swapchains)
                     .image_indices(&image_indices);
-
                 unsafe {
                     swapchain_loader
                         .queue_present(present_queue, &present_info)
                         .expect("Failed to queue present of images.")
                 };
             }
-            // Event::LoopDestroyed => unsafe { base.device.device_wait_idle() }.unwrap(),
+            Event::LoopDestroyed => {
+                unsafe { device.device_wait_idle() }.unwrap();
+            }
             _ => {}
         }
     });
 
+    println!("End window event loop");
+
+    unsafe { device.device_wait_idle() }.unwrap();
     unsafe {
         device.device_wait_idle().unwrap();
         device.destroy_semaphore(present_complete_semaphore, None);
@@ -821,12 +825,15 @@ fn main() -> Result<()> {
         swapchain_loader.destroy_swapchain(swapchain, None);
         device.destroy_device(None);
         surface_loader.destroy_surface(surface, None);
-        _dbg_loader
-            .unwrap()
-            .destroy_debug_utils_messenger(_dbg_callbk.unwrap(), None);
+        if let Some(_dbg_loader) = _dbg_loader {
+            if let Some(_dbg_callbk) = _dbg_callbk {
+                _dbg_loader.destroy_debug_utils_messenger(_dbg_callbk, None);
+            }
+        }
         instance.destroy_instance(None);
     }
 
+    println!("End destroying");
     Ok(())
 }
 
