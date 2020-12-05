@@ -640,22 +640,28 @@ fn main() -> Result<()> {
                 *control_flow = ControlFlow::Exit;
             }
             Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        input:
+                            KeyboardInput {
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => *control_flow = ControlFlow::Exit,
+            Event::WindowEvent {
                 event: WindowEvent::KeyboardInput { input, .. },
                 ..
             } => {
                 if let KeyboardInput {
                     state: ElementState::Pressed,
-                    virtual_keycode: Some(keycode),
+                    virtual_keycode: Some(_keycode),
                     ..
                 } = input
-                {
-                    match keycode {
-                        VirtualKeyCode::Escape => {
-                            *control_flow = ControlFlow::Exit;
-                        }
-                        _ => {}
-                    }
-                }
+                {}
             }
             _ => {}
         }
