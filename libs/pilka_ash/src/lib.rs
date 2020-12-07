@@ -24,12 +24,14 @@ pub mod ash {
     use std::{
         borrow::Cow,
         ffi::{CStr, CString},
+        sync::Arc,
     };
 
     /// The entry point for vulkan application.
     pub struct VkInstance {
         pub entry: ash::Entry,
         pub instance: ash::Instance,
+        validation_layers: Vec<*const i8>,
         _dbg_loader: Option<ash::extensions::ext::DebugUtils>,
         _dbg_callbk: Option<vk::DebugUtilsMessengerEXT>,
     }
@@ -124,6 +126,7 @@ pub mod ash {
             Self {
                 entry,
                 instance,
+                validation_layers,
                 _dbg_loader,
                 _dbg_callbk,
             }
@@ -161,6 +164,89 @@ pub mod ash {
     impl Drop for VkSurface {
         fn drop(&mut self) {
             unsafe { self.surface_loader.destroy_surface(self.surface, None) };
+        }
+    }
+
+    // TODO: Consider about Arc
+    pub struct VkDevice {
+        device: Arc<RawDevice>,
+        physical_device: vk::PhysicalDevice,
+    }
+
+    struct RawDevice {
+        device: Device,
+    }
+
+    pub struct VkDeviceProperties {
+        memory: vk::PhysicalDeviceMemoryProperties,
+        features: vk::PhysicalDeviceFeatures,
+        properties: vk::PhysicalDeviceProperties,
+    }
+
+    impl VkDevice {
+        pub fn new(
+            instance: &VkInstance,
+            queue_infos: &[vk::DeviceQueueCreateInfo],
+        ) -> VkResult<Self> {
+            // Acuire all availble device for this machine.
+            let phys_devices = unsafe { instance.instance.enumerate_physical_devices() }?;
+
+            // Choose physical device assuming that we want to choose discrete GPU.
+            let (phys_device, _device_properties, device_features) = {
+                let mut chosen = Err(vk::Result::ERROR_INITIALIZATION_FAILED);
+                for p in phys_devices {
+                    let properties = unsafe { instance.instance.get_physical_device_properties(p) };
+                    let features = unsafe { instance.instance.get_physical_device_features(p) };
+                    if properties.device_type == vk::PhysicalDeviceType::DISCRETE_GPU {
+                        chosen = Ok((p, properties, features));
+                    }
+                }
+                chosen
+            }?;
+            let device_extension_name_pointers: Vec<*const i8> = vec![Swapchain::name().as_ptr()];
+
+            let device_info = vk::DeviceCreateInfo::builder()
+                .enabled_layer_names(&instance.validation_layers)
+                .enabled_extension_names(&device_extension_name_pointers)
+                .enabled_features(&device_features)
+                .queue_create_infos(&queue_infos);
+            let device = unsafe {
+                instance
+                    .instance
+                    .create_device(phys_device, &device_info, None)
+            }?;
+            let device = Arc::new(RawDevice { device });
+            Ok(Self {
+                device,
+                physical_device: phys_device,
+            })
+        }
+
+        pub fn get_device_properties(&self, instance: &VkInstance) -> VkDeviceProperties {
+            let (properties, features, memory) = unsafe {
+                let properties = instance
+                    .instance
+                    .get_physical_device_properties(self.physical_device);
+                let features = instance
+                    .instance
+                    .get_physical_device_features(self.physical_device);
+                let memory = instance
+                    .instance
+                    .get_physical_device_memory_properties(self.physical_device);
+                (properties, features, memory)
+            };
+
+            VkDeviceProperties {
+                memory,
+                properties,
+                features,
+            }
+        }
+    }
+
+    impl Drop for RawDevice {
+        fn drop(&mut self) {
+            unsafe { self.device.destroy_device(None) };
         }
     }
 
