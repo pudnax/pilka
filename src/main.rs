@@ -5,7 +5,7 @@ use ash::{
         khr::{Surface, Swapchain},
     },
     prelude::VkResult,
-    version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
+    version::{DeviceV1_0, InstanceV1_0},
     vk,
 };
 use eyre::*;
@@ -26,7 +26,6 @@ use pilka_incremental as pilka_engine;
 use pilka_engine::*;
 
 use std::{
-    borrow::Cow,
     ffi::{CStr, CString},
     lazy::SyncLazy,
 };
@@ -77,6 +76,8 @@ fn main() -> Result<()> {
     let mut event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::Window::new(&event_loop)?;
     window.set_title(&app_name);
+
+    // TODO: Move surface extensions into `VkInstance`
     let surface_extensions = ash_window::enumerate_required_extensions(&window)?;
 
     let extensions = surface_extensions
@@ -90,10 +91,7 @@ fn main() -> Result<()> {
         extensions.as_slice(),
     );
 
-    // Make surface and surface loader.
-    let surface =
-        unsafe { ash_window::create_surface(&instance.entry, &instance.instance, &window, None) }?;
-    let surface_loader = Surface::new(&instance.entry, &instance.instance);
+    let surface = instance.create_surface(&window)?;
 
     // Acuire all availble device for this machine.
     let phys_devices = unsafe { instance.instance.enumerate_physical_devices() }?;
@@ -127,10 +125,10 @@ fn main() -> Result<()> {
     for (index, qfam) in queuefamilyproperties.iter().enumerate() {
         if qfam.queue_count > 0 && qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS) && {
             unsafe {
-                surface_loader.get_physical_device_surface_support(
+                surface.surface_loader.get_physical_device_surface_support(
                     physical_device,
                     index as u32,
-                    surface,
+                    surface.surface,
                 )
             }?
         } {
@@ -171,16 +169,23 @@ fn main() -> Result<()> {
     }?;
 
     let surface_capabilities = unsafe {
-        surface_loader.get_physical_device_surface_capabilities(physical_device, surface)
+        surface
+            .surface_loader
+            .get_physical_device_surface_capabilities(physical_device, surface.surface)
     }?;
 
     let present_modes = unsafe {
-        surface_loader.get_physical_device_surface_present_modes(physical_device, surface)
+        surface
+            .surface_loader
+            .get_physical_device_surface_present_modes(physical_device, surface.surface)
     }?;
 
     // TODO: Choose reasonable format or seive out UNDEFINED.
-    let formats =
-        unsafe { surface_loader.get_physical_device_surface_formats(physical_device, surface) }?[0];
+    let formats = unsafe {
+        surface
+            .surface_loader
+            .get_physical_device_surface_formats(physical_device, surface.surface)
+    }?[0];
     let surface_format = formats.format;
 
     // This swapchain of 'images' used for sending picture into the screen,
@@ -191,7 +196,7 @@ fn main() -> Result<()> {
     let swapchain_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC;
     let extent = surface_capabilities.current_extent;
     let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
-        .surface(surface)
+        .surface(surface.surface)
         .image_format(surface_format)
         .image_usage(swapchain_usage)
         .image_extent(extent)
@@ -753,7 +758,6 @@ fn main() -> Result<()> {
         device.destroy_command_pool(pool, None);
         swapchain_loader.destroy_swapchain(swapchain, None);
         device.destroy_device(None);
-        surface_loader.destroy_surface(surface, None);
     }
 
     println!("End destroying");

@@ -19,6 +19,8 @@ pub mod ash {
         vk,
     };
 
+    use raw_window_handle::HasRawWindowHandle;
+
     use std::{
         borrow::Cow,
         ffi::{CStr, CString},
@@ -126,6 +128,18 @@ pub mod ash {
                 _dbg_callbk,
             }
         }
+
+        /// Make surface and surface loader.
+        pub fn create_surface<W: HasRawWindowHandle>(&self, window: &W) -> VkResult<VkSurface> {
+            let surface =
+                unsafe { ash_window::create_surface(&self.entry, &self.instance, window, None) }?;
+            let surface_loader = Surface::new(&self.entry, &self.instance);
+
+            Ok(VkSurface {
+                surface,
+                surface_loader,
+            })
+        }
     }
 
     impl Drop for VkInstance {
@@ -136,6 +150,17 @@ pub mod ash {
                 }
             }
             unsafe { self.instance.destroy_instance(None) };
+        }
+    }
+
+    pub struct VkSurface {
+        pub surface: vk::SurfaceKHR,
+        pub surface_loader: Surface,
+    }
+
+    impl Drop for VkSurface {
+        fn drop(&mut self) {
+            unsafe { self.surface_loader.destroy_surface(self.surface, None) };
         }
     }
 
