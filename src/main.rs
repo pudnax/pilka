@@ -18,10 +18,12 @@ use winit::{
 
 // TODO: Make final decision about dynamic linking and it performance.
 #[cfg(feature = "dynamic")]
-use pilka_dyn::*;
+use pilka_dyn as pilka_engine;
 
 #[cfg(not(feature = "dynamic"))]
-use pilka_incremental::*;
+use pilka_incremental as pilka_engine;
+
+use pilka_engine::*;
 
 use std::{
     borrow::Cow,
