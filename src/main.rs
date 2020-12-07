@@ -122,6 +122,7 @@ fn main() -> Result<()> {
     };
     let mut found_graphics_q_index = None;
     let mut found_transfer_q_index = None;
+    let mut found_compute_q_index = None;
     for (index, qfam) in queuefamilyproperties.iter().enumerate() {
         if qfam.queue_count > 0 && qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS) && {
             unsafe {
@@ -140,6 +141,15 @@ fn main() -> Result<()> {
                 || !qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS))
         {
             found_transfer_q_index = Some(index as u32);
+        }
+        // TODO: Make search for compute queue smarter.
+        if qfam.queue_count > 0 && qfam.queue_flags.contains(vk::QueueFlags::COMPUTE) {
+            let index = Some(index as u32);
+            match (found_compute_q_index, qfam.queue_flags) {
+                (_, vk::QueueFlags::COMPUTE) => found_compute_q_index = index,
+                (None, _) => found_compute_q_index = index,
+                _ => {}
+            }
         }
     }
 
