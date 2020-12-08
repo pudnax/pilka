@@ -262,12 +262,12 @@ pub mod ash {
             instance: &VkInstance,
             queue_infos: &[vk::DeviceQueueCreateInfo],
             queue_families: QueueFamilies,
-        ) -> VkResult<(Self, VkQueues)> {
+        ) -> VkResult<(Self, VkDeviceProperties, VkQueues)> {
             // Acuire all availble device for this machine.
             let phys_devices = unsafe { instance.instance.enumerate_physical_devices() }?;
 
             // Choose physical device assuming that we want to choose discrete GPU.
-            let (phys_device, _device_properties, device_features) = {
+            let (phys_device, device_properties, device_features) = {
                 let mut chosen = Err(vk::Result::ERROR_INITIALIZATION_FAILED);
                 for p in phys_devices {
                     let properties = unsafe { instance.instance.get_physical_device_properties(p) };
@@ -279,6 +279,11 @@ pub mod ash {
                 chosen
             }?;
             let device_extension_name_pointers: Vec<*const i8> = vec![Swapchain::name().as_ptr()];
+            let memory = unsafe {
+                instance
+                    .instance
+                    .get_physical_device_memory_properties(phys_device)
+            };
 
             let device_info = vk::DeviceCreateInfo::builder()
                 .enabled_layer_names(&instance.validation_layers)
@@ -304,6 +309,11 @@ pub mod ash {
                 Self {
                     device,
                     physical_device: phys_device,
+                },
+                VkDeviceProperties {
+                    memory,
+                    properties: device_properties,
+                    features: device_features,
                 },
                 VkQueues {
                     graphics_queue,
@@ -516,6 +526,74 @@ pub mod ash {
                 transfer_q_index: found_transfer_q_index,
                 compute_q_index: found_compute_q_index,
             })
+        }
+    }
+
+    pub struct CommandBuffer {
+        command_buffer: vk::CommandBuffer,
+        fence: vk::Fence,
+    }
+
+    pub struct CommandBufferPool {
+        pub pool: vk::CommandPool,
+        pub command_buffers: Vec<CommandBuffer>,
+        device: Arc<Device>,
+    }
+
+    impl CommandBufferPool {
+        pub fn new(
+            device: Arc<Device>,
+            queue_family_index: u32,
+            num_command_buffers: u32,
+        ) -> CommandBufferPool {
+            unsafe {
+                let pool_create_info = vk::CommandPoolCreateInfo::builder()
+                    .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+                    .queue_family_index(queue_family_index);
+
+                let pool = device.create_command_pool(&pool_create_info, None).unwrap();
+
+                let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+                    .command_buffer_count(num_command_buffers)
+                    .command_pool(pool)
+                    .level(vk::CommandBufferLevel::PRIMARY);
+
+                let command_buffers = device
+                    .allocate_command_buffers(&command_buffer_allocate_info)
+                    .unwrap();
+
+                let fence_info =
+                    vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
+
+                let command_buffers: Vec<CommandBuffer> = command_buffers
+                    .iter()
+                    .map(|&command_buffer| {
+                        let fence = device.create_fence(&fence_info, None).unwrap();
+                        CommandBuffer {
+                            command_buffer,
+                            fence,
+                        }
+                    })
+                    .collect();
+
+                CommandBufferPool {
+                    pool,
+                    command_buffers,
+                    device,
+                }
+            }
+        }
+    }
+
+    impl Drop for CommandBufferPool {
+        fn drop(&mut self) {
+            unsafe {
+                for command_buffer in &self.command_buffers {
+                    self.device.destroy_fence(command_buffer.fence, None);
+                }
+
+                self.device.destroy_command_pool(self.pool, None);
+            }
         }
     }
 }
