@@ -542,43 +542,57 @@ pub mod ash {
             device: Arc<Device>,
             queue_family_index: u32,
             num_command_buffers: u32,
-        ) -> CommandBufferPool {
+        ) -> VkResult<Self> {
             unsafe {
                 let pool_create_info = vk::CommandPoolCreateInfo::builder()
                     .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
                     .queue_family_index(queue_family_index);
 
-                let pool = device.create_command_pool(&pool_create_info, None).unwrap();
+                let pool = device.create_command_pool(&pool_create_info, None)?;
 
                 let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
                     .command_buffer_count(num_command_buffers)
                     .command_pool(pool)
                     .level(vk::CommandBufferLevel::PRIMARY);
 
-                let command_buffers = device
-                    .allocate_command_buffers(&command_buffer_allocate_info)
-                    .unwrap();
+                let command_buffers =
+                    device.allocate_command_buffers(&command_buffer_allocate_info)?;
 
                 let fence_info =
                     vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
 
-                let command_buffers: Vec<CommandBuffer> = command_buffers
+                let command_buffers: VkResult<Vec<CommandBuffer>> = command_buffers
                     .iter()
                     .map(|&command_buffer| {
-                        let fence = device.create_fence(&fence_info, None).unwrap();
-                        CommandBuffer {
+                        let fence = device.create_fence(&fence_info, None)?;
+                        Ok(CommandBuffer {
                             command_buffer,
                             fence,
-                        }
+                        })
                     })
                     .collect();
+                let command_buffers = command_buffers?;
 
-                CommandBufferPool {
+                Ok(CommandBufferPool {
                     pool,
                     command_buffers,
                     device,
-                }
+                })
             }
+        }
+
+        unsafe fn create_fence(&self, signaled: bool) -> VkResult<vk::Fence> {
+            let device = &self.device;
+            let mut flags = vk::FenceCreateFlags::empty();
+            if signaled {
+                flags |= vk::FenceCreateFlags::SIGNALED;
+            }
+            Ok(device.create_fence(&vk::FenceCreateInfo::builder().flags(flags).build(), None)?)
+        }
+
+        unsafe fn create_semaphore(&self) -> VkResult<vk::Semaphore> {
+            let device = &self.device;
+            Ok(device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?)
         }
     }
 
