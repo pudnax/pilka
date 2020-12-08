@@ -43,17 +43,17 @@ pub mod ash {
             engine_name: String,
             layers: &[&CStr],
             extensions: &[&CStr],
-        ) -> Self {
+        ) -> VkResult<Self> {
             let entry = ash::Entry::new().unwrap();
 
             // Enumerate available vulkan API version and set 1.0.0 otherwise.
-            let version = match entry.try_enumerate_instance_version().unwrap() {
+            let version = match entry.try_enumerate_instance_version()? {
                 Some(version) => version,
                 None => vk::make_version(2, 0, 0),
             };
 
             // Find approciate validation layers from available.
-            let available_layers = entry.enumerate_instance_layer_properties().unwrap();
+            let available_layers = entry.enumerate_instance_layer_properties()?;
             let validation_layers = layers
                 .iter()
                 .map(|s| unsafe { CStr::from_ptr(s.as_ptr() as *const i8) })
@@ -64,33 +64,33 @@ pub mod ash {
                         .map(|_| lyr.as_ptr())
                         .or_else(|| {
                             println!(
-                            "Unable to find layer: {}, have you installed the Vulkan SDK.unwrap()",
-                            lyr.to_string_lossy()
-                        );
+                                "Unable to find layer: {}, have you installed the Vulkan SDK?",
+                                lyr.to_string_lossy()
+                            );
                             None
                         })
                 })
                 .collect::<Vec<_>>();
 
             // Find approciate extensions from available.
-            let available_exts = entry.enumerate_instance_extension_properties().unwrap();
+            let available_exts = entry.enumerate_instance_extension_properties()?;
             let extensions = extensions
-            .iter()
-            .map(|s| unsafe { CStr::from_ptr(s.as_ptr() as *const i8) })
-            .filter_map(|ext| {
-                available_exts
-                    .iter()
-                    .find(|x| unsafe { CStr::from_ptr(x.extension_name.as_ptr()) } == ext)
-                    .map(|_| ext.as_ptr())
-                    .or_else(|| {
-                        println!(
-                            "Unable to find extension: {}, have you installed the Vulkan SDK.unwrap()",
-                            ext.to_string_lossy()
-                        );
-                        None
-                    })
-            })
-            .collect::<Vec<_>>();
+                .iter()
+                .map(|s| unsafe { CStr::from_ptr(s.as_ptr() as *const i8) })
+                .filter_map(|ext| {
+                    available_exts
+                        .iter()
+                        .find(|x| unsafe { CStr::from_ptr(x.extension_name.as_ptr()) } == ext)
+                        .map(|_| ext.as_ptr())
+                        .or_else(|| {
+                            println!(
+                                "Unable to find extension: {}, have you installed the Vulkan SDK?",
+                                ext.to_string_lossy()
+                            );
+                            None
+                        })
+                })
+                .collect::<Vec<_>>();
 
             let app_info = vk::ApplicationInfo::builder()
                 .application_name(unsafe { CStr::from_ptr(app_name.as_ptr() as *const i8) })
@@ -114,23 +114,20 @@ pub mod ash {
                     .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
                     .pfn_user_callback(Some(vulkan_debug_callback));
                 let dbg_loader = DebugUtils::new(&entry, &instance);
-                let dbg_callbk = unsafe {
-                    dbg_loader
-                        .create_debug_utils_messenger(&dbg_info, None)
-                        .unwrap()
-                };
+                let dbg_callbk =
+                    unsafe { dbg_loader.create_debug_utils_messenger(&dbg_info, None)? };
                 (Some(dbg_loader), Some(dbg_callbk))
             } else {
                 (None, None)
             };
 
-            Self {
+            Ok(Self {
                 entry,
                 instance,
                 validation_layers,
                 _dbg_loader,
                 _dbg_callbk,
-            }
+            })
         }
 
         /// Make surface and surface loader.
@@ -609,7 +606,7 @@ fn extract_entries(sample: Vec<String>, entries: Vec<String>) -> Vec<*const i8> 
                 .map(|_| lyr.as_ptr())
                 .or_else(|| {
                     println!(
-                        "Unable to find layer: {}, have you installed the Vulkan SDK.unwrap()",
+                        "Unable to find layer: {}, have you installed the Vulkan SDK?",
                         lyr.to_string_lossy()
                     );
                     None
