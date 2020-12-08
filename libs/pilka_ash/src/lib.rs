@@ -24,6 +24,7 @@ pub mod ash {
     use std::{
         borrow::Cow,
         ffi::{CStr, CString},
+        ops::Deref,
         sync::Arc,
     };
 
@@ -145,6 +146,20 @@ pub mod ash {
         }
     }
 
+    impl std::ops::Deref for VkInstance {
+        type Target = ash::Instance;
+
+        fn deref(&self) -> &Self::Target {
+            &self.instance
+        }
+    }
+
+    impl std::ops::DerefMut for VkInstance {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.instance
+        }
+    }
+
     impl Drop for VkInstance {
         fn drop(&mut self) {
             if let Some(ref _dbg_loader) = self._dbg_loader {
@@ -225,6 +240,22 @@ pub mod ash {
         features: vk::PhysicalDeviceFeatures,
         properties: vk::PhysicalDeviceProperties,
     }
+
+    impl std::ops::Deref for VkDevice {
+        type Target = ash::Device;
+
+        fn deref(&self) -> &Self::Target {
+            &self.device.device
+        }
+    }
+
+    // Do not do this, you lack!
+    //
+    // impl std::ops::DerefMut for VkDevice {
+    //     fn deref_mut(&mut self) -> &mut Self::Target {
+    //         Arc::get_mut(&mut self.device)
+    //     }
+    // }
 
     impl VkDevice {
         pub fn new(
