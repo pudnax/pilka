@@ -15,7 +15,7 @@ pub mod ash {
             khr::{Surface, Swapchain},
         },
         prelude::VkResult,
-        version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
+        version::{DeviceV1_0, DeviceV1_1, DeviceV1_2, EntryV1_0, InstanceV1_0},
         vk,
     };
 
@@ -258,10 +258,11 @@ pub mod ash {
     // }
 
     impl VkDevice {
-        pub fn new(
+        pub fn init_device_and_queues(
             instance: &VkInstance,
             queue_infos: &[vk::DeviceQueueCreateInfo],
-        ) -> VkResult<Self> {
+            queue_families: QueueFamilies,
+        ) -> VkResult<(Self, VkQueues)> {
             // Acuire all availble device for this machine.
             let phys_devices = unsafe { instance.instance.enumerate_physical_devices() }?;
 
@@ -289,11 +290,27 @@ pub mod ash {
                     .instance
                     .create_device(phys_device, &device_info, None)
             }?;
+
+            let graphics_queue =
+                unsafe { device.get_device_queue(queue_families.graphics_q_index.unwrap(), 0) };
+            let transfer_queue =
+                unsafe { device.get_device_queue(queue_families.transfer_q_index.unwrap(), 0) };
+            let compute_queue =
+                unsafe { device.get_device_queue(queue_families.compute_q_index.unwrap(), 0) };
+
             let device = Arc::new(RawDevice { device });
-            Ok(Self {
-                device,
-                physical_device: phys_device,
-            })
+
+            Ok((
+                Self {
+                    device,
+                    physical_device: phys_device,
+                },
+                VkQueues {
+                    graphics_queue,
+                    transfer_queue,
+                    compute_queue,
+                },
+            ))
         }
 
         pub fn get_device_properties(&self, instance: &VkInstance) -> VkDeviceProperties {
@@ -351,6 +368,155 @@ pub mod ash {
         );
 
         vk::FALSE
+    }
+
+    pub struct VkSwapchain {
+        swapchain: vk::SwapchainKHR,
+        swapchain_loader: Swapchain,
+    }
+
+    impl VkSwapchain {
+        pub fn new(
+            instance: &VkInstance,
+            device: &VkDevice,
+            surface: &VkSurface,
+            queue_families: QueueFamilies,
+        ) -> VkResult<Self> {
+            let surface_capabilities = unsafe {
+                surface
+                    .surface_loader
+                    .get_physical_device_surface_capabilities(
+                        device.physical_device,
+                        surface.surface,
+                    )
+            }?;
+
+            let present_modes = unsafe {
+                surface
+                    .surface_loader
+                    .get_physical_device_surface_present_modes(
+                        device.physical_device,
+                        surface.surface,
+                    )
+            }?;
+
+            // TODO: Choose reasonable format or seive out UNDEFINED.
+            let formats = unsafe {
+                surface
+                    .surface_loader
+                    .get_physical_device_surface_formats(device.physical_device, surface.surface)
+            }?[0];
+            let surface_format = formats.format;
+
+            // This swapchain of 'images' used for sending picture into the screen,
+            // so we're choosing graphics queue family.
+            let graphics_queue_familty_index = [queue_families.graphics_q_index.unwrap()];
+            let present_queue = unsafe {
+                device
+                    .deref()
+                    .get_device_queue(graphics_queue_familty_index[0], 0)
+            };
+            // We've choosed `COLOR_ATTACHMENT` for the same reason like with queue famility.
+            let swapchain_usage =
+                vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC;
+            let extent = surface_capabilities.current_extent;
+            let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+                .surface(surface.surface)
+                .image_format(surface_format)
+                .image_usage(swapchain_usage)
+                .image_extent(extent)
+                .image_color_space(formats.color_space)
+                .min_image_count(
+                    3.max(surface_capabilities.min_image_count)
+                        .min(surface_capabilities.max_image_count),
+                )
+                .image_array_layers(surface_capabilities.max_image_array_layers)
+                .queue_family_indices(&graphics_queue_familty_index)
+                .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+                .pre_transform(surface_capabilities.current_transform)
+                .composite_alpha(surface_capabilities.supported_composite_alpha)
+                .present_mode(present_modes[0])
+                .clipped(true);
+
+            let swapchain_loader = Swapchain::new(&instance.instance, device.deref());
+            let swapchain =
+                unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
+            Ok(Self {
+                swapchain,
+                swapchain_loader,
+            })
+        }
+    }
+
+    impl Drop for VkSwapchain {
+        fn drop(&mut self) {
+            unsafe {
+                self.swapchain_loader
+                    .destroy_swapchain(self.swapchain, None)
+            };
+        }
+    }
+
+    pub struct VkQueues {
+        pub graphics_queue: vk::Queue,
+        pub transfer_queue: vk::Queue,
+        pub compute_queue: vk::Queue,
+    }
+
+    #[derive(Copy, Clone)]
+    pub struct QueueFamilies {
+        pub graphics_q_index: Option<u32>,
+        pub transfer_q_index: Option<u32>,
+        pub compute_q_index: Option<u32>,
+    }
+
+    impl QueueFamilies {
+        pub fn init(
+            instance: &ash::Instance,
+            physical_device: vk::PhysicalDevice,
+            surface: &VkSurface,
+        ) -> Result<QueueFamilies, vk::Result> {
+            // Choose graphics and transfer queue familities.
+            let queuefamilyproperties =
+                unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
+            let mut found_graphics_q_index = None;
+            let mut found_transfer_q_index = None;
+            let mut found_compute_q_index = None;
+            for (index, qfam) in queuefamilyproperties.iter().enumerate() {
+                if qfam.queue_count > 0 && qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS) && {
+                    unsafe {
+                        surface.surface_loader.get_physical_device_surface_support(
+                            physical_device,
+                            index as u32,
+                            surface.surface,
+                        )
+                    }?
+                } {
+                    found_graphics_q_index = Some(index as u32);
+                }
+                if qfam.queue_count > 0
+                    && qfam.queue_flags.contains(vk::QueueFlags::TRANSFER)
+                    && (found_transfer_q_index.is_none()
+                        || !qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS))
+                {
+                    found_transfer_q_index = Some(index as u32);
+                }
+                // TODO: Make search for compute queue smarter.
+                if qfam.queue_count > 0 && qfam.queue_flags.contains(vk::QueueFlags::COMPUTE) {
+                    let index = Some(index as u32);
+                    match (found_compute_q_index, qfam.queue_flags) {
+                        (_, vk::QueueFlags::COMPUTE) => found_compute_q_index = index,
+                        (None, _) => found_compute_q_index = index,
+                        _ => {}
+                    }
+                }
+            }
+            Ok(QueueFamilies {
+                graphics_q_index: found_graphics_q_index,
+                transfer_q_index: found_transfer_q_index,
+                compute_q_index: found_compute_q_index,
+            })
+        }
     }
 }
 
