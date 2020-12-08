@@ -397,6 +397,8 @@ pub mod ash {
     pub struct VkSwapchain {
         swapchain: vk::SwapchainKHR,
         swapchain_loader: Swapchain,
+        framebuffers: Vec<vk::Framebuffer>,
+        device: Arc<RawDevice>,
     }
 
     impl VkSwapchain {
@@ -404,6 +406,7 @@ pub mod ash {
             instance: &VkInstance,
             device: &VkDevice,
             surface: &VkSurface,
+            render_pass: &VkRenderPass,
             queue_families: QueueFamilies,
         ) -> VkResult<Self> {
             let surface_capabilities = unsafe {
@@ -463,11 +466,60 @@ pub mod ash {
                 .clipped(true);
 
             let swapchain_loader = Swapchain::new(&instance.instance, device.deref());
+
             let swapchain =
                 unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
+
+            let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
+            let present_image_views = {
+                present_images
+                    .iter()
+                    .map(|&image| {
+                        let create_view_info = vk::ImageViewCreateInfo::builder()
+                            .view_type(vk::ImageViewType::TYPE_2D)
+                            .format(surface_format)
+                            .components(vk::ComponentMapping {
+                                // Why not BGRA?
+                                r: vk::ComponentSwizzle::R,
+                                g: vk::ComponentSwizzle::G,
+                                b: vk::ComponentSwizzle::B,
+                                a: vk::ComponentSwizzle::A,
+                            })
+                            .subresource_range(vk::ImageSubresourceRange {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                base_mip_level: 0,
+                                level_count: 1,
+                                base_array_layer: 0,
+                                layer_count: 1,
+                            })
+                            .image(image);
+                        unsafe { device.create_image_view(&create_view_info, None) }
+                    })
+                    .collect::<VkResult<Vec<_>>>()
+            }?;
+
+            let framebuffers = {
+                present_image_views
+                    .iter()
+                    .map(|&present_image_view| {
+                        let framebuffer_attachments = [present_image_view];
+                        let framebuffer_create_info = vk::FramebufferCreateInfo::builder()
+                            .render_pass(render_pass.render_pass)
+                            .attachments(&framebuffer_attachments)
+                            .width(extent.width)
+                            .height(extent.height)
+                            .layers(1);
+
+                        unsafe { device.create_framebuffer(&framebuffer_create_info, None) }
+                    })
+                    .collect::<VkResult<Vec<_>>>()
+            }?;
+
             Ok(Self {
                 swapchain,
                 swapchain_loader,
+                framebuffers,
+                device: device.device.clone(),
             })
         }
     }
@@ -475,6 +527,9 @@ pub mod ash {
     impl Drop for VkSwapchain {
         fn drop(&mut self) {
             unsafe {
+                for framebuffer in self.framebuffers.iter() {
+                    self.device.device.destroy_framebuffer(*framebuffer, None);
+                }
                 self.swapchain_loader
                     .destroy_swapchain(self.swapchain, None)
             };
