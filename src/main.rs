@@ -444,7 +444,7 @@ fn main() -> Result<()> {
     )?;
     let vs_data = vs_data.as_binary_u8();
     let mut vs_data = std::io::Cursor::new(vs_data);
-    // TODO: Switch to wgou variant.
+    // TODO(#11): Switch to wgou variant.
     let vs_code = ash::util::read_spv(&mut vs_data)?;
     let vs_info = vk::ShaderModuleCreateInfo::builder().code(&vs_code);
 
