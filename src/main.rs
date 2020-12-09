@@ -190,7 +190,7 @@ fn main() -> Result<()> {
             .get_physical_device_surface_present_modes(physical_device, surface.surface)
     }?;
 
-    // TODO: Choose reasonable format or seive out UNDEFINED.
+    // TODO(#7): Choose reasonable format or seive out UNDEFINED.
     let formats = unsafe {
         surface
             .surface_loader
