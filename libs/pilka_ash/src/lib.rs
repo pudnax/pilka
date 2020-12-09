@@ -427,7 +427,7 @@ pub mod ash {
                     )
             }?;
 
-            // TODO: Choose reasonable format or seive out UNDEFINED.
+            // TODO(#6): Choose reasonable format or seive out UNDEFINED.
             let formats = unsafe {
                 surface
                     .surface_loader
