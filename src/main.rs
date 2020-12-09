@@ -16,7 +16,7 @@ use winit::{
     platform::desktop::EventLoopExtDesktop,
 };
 
-// TODO: Make final decision about dynamic linking and it performance.
+// TODO(#2): Make final decision about dynamic linking and it performance.
 #[cfg(feature = "dynamic")]
 use pilka_dyn as pilka_engine;
 
@@ -89,7 +89,7 @@ fn main() -> Result<()> {
         eng_name2,
         LAYERS.as_slice(),
         extensions.as_slice(),
-    );
+    )?;
 
     let surface = instance.create_surface(&window)?;
 
@@ -335,6 +335,8 @@ fn main() -> Result<()> {
             .collect::<VkResult<Vec<_>>>()
     }?;
 
+    //////////////////////////////////////////////////////////////////////////////
+
     let index_buffer_data = [0u32, 1, 2];
     let index_buffer_info = vk::BufferCreateInfo::builder()
         .size(std::mem::size_of_val(&index_buffer_data) as u64)
@@ -372,7 +374,7 @@ fn main() -> Result<()> {
     index_slice.copy_from_slice(&index_buffer_data);
     unsafe { device.unmap_memory(index_buffer_memory) };
     unsafe { device.bind_buffer_memory(index_buffer, index_buffer_memory, 0) }?;
-
+    /////////
     let vertex_input_buffer_info = vk::BufferCreateInfo::builder()
         .size(3 * std::mem::size_of::<Vertex>() as u64)
         .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
@@ -430,7 +432,7 @@ fn main() -> Result<()> {
     vert_align.copy_from_slice(&vertices);
     unsafe { device.unmap_memory(vertex_input_buffer_memory) };
     unsafe { device.bind_buffer_memory(vertex_input_buffer, vertex_input_buffer_memory, 0) }?;
-
+    ////////////////////////////////////////////////////////////////////////////////////
     let mut compiler =
         shaderc::Compiler::new().with_context(|| "Failed to create shader compiler")?;
     let vs_data = compiler.compile_into_spirv(
@@ -461,7 +463,7 @@ fn main() -> Result<()> {
     let vertex_shader_module = unsafe { device.create_shader_module(&vs_info, None) }?;
 
     let fragment_shader_module = unsafe { device.create_shader_module(&fs_info, None) }?;
-
+    //////////////////////////////////////////////////////////////////////////////////
     let layout_create_info = vk::PipelineLayoutCreateInfo::default();
 
     let pipeline_layout = unsafe { device.create_pipeline_layout(&layout_create_info, None) }?;
@@ -744,30 +746,36 @@ fn main() -> Result<()> {
     unsafe {
         device.device_wait_idle().unwrap();
         for pipeline in graphics_pipelines {
-            device.destroy_pipeline(pipeline, None);
+            device.destroy_pipeline(pipeline, None); // Ok
         }
-        device.destroy_pipeline_layout(pipeline_layout, None);
-        device.destroy_shader_module(vertex_shader_module, None);
-        device.destroy_shader_module(fragment_shader_module, None);
+        device.destroy_pipeline_layout(pipeline_layout, None); // Ok
+
+        // Shaders
+        device.destroy_shader_module(vertex_shader_module, None); // Ok
+        device.destroy_shader_module(fragment_shader_module, None); // Ok
+
+        // Buffers
         device.free_memory(index_buffer_memory, None);
         device.destroy_buffer(index_buffer, None);
         device.free_memory(vertex_input_buffer_memory, None);
         device.destroy_buffer(vertex_input_buffer, None);
-        for framebuffer in framebuffers {
-            device.destroy_framebuffer(framebuffer, None);
-        }
-        device.destroy_render_pass(renderpass, None);
 
-        device.device_wait_idle().unwrap();
+        // End buffers
+        for framebuffer in framebuffers {
+            device.destroy_framebuffer(framebuffer, None); // Ok
+        }
+
+        device.destroy_render_pass(renderpass, None); // Ok
+
         device.destroy_semaphore(present_complete_semaphore, None);
         device.destroy_semaphore(rendering_complete_semaphore, None);
-        device.destroy_fence(draw_commands_reuse_fence, None);
+        device.destroy_fence(draw_commands_reuse_fence, None); // Ok
         for &image_view in present_image_views.iter() {
             device.destroy_image_view(image_view, None);
         }
-        device.destroy_command_pool(pool, None);
-        swapchain_loader.destroy_swapchain(swapchain, None);
-        device.destroy_device(None);
+        device.destroy_command_pool(pool, None); // Ok
+        swapchain_loader.destroy_swapchain(swapchain, None); // Ok
+        device.destroy_device(None); // Ok
     }
 
     println!("End destroying");
