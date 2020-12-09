@@ -276,6 +276,7 @@ pub mod ash {
             instance: &VkInstance,
             queue_infos: &[vk::DeviceQueueCreateInfo],
             queue_families: QueueFamilies,
+            surface: Option<&VkSurface>,
         ) -> VkResult<(Self, VkDeviceProperties, VkQueues)> {
             // Acuire all availble device for this machine.
             let phys_devices = unsafe { instance.instance.enumerate_physical_devices() }?;
@@ -292,7 +293,10 @@ pub mod ash {
                 }
                 chosen
             }?;
-            let device_extension_name_pointers: Vec<*const i8> = vec![Swapchain::name().as_ptr()];
+            let device_extension_name_pointers = match surface {
+                Some(_) => vec![Swapchain::name().as_ptr()],
+                None => vec![],
+            };
             let memory = unsafe {
                 instance
                     .instance
