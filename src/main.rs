@@ -142,7 +142,7 @@ fn main() -> Result<()> {
         {
             found_transfer_q_index = Some(index as u32);
         }
-        // TODO: Make search for compute queue smarter.
+        // TODO(#5): Make search for compute queue smarter.
         if qfam.queue_count > 0 && qfam.queue_flags.contains(vk::QueueFlags::COMPUTE) {
             let index = Some(index as u32);
             match (found_compute_q_index, qfam.queue_flags) {
