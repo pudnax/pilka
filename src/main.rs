@@ -77,7 +77,7 @@ fn main() -> Result<()> {
     let window = winit::window::Window::new(&event_loop)?;
     window.set_title(&app_name);
 
-    // TODO: Move surface extensions into `VkInstance`
+    // TODO(#3): Move surface extensions into `VkInstance`
     let surface_extensions = ash_window::enumerate_required_extensions(&window)?;
 
     let extensions = surface_extensions
