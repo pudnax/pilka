@@ -232,7 +232,7 @@ fn main() -> Result<()> {
 
     let pool = unsafe { device.create_command_pool(&pool_create_info, None).unwrap() };
 
-    // TODO: Need only one
+    // TODO(#9): Need only one
     let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
         .command_buffer_count(2)
         .command_pool(pool)
