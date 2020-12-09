@@ -1,3 +1,4 @@
+#![feature(once_cell)]
 use std::{
     borrow::Cow,
     ffi::{CStr, CString},
@@ -24,9 +25,30 @@ pub mod ash {
     use std::{
         borrow::Cow,
         ffi::{CStr, CString},
+        lazy::SyncLazy,
         ops::Deref,
         sync::Arc,
     };
+
+    /// Static and lazy initialized array of needed validation layers.
+    /// Appear only on debug builds.
+    static LAYERS: SyncLazy<Vec<&'static CStr>> = SyncLazy::new(|| {
+        let mut layers: Vec<&'static CStr> = vec![];
+        if cfg!(debug_assertions) {
+            layers.push(CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap());
+        }
+        layers
+    });
+
+    /// Static and lazy initialized array of needed extensions.
+    /// Appear only on debug builds.
+    static EXTS: SyncLazy<Vec<&'static CStr>> = SyncLazy::new(|| {
+        let mut exts: Vec<&'static CStr> = vec![];
+        if cfg!(debug_assertions) {
+            exts.push(DebugUtils::name());
+        }
+        exts
+    });
 
     #[repr(C)]
     #[derive(Clone, Debug, Copy)]
@@ -56,10 +78,7 @@ pub mod ash {
 
     impl VkInstance {
         pub fn new(
-            app_name: String,
-            engine_name: String,
-            layers: &[&CStr],
-            extensions: &[&CStr],
+            window_handle: Option<&dyn raw_window_handle::HasRawWindowHandle>,
         ) -> VkResult<Self> {
             let entry = ash::Entry::new().unwrap();
 
@@ -69,11 +88,16 @@ pub mod ash {
                 None => vk::make_version(2, 0, 0),
             };
 
+            let surface_extensions = match window_handle {
+                Some(ref handle) => ash_window::enumerate_required_extensions(*handle)?,
+                None => vec![],
+            };
             // Find approciate validation layers from available.
             let available_layers = entry.enumerate_instance_layer_properties()?;
-            let validation_layers = layers
+            let validation_layers = LAYERS
                 .iter()
                 .map(|s| unsafe { CStr::from_ptr(s.as_ptr() as *const i8) })
+                .chain(surface_extensions)
                 .filter_map(|lyr| {
                     available_layers
                         .iter()
@@ -91,7 +115,7 @@ pub mod ash {
 
             // Find approciate extensions from available.
             let available_exts = entry.enumerate_instance_extension_properties()?;
-            let extensions = extensions
+            let extensions = EXTS
                 .iter()
                 .map(|s| unsafe { CStr::from_ptr(s.as_ptr() as *const i8) })
                 .filter_map(|ext| {
@@ -110,8 +134,8 @@ pub mod ash {
                 .collect::<Vec<_>>();
 
             let app_info = vk::ApplicationInfo::builder()
-                .application_name(unsafe { CStr::from_ptr(app_name.as_ptr() as *const i8) })
-                .engine_name(unsafe { CStr::from_ptr(engine_name.as_ptr() as *const i8) })
+                .application_name(unsafe { CStr::from_ptr("Pilka".as_ptr() as *const i8) })
+                .engine_name(unsafe { CStr::from_ptr("Pilka Engine".as_ptr() as *const i8) })
                 .engine_version(vk::make_version(1, 1, 0))
                 .api_version(version);
 

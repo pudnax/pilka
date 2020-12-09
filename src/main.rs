@@ -1,4 +1,3 @@
-#![feature(once_cell)]
 use ash::{
     extensions::{
         ext::DebugUtils,
@@ -80,16 +79,7 @@ fn main() -> Result<()> {
     // TODO(#3): Move surface extensions into `VkInstance`
     let surface_extensions = ash_window::enumerate_required_extensions(&window)?;
 
-    let extensions = surface_extensions
-        .into_iter()
-        .chain(EXTS.iter().cloned())
-        .collect::<Vec<_>>();
-    let instance = ash::VkInstance::new(
-        app_name,
-        eng_name2,
-        LAYERS.as_slice(),
-        extensions.as_slice(),
-    )?;
+    let instance = ash::VkInstance::new(Some(&window))?;
 
     let surface = instance.create_surface(&window)?;
 
