@@ -978,7 +978,6 @@ pub mod ash {
             Ok(device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?)
         }
 
-        #[allow(clippy::too_many_arguments)]
         pub fn record_submit_commandbuffer<F: FnOnce(&VkDevice, vk::CommandBuffer)>(
             &mut self,
             device: &VkDevice,

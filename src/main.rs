@@ -38,7 +38,7 @@ fn main() -> Result<()> {
     let mut swapchain = instance.create_swapchain(&device, &surface, &queues)?;
     let render_pass = device.create_vk_render_pass(&mut swapchain)?;
 
-    let command_pool = device.create_commmand_buffer(queues.graphics_queue.1, 1)?;
+    let mut command_pool = device.create_commmand_buffer(queues.graphics_queue.1, 1)?;
 
     //////////////////////////////////////////////////////////////////////////////
 
@@ -219,10 +219,8 @@ fn main() -> Result<()> {
                 let wait_mask = &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
                 // Start command queue
                 unsafe {
-                    ash::record_submit_commandbuffer(
-                        &command_pool,
+                    command_pool.record_submit_commandbuffer(
                         &device,
-                        0,
                         queues.graphics_queue.0,
                         wait_mask,
                         &[present_complete_semaphore],
@@ -300,40 +298,16 @@ fn main() -> Result<()> {
 
     unsafe {
         device.device_wait_idle().unwrap();
-        // for pipeline in graphics_pipelines {
-        //     device.destroy_pipeline(pipeline, None); // Ok
-        // }
-        // device.destroy_pipeline_layout(pipeline_layout, None); // Ok
 
-        // // Shaders
-        // device.destroy_shader_module(vertex_shader_module, None); // Ok
-        // device.destroy_shader_module(fragment_shader_module, None); // Ok
-
-        // Buffers
         device.free_memory(index_buffer_memory, None);
         device.destroy_buffer(index_buffer, None);
         device.free_memory(vertex_input_buffer_memory, None);
         device.destroy_buffer(vertex_input_buffer, None);
 
-        // // End buffers
-        // for framebuffer in framebuffers {
-        //     device.destroy_framebuffer(framebuffer, None); // Ok
-        // }
-
-        // device.destroy_render_pass(renderpass, None); // Ok
-
         device.destroy_semaphore(present_complete_semaphore, None);
         device.destroy_semaphore(rendering_complete_semaphore, None);
-        // device.destroy_fence(draw_commands_reuse_fence, None); // Ok
-        // for &image_view in present_image_views.iter() {
-        //     device.destroy_image_view(image_view, None);
-        // }
-        // device.destroy_command_pool(pool, None); // Ok
-        // swapchain_loader.destroy_swapchain(swapchain, None); // Ok
-        // device.destroy_device(None); // Ok
     }
 
-    println!("End destroying");
     Ok(())
 }
 
