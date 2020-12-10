@@ -1,8 +1,5 @@
 #![feature(once_cell)]
-use std::{
-    borrow::Cow,
-    ffi::{CStr, CString},
-};
+use std::ffi::CStr;
 
 pub mod ash_window {
     pub use ash_window::*;
@@ -88,16 +85,11 @@ pub mod ash {
                 None => vk::make_version(2, 0, 0),
             };
 
-            let surface_extensions = match window_handle {
-                Some(ref handle) => ash_window::enumerate_required_extensions(*handle)?,
-                None => vec![],
-            };
             // Find approciate validation layers from available.
             let available_layers = entry.enumerate_instance_layer_properties()?;
             let validation_layers = LAYERS
                 .iter()
                 .map(|s| unsafe { CStr::from_ptr(s.as_ptr() as *const i8) })
-                .chain(surface_extensions)
                 .filter_map(|lyr| {
                     available_layers
                         .iter()
@@ -113,11 +105,16 @@ pub mod ash {
                 })
                 .collect::<Vec<_>>();
 
+            let surface_extensions = match window_handle {
+                Some(ref handle) => ash_window::enumerate_required_extensions(*handle)?,
+                None => vec![],
+            };
             // Find approciate extensions from available.
             let available_exts = entry.enumerate_instance_extension_properties()?;
             let extensions = EXTS
                 .iter()
                 .map(|s| unsafe { CStr::from_ptr(s.as_ptr() as *const i8) })
+                .chain(surface_extensions)
                 .filter_map(|ext| {
                     available_exts
                         .iter()
@@ -182,6 +179,247 @@ pub mod ash {
                 surface_loader,
             })
         }
+
+        pub fn create_device_and_queues(
+            &self,
+            surface: Option<&VkSurface>,
+        ) -> VkResult<(VkDevice, VkDeviceProperties, VkQueues)> {
+            // Acuire all availble device for this machine.
+            let physical_devices = unsafe { self.enumerate_physical_devices() }?;
+
+            // Choose physical device assuming that we want to choose discrete GPU.
+            let (physical_device, device_properties, device_features) = {
+                let mut chosen = Err(vk::Result::ERROR_INITIALIZATION_FAILED);
+                for p in physical_devices {
+                    let properties = unsafe { self.get_physical_device_properties(p) };
+                    let features = unsafe { self.get_physical_device_features(p) };
+                    if properties.device_type == vk::PhysicalDeviceType::DISCRETE_GPU {
+                        chosen = Ok((p, properties, features));
+                    }
+                }
+                chosen
+            }?;
+            let device_extension_name_pointers = match surface {
+                Some(_) => vec![Swapchain::name().as_ptr()],
+                None => vec![],
+            };
+            let memory = unsafe { self.get_physical_device_memory_properties(physical_device) };
+
+            let queue_families = self.create_queue_families(physical_device, surface)?;
+
+            let graphics_queue_index = queue_families.graphics_q_index.unwrap();
+            let transfer_queue_index = queue_families.transfer_q_index.unwrap();
+            let compute_queue_index = queue_families.compute_q_index.unwrap();
+
+            let priorities = [1.0f32];
+            // TODO: Unwrapping is bad.
+            let queue_infos = [
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(queue_families.graphics_q_index.unwrap())
+                    .queue_priorities(&priorities)
+                    .build(),
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(queue_families.transfer_q_index.unwrap())
+                    .queue_priorities(&priorities)
+                    .build(),
+                // vk::DeviceQueueCreateInfo::builder()
+                //     .queue_family_index(queue_families.compute_q_index.unwrap())
+                //     .queue_priorities(&priorities)
+                //     .build(),
+            ];
+
+            let device_info = vk::DeviceCreateInfo::builder()
+                .enabled_layer_names(&self.validation_layers)
+                .enabled_extension_names(&device_extension_name_pointers)
+                .enabled_features(&device_features)
+                .queue_create_infos(&queue_infos);
+
+            let device = unsafe { self.create_device(physical_device, &device_info, None) }?;
+            let graphics_queue = unsafe { device.get_device_queue(graphics_queue_index, 0) };
+            let transfer_queue = unsafe { device.get_device_queue(transfer_queue_index, 0) };
+            let compute_queue = unsafe { device.get_device_queue(compute_queue_index, 0) };
+
+            let device = Arc::new(RawDevice { device });
+
+            Ok((
+                VkDevice {
+                    device,
+                    physical_device,
+                },
+                VkDeviceProperties {
+                    memory,
+                    properties: device_properties,
+                    features: device_features,
+                },
+                VkQueues {
+                    graphics_queue: (graphics_queue, graphics_queue_index),
+                    transfer_queue: (transfer_queue, transfer_queue_index),
+                    compute_queue: (compute_queue, compute_queue_index),
+                },
+            ))
+        }
+
+        fn create_queue_families(
+            &self,
+            physical_device: vk::PhysicalDevice,
+            surface: Option<&VkSurface>,
+        ) -> Result<QueueFamilies, vk::Result> {
+            // Choose graphics and transfer queue families.
+            let queuefamilyproperties =
+                unsafe { self.get_physical_device_queue_family_properties(physical_device) };
+            let mut found_graphics_q_index = None;
+            let mut found_transfer_q_index = None;
+            let mut found_compute_q_index = None;
+            for (index, qfam) in queuefamilyproperties.iter().enumerate() {
+                if qfam.queue_count > 0
+                    && qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                    && if let Some(surface) = surface {
+                        unsafe {
+                            surface.surface_loader.get_physical_device_surface_support(
+                                physical_device,
+                                index as u32,
+                                surface.surface,
+                            )
+                        }?
+                    } else {
+                        true
+                    }
+                {
+                    found_graphics_q_index = Some(index as u32);
+                }
+
+                if qfam.queue_count > 0
+                    && qfam.queue_flags.contains(vk::QueueFlags::TRANSFER)
+                    && (found_transfer_q_index.is_none()
+                        || !qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS))
+                {
+                    found_transfer_q_index = Some(index as u32);
+                }
+
+                // TODO(#8): Make search for compute queue smarter.
+                if qfam.queue_count > 0 && qfam.queue_flags.contains(vk::QueueFlags::COMPUTE) {
+                    let index = Some(index as u32);
+                    match (found_compute_q_index, qfam.queue_flags) {
+                        (_, vk::QueueFlags::COMPUTE) => found_compute_q_index = index,
+                        (None, _) => found_compute_q_index = index,
+                        _ => {}
+                    }
+                }
+            }
+
+            Ok(QueueFamilies {
+                graphics_q_index: found_graphics_q_index,
+                transfer_q_index: found_transfer_q_index,
+                compute_q_index: found_compute_q_index,
+            })
+        }
+
+        pub fn create_swapchain(
+            &self,
+            device: &VkDevice,
+            surface: &VkSurface,
+            queues: &VkQueues,
+        ) -> VkResult<VkSwapchain> {
+            let surface_capabilities = unsafe {
+                surface
+                    .surface_loader
+                    .get_physical_device_surface_capabilities(
+                        device.physical_device,
+                        surface.surface,
+                    )
+            }?;
+
+            let present_modes = unsafe {
+                surface
+                    .surface_loader
+                    .get_physical_device_surface_present_modes(
+                        device.physical_device,
+                        surface.surface,
+                    )
+            }?;
+
+            // TODO(#6): Choose reasonable format or seive out UNDEFINED.
+            let format = unsafe {
+                surface
+                    .surface_loader
+                    .get_physical_device_surface_formats(device.physical_device, surface.surface)
+            }?[0];
+            let surface_format = format.format;
+
+            let graphics_queue_familty_index = [queues.graphics_queue.1];
+            // We've choosed `COLOR_ATTACHMENT` for the same reason like with queue family.
+            let swapchain_usage =
+                vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC;
+            let extent = surface_capabilities.current_extent;
+            let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+                .surface(surface.surface)
+                .image_format(surface_format)
+                .image_usage(swapchain_usage)
+                .image_extent(extent)
+                .image_color_space(format.color_space)
+                .min_image_count(
+                    3.max(surface_capabilities.min_image_count)
+                        .min(surface_capabilities.max_image_count),
+                )
+                .image_array_layers(surface_capabilities.max_image_array_layers)
+                .queue_family_indices(&graphics_queue_familty_index)
+                .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+                .pre_transform(surface_capabilities.current_transform)
+                .composite_alpha(surface_capabilities.supported_composite_alpha)
+                .present_mode(present_modes[0])
+                .clipped(true);
+
+            let swapchain_loader = Swapchain::new(&self.instance, device.deref());
+
+            let swapchain =
+                unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
+
+            let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
+            let present_image_views = {
+                present_images
+                    .iter()
+                    .map(|&image| {
+                        let create_view_info = vk::ImageViewCreateInfo::builder()
+                            .view_type(vk::ImageViewType::TYPE_2D)
+                            .format(surface_format)
+                            .components(vk::ComponentMapping {
+                                // Why not BGRA?
+                                r: vk::ComponentSwizzle::R,
+                                g: vk::ComponentSwizzle::G,
+                                b: vk::ComponentSwizzle::B,
+                                a: vk::ComponentSwizzle::A,
+                            })
+                            .subresource_range(vk::ImageSubresourceRange {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                base_mip_level: 0,
+                                level_count: 1,
+                                base_array_layer: 0,
+                                layer_count: 1,
+                            })
+                            .image(image);
+                        unsafe { device.create_image_view(&create_view_info, None) }
+                    })
+                    .collect::<VkResult<Vec<_>>>()
+            }?;
+
+            Ok(VkSwapchain {
+                swapchain,
+                swapchain_loader,
+                framebuffers: Vec::with_capacity(3),
+                device: device.device.clone(),
+                format: surface_format,
+                images: present_images,
+                image_views: present_image_views,
+                extent,
+            })
+        }
+    }
+
+    pub struct VkImage {
+        image: vk::Image,
+        image_memory: vk::DeviceMemory,
+        image_view: vk::ImageView,
+        extent: vk::Extent2D,
     }
 
     impl std::ops::Deref for VkInstance {
@@ -265,18 +503,26 @@ pub mod ash {
 
     // TODO(#4): Consider about Arc
     pub struct VkDevice {
-        device: Arc<RawDevice>,
+        pub device: Arc<RawDevice>,
         physical_device: vk::PhysicalDevice,
     }
 
-    struct RawDevice {
+    pub struct RawDevice {
         device: Device,
     }
 
+    impl std::ops::Deref for RawDevice {
+        type Target = Device;
+
+        fn deref(&self) -> &Self::Target {
+            &self.device
+        }
+    }
+
     pub struct VkDeviceProperties {
-        memory: vk::PhysicalDeviceMemoryProperties,
-        features: vk::PhysicalDeviceFeatures,
-        properties: vk::PhysicalDeviceProperties,
+        pub memory: vk::PhysicalDeviceMemoryProperties,
+        pub features: vk::PhysicalDeviceFeatures,
+        pub properties: vk::PhysicalDeviceProperties,
     }
 
     impl std::ops::Deref for VkDevice {
@@ -296,75 +542,6 @@ pub mod ash {
     // }
 
     impl VkDevice {
-        pub fn init_device_and_queues(
-            instance: &VkInstance,
-            queue_infos: &[vk::DeviceQueueCreateInfo],
-            queue_families: QueueFamilies,
-            surface: Option<&VkSurface>,
-        ) -> VkResult<(Self, VkDeviceProperties, VkQueues)> {
-            // Acuire all availble device for this machine.
-            let phys_devices = unsafe { instance.instance.enumerate_physical_devices() }?;
-
-            // Choose physical device assuming that we want to choose discrete GPU.
-            let (phys_device, device_properties, device_features) = {
-                let mut chosen = Err(vk::Result::ERROR_INITIALIZATION_FAILED);
-                for p in phys_devices {
-                    let properties = unsafe { instance.instance.get_physical_device_properties(p) };
-                    let features = unsafe { instance.instance.get_physical_device_features(p) };
-                    if properties.device_type == vk::PhysicalDeviceType::DISCRETE_GPU {
-                        chosen = Ok((p, properties, features));
-                    }
-                }
-                chosen
-            }?;
-            let device_extension_name_pointers = match surface {
-                Some(_) => vec![Swapchain::name().as_ptr()],
-                None => vec![],
-            };
-            let memory = unsafe {
-                instance
-                    .instance
-                    .get_physical_device_memory_properties(phys_device)
-            };
-
-            let device_info = vk::DeviceCreateInfo::builder()
-                .enabled_layer_names(&instance.validation_layers)
-                .enabled_extension_names(&device_extension_name_pointers)
-                .enabled_features(&device_features)
-                .queue_create_infos(&queue_infos);
-            let device = unsafe {
-                instance
-                    .instance
-                    .create_device(phys_device, &device_info, None)
-            }?;
-
-            let graphics_queue =
-                unsafe { device.get_device_queue(queue_families.graphics_q_index.unwrap(), 0) };
-            let transfer_queue =
-                unsafe { device.get_device_queue(queue_families.transfer_q_index.unwrap(), 0) };
-            let compute_queue =
-                unsafe { device.get_device_queue(queue_families.compute_q_index.unwrap(), 0) };
-
-            let device = Arc::new(RawDevice { device });
-
-            Ok((
-                Self {
-                    device,
-                    physical_device: phys_device,
-                },
-                VkDeviceProperties {
-                    memory,
-                    properties: device_properties,
-                    features: device_features,
-                },
-                VkQueues {
-                    graphics_queue,
-                    transfer_queue,
-                    compute_queue,
-                },
-            ))
-        }
-
         pub fn get_device_properties(&self, instance: &VkInstance) -> VkDeviceProperties {
             let (properties, features, memory) = unsafe {
                 let properties = instance
@@ -384,6 +561,97 @@ pub mod ash {
                 properties,
                 features,
             }
+        }
+
+        pub fn create_commmand_buffer(
+            &self,
+            queue_family_index: u32,
+            num_command_buffers: u32,
+        ) -> VkResult<CommandBufferPool> {
+            unsafe {
+                let pool_create_info = vk::CommandPoolCreateInfo::builder()
+                    .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+                    .queue_family_index(queue_family_index);
+
+                let pool = self.create_command_pool(&pool_create_info, None)?;
+
+                let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+                    .command_buffer_count(num_command_buffers)
+                    .command_pool(pool)
+                    .level(vk::CommandBufferLevel::PRIMARY);
+
+                let command_buffers =
+                    self.allocate_command_buffers(&command_buffer_allocate_info)?;
+
+                let fence_info =
+                    vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
+
+                let command_buffers: VkResult<Vec<CommandBuffer>> = command_buffers
+                    .iter()
+                    .map(|&command_buffer| {
+                        let fence = self.create_fence(&fence_info, None)?;
+                        Ok(CommandBuffer {
+                            command_buffer,
+                            fence,
+                        })
+                    })
+                    .collect();
+                let command_buffers = command_buffers?;
+
+                Ok(CommandBufferPool {
+                    pool,
+                    command_buffers,
+                    device: self.device.clone(),
+                })
+            }
+        }
+
+        // TODO: Fill framebuffer on the render pass creation.
+        pub fn create_vk_render_pass(&self, swapchain: &mut VkSwapchain) -> VkResult<VkRenderPass> {
+            let renderpass_attachments = [vk::AttachmentDescription::builder()
+                .format(swapchain.format)
+                .samples(vk::SampleCountFlags::TYPE_1)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                .build()];
+            let color_attachment_refs = [vk::AttachmentReference::builder()
+                .attachment(0)
+                .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .build()];
+
+            let dependencies = [vk::SubpassDependency::builder()
+                .src_subpass(vk::SUBPASS_EXTERNAL)
+                .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                .dst_access_mask(
+                    vk::AccessFlags::COLOR_ATTACHMENT_READ
+                        | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                )
+                .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                .build()];
+
+            let subpasses = [vk::SubpassDescription::builder()
+                .color_attachments(&color_attachment_refs)
+                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+                .build()];
+
+            // Depth textute? Never heard about it.
+            let renderpass_create_info = vk::RenderPassCreateInfo::builder()
+                .attachments(&renderpass_attachments)
+                .subpasses(&subpasses)
+                .dependencies(&dependencies);
+
+            let renderpass = unsafe {
+                self.device
+                    .create_render_pass(&renderpass_create_info, None)
+            }?;
+
+            swapchain.fill_framebuffers(&self.device, &renderpass)?;
+
+            Ok(VkRenderPass {
+                render_pass: renderpass,
+                device: self.device.clone(),
+            })
         }
     }
 
@@ -423,132 +691,34 @@ pub mod ash {
     }
 
     pub struct VkSwapchain {
-        swapchain: vk::SwapchainKHR,
-        swapchain_loader: Swapchain,
-        framebuffers: Vec<vk::Framebuffer>,
+        pub swapchain: vk::SwapchainKHR,
+        pub swapchain_loader: Swapchain,
+        pub framebuffers: Vec<vk::Framebuffer>,
         device: Arc<RawDevice>,
+        pub format: vk::Format,
+        images: Vec<vk::Image>,
+        image_views: Vec<vk::ImageView>,
+        pub extent: vk::Extent2D,
     }
 
     impl VkSwapchain {
-        pub fn new(
-            instance: &VkInstance,
-            device: &VkDevice,
-            surface: &VkSurface,
-            render_pass: &VkRenderPass,
-            queue_families: QueueFamilies,
-        ) -> VkResult<Self> {
-            let surface_capabilities = unsafe {
-                surface
-                    .surface_loader
-                    .get_physical_device_surface_capabilities(
-                        device.physical_device,
-                        surface.surface,
-                    )
-            }?;
-
-            let present_modes = unsafe {
-                surface
-                    .surface_loader
-                    .get_physical_device_surface_present_modes(
-                        device.physical_device,
-                        surface.surface,
-                    )
-            }?;
-
-            // TODO(#6): Choose reasonable format or seive out UNDEFINED.
-            let formats = unsafe {
-                surface
-                    .surface_loader
-                    .get_physical_device_surface_formats(device.physical_device, surface.surface)
-            }?[0];
-            let surface_format = formats.format;
-
-            // This swapchain of 'images' used for sending picture into the screen,
-            // so we're choosing graphics queue family.
-            let graphics_queue_familty_index = [queue_families.graphics_q_index.unwrap()];
-            let present_queue = unsafe {
-                device
-                    .deref()
-                    .get_device_queue(graphics_queue_familty_index[0], 0)
-            };
-            // We've choosed `COLOR_ATTACHMENT` for the same reason like with queue famility.
-            let swapchain_usage =
-                vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC;
-            let extent = surface_capabilities.current_extent;
-            let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
-                .surface(surface.surface)
-                .image_format(surface_format)
-                .image_usage(swapchain_usage)
-                .image_extent(extent)
-                .image_color_space(formats.color_space)
-                .min_image_count(
-                    3.max(surface_capabilities.min_image_count)
-                        .min(surface_capabilities.max_image_count),
-                )
-                .image_array_layers(surface_capabilities.max_image_array_layers)
-                .queue_family_indices(&graphics_queue_familty_index)
-                .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-                .pre_transform(surface_capabilities.current_transform)
-                .composite_alpha(surface_capabilities.supported_composite_alpha)
-                .present_mode(present_modes[0])
-                .clipped(true);
-
-            let swapchain_loader = Swapchain::new(&instance.instance, device.deref());
-
-            let swapchain =
-                unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
-
-            let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
-            let present_image_views = {
-                present_images
-                    .iter()
-                    .map(|&image| {
-                        let create_view_info = vk::ImageViewCreateInfo::builder()
-                            .view_type(vk::ImageViewType::TYPE_2D)
-                            .format(surface_format)
-                            .components(vk::ComponentMapping {
-                                // Why not BGRA?
-                                r: vk::ComponentSwizzle::R,
-                                g: vk::ComponentSwizzle::G,
-                                b: vk::ComponentSwizzle::B,
-                                a: vk::ComponentSwizzle::A,
-                            })
-                            .subresource_range(vk::ImageSubresourceRange {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                base_mip_level: 0,
-                                level_count: 1,
-                                base_array_layer: 0,
-                                layer_count: 1,
-                            })
-                            .image(image);
-                        unsafe { device.create_image_view(&create_view_info, None) }
-                    })
-                    .collect::<VkResult<Vec<_>>>()
-            }?;
-
-            let framebuffers = {
-                present_image_views
-                    .iter()
-                    .map(|&present_image_view| {
-                        let framebuffer_attachments = [present_image_view];
-                        let framebuffer_create_info = vk::FramebufferCreateInfo::builder()
-                            .render_pass(render_pass.render_pass)
-                            .attachments(&framebuffer_attachments)
-                            .width(extent.width)
-                            .height(extent.height)
-                            .layers(1);
-
-                        unsafe { device.create_framebuffer(&framebuffer_create_info, None) }
-                    })
-                    .collect::<VkResult<Vec<_>>>()
-            }?;
-
-            Ok(Self {
-                swapchain,
-                swapchain_loader,
-                framebuffers,
-                device: device.device.clone(),
-            })
+        pub fn fill_framebuffers(
+            &mut self,
+            device: &RawDevice,
+            render_pass: &vk::RenderPass,
+        ) -> VkResult<()> {
+            for iv in &self.image_views {
+                let iview = [*iv];
+                let framebuffer_info = vk::FramebufferCreateInfo::builder()
+                    .render_pass(*render_pass)
+                    .attachments(&iview)
+                    .width(self.extent.width)
+                    .height(self.extent.height)
+                    .layers(1);
+                let fb = unsafe { device.create_framebuffer(&framebuffer_info, None) }?;
+                self.framebuffers.push(fb);
+            }
+            Ok(())
         }
     }
 
@@ -558,6 +728,9 @@ pub mod ash {
                 for framebuffer in self.framebuffers.iter() {
                     self.device.device.destroy_framebuffer(*framebuffer, None);
                 }
+                for &image_view in self.image_views.iter() {
+                    self.device.destroy_image_view(image_view, None);
+                }
                 self.swapchain_loader
                     .destroy_swapchain(self.swapchain, None)
             };
@@ -566,7 +739,7 @@ pub mod ash {
 
     pub struct VkRenderPass {
         pub render_pass: vk::RenderPass,
-        device: Arc<Device>,
+        device: Arc<RawDevice>,
     }
 
     impl std::ops::Deref for VkRenderPass {
@@ -583,49 +756,6 @@ pub mod ash {
         }
     }
 
-    impl VkRenderPass {
-        fn new(surface_format: vk::Format, device: Arc<Device>) -> VkResult<Self> {
-            let renderpass_attachments = [vk::AttachmentDescription::builder()
-                .format(surface_format)
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-                .build()];
-            let color_attachment_refs = [vk::AttachmentReference::builder()
-                .attachment(0)
-                .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .build()];
-
-            let dependencies = [vk::SubpassDependency::builder()
-                .src_subpass(vk::SUBPASS_EXTERNAL)
-                .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-                .dst_access_mask(
-                    vk::AccessFlags::COLOR_ATTACHMENT_READ
-                        | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                )
-                .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-                .build()];
-
-            let subpasses = [vk::SubpassDescription::builder()
-                .color_attachments(&color_attachment_refs)
-                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-                .build()];
-
-            // Depth textute? Never heard about it.
-            let renderpass_create_info = vk::RenderPassCreateInfo::builder()
-                .attachments(&renderpass_attachments)
-                .subpasses(&subpasses)
-                .dependencies(&dependencies);
-
-            let renderpass = unsafe { device.create_render_pass(&renderpass_create_info, None) }?;
-            Ok(VkRenderPass {
-                render_pass: renderpass,
-                device,
-            })
-        }
-    }
-
     impl Drop for VkRenderPass {
         fn drop(&mut self) {
             unsafe { self.device.destroy_render_pass(self.render_pass, None) };
@@ -636,21 +766,26 @@ pub mod ash {
         pub pipelines: Vec<vk::Pipeline>,
         pub graphics_pipeline: usize,
         pub pipeline_layout: vk::PipelineLayout,
-        device: Arc<Device>,
+        device: Arc<RawDevice>,
+        pub viewports: [vk::Viewport; 1],
+        pub scissors: [vk::Rect2D; 1],
     }
 
     impl VkPipeline {
-        fn new(
+        pub fn new(
             vertex_shader_module: vk::ShaderModule,
             fragment_shader_module: vk::ShaderModule,
             extent: vk::Extent2D,
             render_pass: &VkRenderPass,
-            device: Arc<Device>,
+            device: Arc<RawDevice>,
         ) -> VkResult<Self> {
             let layout_create_info = vk::PipelineLayoutCreateInfo::default();
 
-            let pipeline_layout =
-                unsafe { device.create_pipeline_layout(&layout_create_info, None) }?;
+            let pipeline_layout = unsafe {
+                device
+                    .device
+                    .create_pipeline_layout(&layout_create_info, None)
+            }?;
 
             let shader_entry_name = CString::new("main").unwrap();
             let shader_stage_create_infos = [
@@ -760,7 +895,7 @@ pub mod ash {
                 .render_pass(render_pass.render_pass);
 
             let graphics_pipelines = unsafe {
-                device.create_graphics_pipelines(
+                device.device.create_graphics_pipelines(
                     vk::PipelineCache::null(),
                     &[graphic_pipeline_info.build()],
                     None,
@@ -773,6 +908,8 @@ pub mod ash {
                 graphics_pipeline: 0,
                 pipeline_layout,
                 device,
+                viewports,
+                scissors,
             })
         }
     }
@@ -781,19 +918,27 @@ pub mod ash {
         fn drop(&mut self) {
             unsafe {
                 for pipeline in &self.pipelines {
-                    self.device.destroy_pipeline(*pipeline, None);
+                    self.device.device.destroy_pipeline(*pipeline, None);
                 }
 
                 self.device
+                    .device
                     .destroy_pipeline_layout(self.pipeline_layout, None);
             }
         }
     }
 
+    // Reasonable?
+    pub enum QueueType {
+        Graphics(vk::Queue),
+        Compute(vk::Queue),
+        Transfer(vk::Queue),
+    }
+
     pub struct VkQueues {
-        pub graphics_queue: vk::Queue,
-        pub transfer_queue: vk::Queue,
-        pub compute_queue: vk::Queue,
+        pub graphics_queue: (vk::Queue, u32),
+        pub transfer_queue: (vk::Queue, u32),
+        pub compute_queue: (vk::Queue, u32),
     }
 
     #[derive(Copy, Clone)]
@@ -803,54 +948,7 @@ pub mod ash {
         pub compute_q_index: Option<u32>,
     }
 
-    impl QueueFamilies {
-        pub fn init(
-            instance: &ash::Instance,
-            physical_device: vk::PhysicalDevice,
-            surface: &VkSurface,
-        ) -> Result<QueueFamilies, vk::Result> {
-            // Choose graphics and transfer queue familities.
-            let queuefamilyproperties =
-                unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
-            let mut found_graphics_q_index = None;
-            let mut found_transfer_q_index = None;
-            let mut found_compute_q_index = None;
-            for (index, qfam) in queuefamilyproperties.iter().enumerate() {
-                if qfam.queue_count > 0 && qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS) && {
-                    unsafe {
-                        surface.surface_loader.get_physical_device_surface_support(
-                            physical_device,
-                            index as u32,
-                            surface.surface,
-                        )
-                    }?
-                } {
-                    found_graphics_q_index = Some(index as u32);
-                }
-                if qfam.queue_count > 0
-                    && qfam.queue_flags.contains(vk::QueueFlags::TRANSFER)
-                    && (found_transfer_q_index.is_none()
-                        || !qfam.queue_flags.contains(vk::QueueFlags::GRAPHICS))
-                {
-                    found_transfer_q_index = Some(index as u32);
-                }
-                // TODO(#8): Make search for compute queue smarter.
-                if qfam.queue_count > 0 && qfam.queue_flags.contains(vk::QueueFlags::COMPUTE) {
-                    let index = Some(index as u32);
-                    match (found_compute_q_index, qfam.queue_flags) {
-                        (_, vk::QueueFlags::COMPUTE) => found_compute_q_index = index,
-                        (None, _) => found_compute_q_index = index,
-                        _ => {}
-                    }
-                }
-            }
-            Ok(QueueFamilies {
-                graphics_q_index: found_graphics_q_index,
-                transfer_q_index: found_transfer_q_index,
-                compute_q_index: found_compute_q_index,
-            })
-        }
-    }
+    impl QueueFamilies {}
 
     pub struct CommandBuffer {
         command_buffer: vk::CommandBuffer,
@@ -860,12 +958,12 @@ pub mod ash {
     pub struct CommandBufferPool {
         pub pool: vk::CommandPool,
         pub command_buffers: Vec<CommandBuffer>,
-        device: Arc<Device>,
+        device: Arc<RawDevice>,
     }
 
     impl CommandBufferPool {
         pub fn new(
-            device: Arc<Device>,
+            device: &VkDevice,
             queue_family_index: u32,
             num_command_buffers: u32,
         ) -> VkResult<Self> {
@@ -874,7 +972,7 @@ pub mod ash {
                     .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
                     .queue_family_index(queue_family_index);
 
-                let pool = device.create_command_pool(&pool_create_info, None)?;
+                let pool = device.device.create_command_pool(&pool_create_info, None)?;
 
                 let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
                     .command_buffer_count(num_command_buffers)
@@ -902,7 +1000,7 @@ pub mod ash {
                 Ok(CommandBufferPool {
                     pool,
                     command_buffers,
-                    device,
+                    device: device.device.clone(),
                 })
             }
         }
@@ -936,7 +1034,7 @@ pub mod ash {
 
     pub struct VkShaderModule {
         pub module: vk::ShaderModule,
-        device: Arc<Device>,
+        device: Arc<RawDevice>,
     }
 
     impl VkShaderModule {
@@ -944,7 +1042,7 @@ pub mod ash {
             path: P,
             shader_type: shaderc::ShaderKind,
             compiler: &mut shaderc::Compiler,
-            device: Arc<Device>,
+            device: &VkDevice,
         ) -> VkResult<Self> {
             let shader_text = std::fs::read_to_string(&path).unwrap();
             let shader_data = compiler
@@ -963,7 +1061,10 @@ pub mod ash {
             let shader_info = vk::ShaderModuleCreateInfo::builder().code(&shader_code);
 
             let module = unsafe { device.create_shader_module(&shader_info, None) }?;
-            Ok(VkShaderModule { module, device })
+            Ok(VkShaderModule {
+                module,
+                device: device.device.clone(),
+            })
         }
     }
 
@@ -971,6 +1072,72 @@ pub mod ash {
         fn drop(&mut self) {
             unsafe { self.device.destroy_shader_module(self.module, None) };
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_submit_commandbuffer<F: FnOnce(&VkDevice, vk::CommandBuffer)>(
+        command_pool: &CommandBufferPool,
+        device: &VkDevice,
+        active_command_buffer: usize,
+        submit_queue: vk::Queue,
+        wait_mask: &[vk::PipelineStageFlags],
+        wait_semaphores: &[vk::Semaphore],
+        signal_semaphores: &[vk::Semaphore],
+        f: F,
+    ) -> usize {
+        let submit_fence = command_pool.command_buffers[active_command_buffer].fence;
+        let command_buffer = command_pool.command_buffers[active_command_buffer].command_buffer;
+
+        unsafe {
+            device
+                .wait_for_fences(&[submit_fence], true, std::u64::MAX)
+                .expect("Wait for fences failed.")
+        };
+        unsafe {
+            device
+                .reset_fences(&[submit_fence])
+                .expect("Reset fences failed.")
+        };
+
+        unsafe {
+            device
+                .reset_command_buffer(
+                    command_buffer,
+                    vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+                )
+                .expect("Reset command buffer failed.")
+        };
+
+        let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+        unsafe {
+            device
+                .begin_command_buffer(command_buffer, &command_buffer_begin_info)
+                .expect("Begin cammandbuffer.")
+        };
+        f(device, command_buffer);
+        unsafe {
+            device
+                .end_command_buffer(command_buffer)
+                .expect("End commandbuffer")
+        };
+
+        let command_buffers = vec![command_buffer];
+
+        let submit_info = vk::SubmitInfo::builder()
+            .wait_semaphores(wait_semaphores)
+            .wait_dst_stage_mask(wait_mask)
+            .command_buffers(&command_buffers)
+            .signal_semaphores(signal_semaphores);
+
+        unsafe {
+            device
+                .queue_submit(submit_queue, &[submit_info.build()], submit_fence)
+                .expect("Queue submit failed.")
+        };
+
+        (active_command_buffer + 1) % command_pool.command_buffers.len()
     }
 }
 

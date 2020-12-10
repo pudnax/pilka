@@ -815,6 +815,7 @@ dependencies = [
  "ash",
  "ash-window",
  "raw-window-handle",
+ "shaderc",
 ]
 
 [[package]]
