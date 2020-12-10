@@ -803,7 +803,7 @@ dependencies = [
  "color-eyre",
  "eyre",
  "pilka_dyn",
- "pilka_incremental",
+ "pilka_lib",
  "shaderc",
  "ultraviolet",
 ]
@@ -831,6 +831,14 @@ version = "0.1.0"
 dependencies = [
  "pilka_ash",
  "pilka_winit",
+]
+
+[[package]]
+name = "pilka_lib"
+version = "0.1.0"
+dependencies = [
+ "pilka_dyn",
+ "pilka_incremental",
 ]
 
 [[package]]

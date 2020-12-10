@@ -1,3 +1,10 @@
+use pilka_lib::*;
+
+#[cfg(debug_assertions)]
+#[allow(unused_imports)]
+#[allow(clippy::single_component_path_imports)]
+use pilka_dyn;
+
 use ash::{version::DeviceV1_0, vk};
 use eyre::*;
 
@@ -6,15 +13,6 @@ use winit::{
     event_loop::ControlFlow,
     platform::desktop::EventLoopExtDesktop,
 };
-
-// TODO(#2): Make final decision about dynamic linking and it performance.
-#[cfg(feature = "dynamic")]
-use pilka_dyn as pilka_engine;
-
-#[cfg(not(feature = "dynamic"))]
-use pilka_incremental as pilka_engine;
-
-use pilka_engine::*;
 
 #[repr(C)]
 #[derive(Clone, Debug, Copy)]

@@ -6,9 +6,6 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-dynamic = ["pilka_dyn"]
-
 [workspace]
 members = ["libs/*"]
 
@@ -17,8 +14,8 @@ bytemuck = "1.4.1"
 color-eyre = "0.5.8"
 eyre = "0.6.3"
 ultraviolet = "0.7.5"
-pilka_dyn = { path = "libs/pilka_dyn", optional = true }
-pilka_incremental = { path = "libs/pilka_incremental" }
+pilka_lib = { path = "libs/pilka_lib" }
+pilka_dyn = { path = "libs/pilka_dyn" }
 shaderc = "0.7.0"
 
 [profile.release]

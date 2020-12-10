@@ -602,6 +602,7 @@ pub mod ash {
                     pool,
                     command_buffers,
                     device: self.device.clone(),
+                    active_command_buffer: 0,
                 })
             }
         }
@@ -959,52 +960,10 @@ pub mod ash {
         pub pool: vk::CommandPool,
         pub command_buffers: Vec<CommandBuffer>,
         device: Arc<RawDevice>,
+        active_command_buffer: usize,
     }
 
     impl CommandBufferPool {
-        pub fn new(
-            device: &VkDevice,
-            queue_family_index: u32,
-            num_command_buffers: u32,
-        ) -> VkResult<Self> {
-            unsafe {
-                let pool_create_info = vk::CommandPoolCreateInfo::builder()
-                    .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                    .queue_family_index(queue_family_index);
-
-                let pool = device.device.create_command_pool(&pool_create_info, None)?;
-
-                let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
-                    .command_buffer_count(num_command_buffers)
-                    .command_pool(pool)
-                    .level(vk::CommandBufferLevel::PRIMARY);
-
-                let command_buffers =
-                    device.allocate_command_buffers(&command_buffer_allocate_info)?;
-
-                let fence_info =
-                    vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
-
-                let command_buffers: VkResult<Vec<CommandBuffer>> = command_buffers
-                    .iter()
-                    .map(|&command_buffer| {
-                        let fence = device.create_fence(&fence_info, None)?;
-                        Ok(CommandBuffer {
-                            command_buffer,
-                            fence,
-                        })
-                    })
-                    .collect();
-                let command_buffers = command_buffers?;
-
-                Ok(CommandBufferPool {
-                    pool,
-                    command_buffers,
-                    device: device.device.clone(),
-                })
-            }
-        }
-
         unsafe fn create_fence(&self, signaled: bool) -> VkResult<vk::Fence> {
             let device = &self.device;
             let mut flags = vk::FenceCreateFlags::empty();
@@ -1017,6 +976,72 @@ pub mod ash {
         unsafe fn create_semaphore(&self) -> VkResult<vk::Semaphore> {
             let device = &self.device;
             Ok(device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?)
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub fn record_submit_commandbuffer<F: FnOnce(&VkDevice, vk::CommandBuffer)>(
+            &mut self,
+            device: &VkDevice,
+            submit_queue: vk::Queue,
+            wait_mask: &[vk::PipelineStageFlags],
+            wait_semaphores: &[vk::Semaphore],
+            signal_semaphores: &[vk::Semaphore],
+            f: F,
+        ) {
+            let submit_fence = self.command_buffers[self.active_command_buffer].fence;
+            let command_buffer = self.command_buffers[self.active_command_buffer].command_buffer;
+
+            unsafe {
+                device
+                    .wait_for_fences(&[submit_fence], true, std::u64::MAX)
+                    .expect("Wait for fences failed.")
+            };
+            unsafe {
+                device
+                    .reset_fences(&[submit_fence])
+                    .expect("Reset fences failed.")
+            };
+
+            unsafe {
+                device
+                    .reset_command_buffer(
+                        command_buffer,
+                        vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+                    )
+                    .expect("Reset command buffer failed.")
+            };
+
+            let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+            unsafe {
+                device
+                    .begin_command_buffer(command_buffer, &command_buffer_begin_info)
+                    .expect("Begin cammandbuffer.")
+            };
+            f(device, command_buffer);
+            unsafe {
+                device
+                    .end_command_buffer(command_buffer)
+                    .expect("End commandbuffer")
+            };
+
+            let command_buffers = vec![command_buffer];
+
+            let submit_info = vk::SubmitInfo::builder()
+                .wait_semaphores(wait_semaphores)
+                .wait_dst_stage_mask(wait_mask)
+                .command_buffers(&command_buffers)
+                .signal_semaphores(signal_semaphores);
+
+            unsafe {
+                device
+                    .queue_submit(submit_queue, &[submit_info.build()], submit_fence)
+                    .expect("Queue submit failed.")
+            };
+
+            self.active_command_buffer =
+                (self.active_command_buffer + 1) % self.command_buffers.len();
         }
     }
 
@@ -1072,72 +1097,6 @@ pub mod ash {
         fn drop(&mut self) {
             unsafe { self.device.destroy_shader_module(self.module, None) };
         }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn record_submit_commandbuffer<F: FnOnce(&VkDevice, vk::CommandBuffer)>(
-        command_pool: &CommandBufferPool,
-        device: &VkDevice,
-        active_command_buffer: usize,
-        submit_queue: vk::Queue,
-        wait_mask: &[vk::PipelineStageFlags],
-        wait_semaphores: &[vk::Semaphore],
-        signal_semaphores: &[vk::Semaphore],
-        f: F,
-    ) -> usize {
-        let submit_fence = command_pool.command_buffers[active_command_buffer].fence;
-        let command_buffer = command_pool.command_buffers[active_command_buffer].command_buffer;
-
-        unsafe {
-            device
-                .wait_for_fences(&[submit_fence], true, std::u64::MAX)
-                .expect("Wait for fences failed.")
-        };
-        unsafe {
-            device
-                .reset_fences(&[submit_fence])
-                .expect("Reset fences failed.")
-        };
-
-        unsafe {
-            device
-                .reset_command_buffer(
-                    command_buffer,
-                    vk::CommandBufferResetFlags::RELEASE_RESOURCES,
-                )
-                .expect("Reset command buffer failed.")
-        };
-
-        let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
-        unsafe {
-            device
-                .begin_command_buffer(command_buffer, &command_buffer_begin_info)
-                .expect("Begin cammandbuffer.")
-        };
-        f(device, command_buffer);
-        unsafe {
-            device
-                .end_command_buffer(command_buffer)
-                .expect("End commandbuffer")
-        };
-
-        let command_buffers = vec![command_buffer];
-
-        let submit_info = vk::SubmitInfo::builder()
-            .wait_semaphores(wait_semaphores)
-            .wait_dst_stage_mask(wait_mask)
-            .command_buffers(&command_buffers)
-            .signal_semaphores(signal_semaphores);
-
-        unsafe {
-            device
-                .queue_submit(submit_queue, &[submit_info.build()], submit_fence)
-                .expect("Queue submit failed.")
-        };
-
-        (active_command_buffer + 1) % command_pool.command_buffers.len()
     }
 }
 
