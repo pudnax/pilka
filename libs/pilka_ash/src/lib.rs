@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #![feature(once_cell)]
 use std::ffi::CStr;
 
@@ -212,21 +213,26 @@ pub mod ash {
             let compute_queue_index = queue_families.compute_q_index.unwrap();
 
             let priorities = [1.0f32];
-            // TODO: Unwrapping is bad.
-            let queue_infos = [
+
+            // TODO: Don't allocate for such a thing
+            let mut queue_infos = vec![
                 vk::DeviceQueueCreateInfo::builder()
-                    .queue_family_index(queue_families.graphics_q_index.unwrap())
+                    .queue_family_index(graphics_queue_index)
                     .queue_priorities(&priorities)
                     .build(),
                 vk::DeviceQueueCreateInfo::builder()
-                    .queue_family_index(queue_families.transfer_q_index.unwrap())
+                    .queue_family_index(transfer_queue_index)
                     .queue_priorities(&priorities)
                     .build(),
-                // vk::DeviceQueueCreateInfo::builder()
-                //     .queue_family_index(queue_families.compute_q_index.unwrap())
-                //     .queue_priorities(&priorities)
-                //     .build(),
             ];
+            if compute_queue_index != graphics_queue_index {
+                queue_infos.push(
+                    vk::DeviceQueueCreateInfo::builder()
+                        .queue_family_index(compute_queue_index)
+                        .queue_priorities(&priorities)
+                        .build(),
+                );
+            }
 
             let device_info = vk::DeviceCreateInfo::builder()
                 .enabled_layer_names(&self.validation_layers)
@@ -568,43 +574,40 @@ pub mod ash {
             queue_family_index: u32,
             num_command_buffers: u32,
         ) -> VkResult<CommandBufferPool> {
-            unsafe {
-                let pool_create_info = vk::CommandPoolCreateInfo::builder()
-                    .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                    .queue_family_index(queue_family_index);
+            let pool_create_info = vk::CommandPoolCreateInfo::builder()
+                .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+                .queue_family_index(queue_family_index);
 
-                let pool = self.create_command_pool(&pool_create_info, None)?;
+            let pool = unsafe { self.create_command_pool(&pool_create_info, None) }?;
 
-                let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
-                    .command_buffer_count(num_command_buffers)
-                    .command_pool(pool)
-                    .level(vk::CommandBufferLevel::PRIMARY);
+            let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+                .command_buffer_count(num_command_buffers)
+                .command_pool(pool)
+                .level(vk::CommandBufferLevel::PRIMARY);
 
-                let command_buffers =
-                    self.allocate_command_buffers(&command_buffer_allocate_info)?;
+            let command_buffers =
+                unsafe { self.allocate_command_buffers(&command_buffer_allocate_info) }?;
 
-                let fence_info =
-                    vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
+            let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
 
-                let command_buffers: VkResult<Vec<CommandBuffer>> = command_buffers
-                    .iter()
-                    .map(|&command_buffer| {
-                        let fence = self.create_fence(&fence_info, None)?;
-                        Ok(CommandBuffer {
-                            command_buffer,
-                            fence,
-                        })
+            let command_buffers: VkResult<Vec<CommandBuffer>> = command_buffers
+                .iter()
+                .map(|&command_buffer| {
+                    let fence = unsafe { self.create_fence(&fence_info, None) }?;
+                    Ok(CommandBuffer {
+                        command_buffer,
+                        fence,
                     })
-                    .collect();
-                let command_buffers = command_buffers?;
-
-                Ok(CommandBufferPool {
-                    pool,
-                    command_buffers,
-                    device: self.device.clone(),
-                    active_command_buffer: 0,
                 })
-            }
+                .collect();
+            let command_buffers = command_buffers?;
+
+            Ok(CommandBufferPool {
+                pool,
+                command_buffers,
+                device: self.device.clone(),
+                active_command_buffer: 0,
+            })
         }
 
         // TODO: Fill framebuffer on the render pass creation.
