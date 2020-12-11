@@ -1060,7 +1060,6 @@ pub mod ash {
                 .unwrap();
             let shader_data = shader_data.as_binary_u8();
             let mut shader_data = std::io::Cursor::new(shader_data);
-            // TODO(#10): Switch to wgou variant.
             let shader_code = ash::util::read_spv(&mut shader_data).unwrap();
             let shader_info = vk::ShaderModuleCreateInfo::builder().code(&shader_code);
 
