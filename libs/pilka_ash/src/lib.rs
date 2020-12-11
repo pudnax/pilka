@@ -500,7 +500,6 @@ pub mod ash {
         }
     }
 
-    // TODO(#4): Consider about Arc
     pub struct VkDevice {
         pub device: Arc<RawDevice>,
         physical_device: vk::PhysicalDevice,
