@@ -1,7 +1,8 @@
 #version 450
 
-layout (location = 0) out vec4 uFragColor;
+layout (location = 0) out vec4 out_color;
 
 void main() {
-    uFragColor = vec4(0.4, 0.2, 0.2, 1.0);
+	vec2 uv = gl_FragCoord.xy;
+    out_color = vec4(uv, 1.0, 1.0);
 }
