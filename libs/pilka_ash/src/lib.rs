@@ -48,13 +48,6 @@ pub mod ash {
         exts
     });
 
-    #[repr(C)]
-    #[derive(Clone, Debug, Copy)]
-    struct Vertex {
-        pos: [f32; 4],
-        color: [f32; 4],
-    }
-
     macro_rules! offset_of {
         ($base:path, $field:ident) => {{
             #[allow(unused_unsafe)]
@@ -808,32 +801,12 @@ pub mod ash {
                 },
             ];
 
-            let vertex_input_binding_descriptions = [vk::VertexInputBindingDescription {
-                binding: 0,
-                stride: std::mem::size_of::<Vertex>() as u32,
-                input_rate: vk::VertexInputRate::VERTEX,
-            }];
-            let vertex_input_attribute_descriptions = [
-                vk::VertexInputAttributeDescription {
-                    location: 0,
-                    binding: 0,
-                    format: vk::Format::R32G32B32A32_SFLOAT,
-                    offset: offset_of!(Vertex, pos) as u32,
-                },
-                vk::VertexInputAttributeDescription {
-                    location: 1,
-                    binding: 0,
-                    format: vk::Format::R32G32B32A32_SFLOAT,
-                    offset: offset_of!(Vertex, color) as u32,
-                },
-            ];
-
             let vertex_input_state_info = vk::PipelineVertexInputStateCreateInfo {
-                vertex_attribute_description_count: vertex_input_attribute_descriptions.len()
-                    as u32,
-                p_vertex_attribute_descriptions: vertex_input_attribute_descriptions.as_ptr(),
-                vertex_binding_description_count: vertex_input_binding_descriptions.len() as u32,
-                p_vertex_binding_descriptions: vertex_input_binding_descriptions.as_ptr(),
+                // vertex_attribute_description_count: vertex_input_attribute_descriptions.len()
+                //     as u32,
+                // p_vertex_attribute_descriptions: vertex_input_attribute_descriptions.as_ptr(),
+                // vertex_binding_description_count: vertex_input_binding_descriptions.len() as u32,
+                // p_vertex_binding_descriptions: vertex_input_binding_descriptions.as_ptr(),
                 ..Default::default()
             };
 
