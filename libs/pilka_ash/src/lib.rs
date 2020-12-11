@@ -933,6 +933,9 @@ pub mod ash {
         fence: vk::Fence,
     }
 
+    // TODO(#13): Call vkResetCommandPool before reusing it in another frame.
+    //
+    // Otherwise the pool will keep on growing until you run out of memory
     pub struct CommandBufferPool {
         pub pool: vk::CommandPool,
         pub command_buffers: Vec<CommandBuffer>,
