@@ -1,21 +1,20 @@
 #![allow(dead_code)]
 #![feature(once_cell)]
-use std::ffi::CStr;
 
 pub mod ash_window {
     pub use ash_window::*;
 }
+
 pub mod ash {
     pub use ash::*;
 
-    pub use crate::ash::{
+    use crate::ash::{
         extensions::{
             ext::DebugUtils,
             khr::{Surface, Swapchain},
         },
         prelude::VkResult,
-        version::{DeviceV1_0, DeviceV1_1, DeviceV1_2, EntryV1_0, InstanceV1_0},
-        vk,
+        version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
     };
 
     use raw_window_handle::HasRawWindowHandle;
@@ -601,10 +600,10 @@ pub mod ash {
             })
         }
 
-        // TODO: Fill framebuffer on the render pass creation.
         pub fn create_vk_render_pass(&self, swapchain: &mut VkSwapchain) -> VkResult<VkRenderPass> {
             let renderpass_attachments = [vk::AttachmentDescription::builder()
                 .format(swapchain.format)
+                .initial_layout(vk::ImageLayout::UNDEFINED)
                 .samples(vk::SampleCountFlags::TYPE_1)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)
@@ -618,11 +617,12 @@ pub mod ash {
             let dependencies = [vk::SubpassDependency::builder()
                 .src_subpass(vk::SUBPASS_EXTERNAL)
                 .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                .dst_subpass(0)
+                .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
                 .dst_access_mask(
                     vk::AccessFlags::COLOR_ATTACHMENT_READ
                         | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
                 )
-                .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
                 .build()];
 
             let subpasses = [vk::SubpassDescription::builder()
@@ -924,8 +924,6 @@ pub mod ash {
         pub compute_q_index: Option<u32>,
     }
 
-    impl QueueFamilies {}
-
     pub struct CommandBuffer {
         command_buffer: vk::CommandBuffer,
         fence: vk::Fence,
@@ -1074,24 +1072,4 @@ pub mod ash {
             unsafe { self.device.destroy_shader_module(self.module, None) };
         }
     }
-}
-
-fn extract_entries(sample: Vec<String>, entries: Vec<String>) -> Vec<*const i8> {
-    entries
-        .iter()
-        .map(|s| unsafe { CStr::from_ptr(s.as_ptr() as *const i8) })
-        .filter_map(|lyr| {
-            sample
-                .iter()
-                .find(|x| unsafe { CStr::from_ptr(x.as_ptr() as *const i8) } == lyr)
-                .map(|_| lyr.as_ptr())
-                .or_else(|| {
-                    println!(
-                        "Unable to find layer: {}, have you installed the Vulkan SDK?",
-                        lyr.to_string_lossy()
-                    );
-                    None
-                })
-        })
-        .collect::<Vec<_>>()
 }

@@ -33,12 +33,12 @@ fn main() -> Result<()> {
 
     let surface = instance.create_surface(&window)?;
 
-    let (device, device_properties, queues) = instance.create_device_and_queues(Some(&surface))?;
+    let (device, _device_properties, queues) = instance.create_device_and_queues(Some(&surface))?;
 
     let mut swapchain = instance.create_swapchain(&device, &surface, &queues)?;
     let render_pass = device.create_vk_render_pass(&mut swapchain)?;
 
-    let mut command_pool = device.create_commmand_buffer(queues.graphics_queue.1, 1)?;
+    let mut command_pool = device.create_commmand_buffer(queues.graphics_queue.1, 3)?;
 
     //////////////////////////////////////////////////////////////////////////////
     let mut compiler =
@@ -177,11 +177,9 @@ fn main() -> Result<()> {
         }
     });
 
-    println!("End window event loop");
+    println!("End from the loop. Bye bye~");
 
     unsafe {
-        device.device_wait_idle().unwrap();
-
         device.destroy_semaphore(present_complete_semaphore, None);
         device.destroy_semaphore(rendering_complete_semaphore, None);
     }
