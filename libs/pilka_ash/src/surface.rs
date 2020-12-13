@@ -1,5 +1,5 @@
 use crate::device::VkDevice;
-use ash::{extensions::khr::Surface, vk};
+use ash::{extensions::khr::Surface, prelude::VkResult, vk};
 
 pub struct VkSurface {
     pub surface: vk::SurfaceKHR,
@@ -7,25 +7,19 @@ pub struct VkSurface {
 }
 
 impl VkSurface {
-    pub fn get_capabilities(
-        &self,
-        device: &VkDevice,
-    ) -> Result<vk::SurfaceCapabilitiesKHR, vk::Result> {
+    pub fn get_capabilities(&self, device: &VkDevice) -> VkResult<vk::SurfaceCapabilitiesKHR> {
         unsafe {
             self.surface_loader
                 .get_physical_device_surface_capabilities(device.physical_device, self.surface)
         }
     }
-    pub fn get_present_modes(
-        &self,
-        device: &VkDevice,
-    ) -> Result<Vec<vk::PresentModeKHR>, vk::Result> {
+    pub fn get_present_modes(&self, device: &VkDevice) -> VkResult<Vec<vk::PresentModeKHR>> {
         unsafe {
             self.surface_loader
                 .get_physical_device_surface_present_modes(device.physical_device, self.surface)
         }
     }
-    pub fn get_formats(&self, device: &VkDevice) -> Result<Vec<vk::SurfaceFormatKHR>, vk::Result> {
+    pub fn get_formats(&self, device: &VkDevice) -> VkResult<Vec<vk::SurfaceFormatKHR>> {
         unsafe {
             self.surface_loader
                 .get_physical_device_surface_formats(device.physical_device, self.surface)
@@ -35,7 +29,7 @@ impl VkSurface {
         &self,
         device: &VkDevice,
         queuefamilyindex: usize,
-    ) -> Result<bool, vk::Result> {
+    ) -> VkResult<bool> {
         unsafe {
             self.surface_loader.get_physical_device_surface_support(
                 device.physical_device,
