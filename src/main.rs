@@ -79,6 +79,12 @@ fn main() -> Result<()> {
             // }
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                WindowEvent::Resized(winit::dpi::PhysicalSize { width, height }) => {
+                    swapchain.info.image_extent = vk::Extent2D { width, height };
+                    // swapchain
+                    //     .recreate_swapchain(new_size.width, new_size.height)
+                    //     .expect("Failed to recreate swapchain.");
+                }
                 WindowEvent::KeyboardInput {
                     input:
                         KeyboardInput {
@@ -137,7 +143,7 @@ fn main() -> Result<()> {
                             device.cmd_bind_pipeline(
                                 draw_command_buffer,
                                 vk::PipelineBindPoint::GRAPHICS,
-                                graphic_pipeline.pipelines[graphic_pipeline.graphics_pipeline],
+                                graphic_pipeline.get(),
                             );
                             device.cmd_set_viewport(
                                 draw_command_buffer,
@@ -163,12 +169,21 @@ fn main() -> Result<()> {
                     .wait_semaphores(&wait_semaphores)
                     .swapchains(&swapchains)
                     .image_indices(&image_indices);
-                unsafe {
+                match unsafe {
                     swapchain
                         .swapchain_loader
                         .queue_present(queues.graphics_queue.0, &present_info)
-                        .expect("Failed to queue present of images.")
-                };
+                } {
+                    Ok(_) => {}
+                    Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                        // swapchain
+                        //     .recreate_swapchain(swapchain.extent.width, swapchain.extent.height)
+                        //     .expect("Failed to recreate swapchain.");
+                    }
+                    Err(_) => {
+                        panic!("Derpy error.");
+                    }
+                }
             }
             Event::LoopDestroyed => {
                 unsafe { device.device_wait_idle() }.unwrap();
