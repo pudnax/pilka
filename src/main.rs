@@ -38,7 +38,7 @@ fn main() -> Result<()> {
     let mut swapchain = instance.create_swapchain(&device, &surface, &queues)?;
     let render_pass = device.create_vk_render_pass(&mut swapchain)?;
 
-    let mut command_pool = device.create_commmand_buffer(queues.graphics_queue.1, 3)?;
+    let mut command_pool = device.create_commmand_buffer(queues.graphics_queue.index, 3)?;
 
     //////////////////////////////////////////////////////////////////////////////
     let mut compiler =
@@ -130,7 +130,7 @@ fn main() -> Result<()> {
                 unsafe {
                     command_pool.record_submit_commandbuffer(
                         &device,
-                        queues.graphics_queue.0,
+                        queues.graphics_queue.queue,
                         wait_mask,
                         &[present_complete_semaphore],
                         &[rendering_complete_semaphore],
@@ -172,7 +172,7 @@ fn main() -> Result<()> {
                 match unsafe {
                     swapchain
                         .swapchain_loader
-                        .queue_present(queues.graphics_queue.0, &present_info)
+                        .queue_present(queues.graphics_queue.queue, &present_info)
                 } {
                     Ok(_) => {}
                     Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {

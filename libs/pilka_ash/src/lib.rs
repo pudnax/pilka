@@ -9,6 +9,7 @@ mod renderpass_and_pipeline;
 mod shader_module;
 mod surface;
 mod swapchain;
+pub mod utils;
 
 pub mod ash_window {
     pub use ash_window::*;
@@ -25,4 +26,5 @@ pub mod ash {
     pub use crate::shader_module::*;
     pub use crate::surface::*;
     pub use crate::swapchain::*;
+    pub use crate::utils;
 }

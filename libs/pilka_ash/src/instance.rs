@@ -241,9 +241,9 @@ impl VkInstance {
                 features: device_features,
             },
             VkQueues {
-                graphics_queue: (graphics_queue, graphics_queue_index),
-                transfer_queue: (transfer_queue, transfer_queue_index),
-                compute_queue: (compute_queue, compute_queue_index),
+                graphics_queue: VkQueue::new(graphics_queue, graphics_queue_index),
+                transfer_queue: VkQueue::new(transfer_queue, transfer_queue_index),
+                compute_queue: VkQueue::new(compute_queue, compute_queue_index),
             },
         ))
     }
@@ -309,26 +309,31 @@ impl VkInstance {
         surface: &VkSurface,
         queues: &VkQueues,
     ) -> VkResult<VkSwapchain> {
-        let surface_capabilities = unsafe {
-            surface
-                .surface_loader
-                .get_physical_device_surface_capabilities(device.physical_device, surface.surface)
-        }?;
+        let surface_capabilities = surface.get_capabilities(device)?;
 
-        let present_modes = unsafe {
-            surface
-                .surface_loader
-                .get_physical_device_surface_present_modes(device.physical_device, surface.surface)
-        }?;
+        let desired_image_count =
+            (surface_capabilities.min_image_count + 1).min(surface_capabilities.max_image_count);
 
-        let format = unsafe {
-            surface
-                .surface_loader
-                .get_physical_device_surface_formats(device.physical_device, surface.surface)
-        }?[0];
+        let present_mode = surface
+            .get_present_modes(device)?
+            .iter()
+            .cloned()
+            .find(|&mode| mode == vk::PresentModeKHR::FIFO)
+            .unwrap_or(vk::PresentModeKHR::MAILBOX);
+
+        let format = surface.get_formats(device)?[0];
         let surface_format = format.format;
 
-        let graphics_queue_familty_index = [queues.graphics_queue.1];
+        let pre_transform = if surface_capabilities
+            .supported_transforms
+            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+        {
+            vk::SurfaceTransformFlagsKHR::IDENTITY
+        } else {
+            surface_capabilities.current_transform
+        };
+
+        let graphics_queue_familty_index = [queues.graphics_queue.index];
         // We've choosed `COLOR_ATTACHMENT` for the same reason like with queue family.
         let swapchain_usage =
             vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC;
@@ -339,16 +344,13 @@ impl VkInstance {
             .image_usage(swapchain_usage)
             .image_extent(extent)
             .image_color_space(format.color_space)
-            .min_image_count(
-                3.max(surface_capabilities.min_image_count)
-                    .min(surface_capabilities.max_image_count),
-            )
+            .min_image_count(desired_image_count)
             .image_array_layers(surface_capabilities.max_image_array_layers)
             .queue_family_indices(&graphics_queue_familty_index)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .pre_transform(surface_capabilities.current_transform)
+            .pre_transform(pre_transform)
             .composite_alpha(surface_capabilities.supported_composite_alpha)
-            .present_mode(present_modes[0])
+            .present_mode(present_mode)
             .clipped(true);
 
         let swapchain_loader = Swapchain::new(&self.instance, device.deref());
@@ -386,7 +388,7 @@ impl VkInstance {
         Ok(VkSwapchain {
             swapchain,
             swapchain_loader,
-            framebuffers: Vec::with_capacity(3),
+            framebuffers: Vec::with_capacity(desired_image_count as usize),
             device: device.device.clone(),
             format: surface_format,
             images: present_images,
@@ -450,17 +452,22 @@ unsafe extern "system" fn vulkan_debug_callback(
 
     vk::FALSE
 }
-// Reasonable?
-pub enum QueueType {
-    Graphics(vk::Queue),
-    Compute(vk::Queue),
-    Transfer(vk::Queue),
+
+pub struct VkQueue {
+    pub queue: vk::Queue,
+    pub index: u32,
+}
+
+impl VkQueue {
+    fn new(queue: vk::Queue, index: u32) -> Self {
+        Self { queue, index }
+    }
 }
 
 pub struct VkQueues {
-    pub graphics_queue: (vk::Queue, u32),
-    pub transfer_queue: (vk::Queue, u32),
-    pub compute_queue: (vk::Queue, u32),
+    pub graphics_queue: VkQueue,
+    pub transfer_queue: VkQueue,
+    pub compute_queue: VkQueue,
 }
 
 #[derive(Copy, Clone)]
