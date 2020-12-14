@@ -51,7 +51,10 @@ macro_rules! offset_of {
 
 /// The entry point for vulkan application.
 pub struct VkInstance {
+    #[cfg(not(target_os = "macos"))]
     pub entry: ash::Entry,
+    #[cfg(target_os = "macos")]
+    pub entry: ash_molten::Entry,
     pub instance: ash::Instance,
     validation_layers: Vec<*const i8>,
     _dbg_loader: Option<ash::extensions::ext::DebugUtils>,
@@ -59,10 +62,13 @@ pub struct VkInstance {
 }
 
 impl VkInstance {
-    pub fn new(
-        window_handle: Option<&dyn raw_window_handle::HasRawWindowHandle>,
+    pub fn new<W: raw_window_handle::HasRawWindowHandle>(
+        window_handle: Option<&W>,
     ) -> VkResult<Self> {
         let entry = ash::Entry::new().unwrap();
+
+        #[cfg(target_os = "macos")]
+        let entry = ash_molten::MoltenEntry::load().unwrap();
 
         // Enumerate available vulkan API version and set 1.0.0 otherwise.
         let version = match entry.try_enumerate_instance_version()? {
