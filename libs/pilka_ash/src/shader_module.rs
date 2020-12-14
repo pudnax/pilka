@@ -1,15 +1,15 @@
-use crate::device::{RawDevice, VkDevice};
+use crate::device::VkDevice;
 use ash::{prelude::VkResult, version::DeviceV1_0, vk};
 
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
 
 pub struct VkShaderModule {
+    pub path: PathBuf,
     pub module: vk::ShaderModule,
-    device: Arc<RawDevice>,
 }
 
 impl VkShaderModule {
-    pub fn new<P: AsRef<std::path::Path>>(
+    pub fn new<P: Into<PathBuf> + AsRef<Path>>(
         path: P,
         shader_type: shaderc::ShaderKind,
         compiler: &mut shaderc::Compiler,
@@ -26,20 +26,13 @@ impl VkShaderModule {
             )
             .unwrap();
         let shader_data = shader_data.as_binary_u8();
-        let mut shader_data = std::io::Cursor::new(shader_data);
-        let shader_code = ash::util::read_spv(&mut shader_data).unwrap();
+        let shader_code = crate::utils::make_spirv(&shader_data);
         let shader_info = vk::ShaderModuleCreateInfo::builder().code(&shader_code);
 
         let module = unsafe { device.create_shader_module(&shader_info, None) }?;
         Ok(VkShaderModule {
+            path: path.into(),
             module,
-            device: device.device.clone(),
         })
-    }
-}
-
-impl Drop for VkShaderModule {
-    fn drop(&mut self) {
-        unsafe { self.device.destroy_shader_module(self.module, None) };
     }
 }

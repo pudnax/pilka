@@ -44,6 +44,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ash-molten"
+version = "0.7.2+1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b31c40fe3810300e6a0083a4b8fad1be08f20eb1a4b5b07bfd477e287570f64e"
+dependencies = [
+ "ash",
+]
+
+[[package]]
 name = "ash-window"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -813,6 +822,7 @@ name = "pilka_ash"
 version = "0.1.0"
 dependencies = [
  "ash",
+ "ash-molten",
  "ash-window",
  "raw-window-handle",
  "shaderc",

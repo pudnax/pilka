@@ -1,4 +1,5 @@
 use ash::{
+    extensions::khr,
     prelude::VkResult,
     version::{DeviceV1_0, InstanceV1_0},
     vk, Device,
@@ -6,9 +7,10 @@ use ash::{
 use std::sync::Arc;
 
 use crate::{
-    command_pool::{CommandBuffer, CommandBufferPool},
-    instance::VkInstance,
+    command_pool::{CommandBuffer, VkCommandPool},
+    instance::{VkInstance, VkQueues},
     renderpass_and_pipeline::VkRenderPass,
+    surface::VkSurface,
     swapchain::VkSwapchain,
 };
 
@@ -17,8 +19,15 @@ pub struct VkDevice {
     pub physical_device: vk::PhysicalDevice,
 }
 
+// #[derive(Clone)]
 pub struct RawDevice {
-    pub device: Device,
+    device: Device,
+}
+
+impl RawDevice {
+    pub fn new(device: Device) -> Self {
+        Self { device }
+    }
 }
 
 impl std::ops::Deref for RawDevice {
@@ -73,11 +82,27 @@ impl VkDevice {
         }
     }
 
+    pub fn create_fence(&self, signaled: bool) -> VkResult<vk::Fence> {
+        let device = &self.device;
+        let mut flags = vk::FenceCreateFlags::empty();
+        if signaled {
+            flags |= vk::FenceCreateFlags::SIGNALED;
+        }
+        Ok(unsafe {
+            device.create_fence(&vk::FenceCreateInfo::builder().flags(flags).build(), None)
+        }?)
+    }
+
+    pub fn create_semaphore(&self) -> VkResult<vk::Semaphore> {
+        let device = &self.device;
+        Ok(unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?)
+    }
+
     pub fn create_commmand_buffer(
         &self,
         queue_family_index: u32,
         num_command_buffers: u32,
-    ) -> VkResult<CommandBufferPool> {
+    ) -> VkResult<VkCommandPool> {
         let pool_create_info = vk::CommandPoolCreateInfo::builder()
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
             .queue_family_index(queue_family_index);
@@ -92,12 +117,10 @@ impl VkDevice {
         let command_buffers =
             unsafe { self.allocate_command_buffers(&command_buffer_allocate_info) }?;
 
-        let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
-
         let command_buffers: VkResult<Vec<CommandBuffer>> = command_buffers
             .iter()
             .map(|&command_buffer| {
-                let fence = unsafe { self.create_fence(&fence_info, None) }?;
+                let fence = self.create_fence(true)?;
                 Ok(CommandBuffer {
                     command_buffer,
                     fence,
@@ -106,7 +129,7 @@ impl VkDevice {
             .collect();
         let command_buffers = command_buffers?;
 
-        Ok(CommandBufferPool {
+        Ok(VkCommandPool {
             pool,
             command_buffers,
             device: self.device.clone(),
@@ -114,9 +137,9 @@ impl VkDevice {
         })
     }
 
-    pub fn create_vk_render_pass(&self, swapchain: &mut VkSwapchain) -> VkResult<VkRenderPass> {
+    pub fn create_vk_render_pass(&self, format: vk::Format) -> VkResult<VkRenderPass> {
         let renderpass_attachments = [vk::AttachmentDescription::builder()
-            .format(swapchain.format)
+            .format(format)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .samples(vk::SampleCountFlags::TYPE_1)
             .load_op(vk::AttachmentLoadOp::CLEAR)
@@ -154,10 +177,113 @@ impl VkDevice {
                 .create_render_pass(&renderpass_create_info, None)
         }?;
 
-        swapchain.fill_framebuffers(&self.device, &renderpass)?;
-
         Ok(VkRenderPass {
             render_pass: renderpass,
+            device: self.device.clone(),
+        })
+    }
+
+    pub fn create_swapchain(
+        &self,
+        swapchain_loader: khr::Swapchain,
+        surface: &VkSurface,
+        queues: &VkQueues,
+    ) -> VkResult<VkSwapchain> {
+        let surface_capabilities = surface.get_capabilities(self)?;
+
+        let desired_image_count =
+            (surface_capabilities.min_image_count + 1).min(surface_capabilities.max_image_count);
+
+        let present_mode = surface
+            .get_present_modes(self)?
+            .iter()
+            .cloned()
+            .find(|&mode| mode == vk::PresentModeKHR::FIFO)
+            .unwrap_or(vk::PresentModeKHR::MAILBOX);
+
+        let surface_format = {
+            let acceptable_formats = {
+                [
+                    vk::Format::R8G8B8_SRGB,
+                    vk::Format::B8G8R8_SRGB,
+                    vk::Format::R8G8B8A8_SRGB,
+                    vk::Format::B8G8R8A8_SRGB,
+                    vk::Format::A8B8G8R8_SRGB_PACK32,
+                ]
+            };
+            surface
+                .get_formats(self)?
+                .into_iter()
+                .find(|sfmt| acceptable_formats.contains(&sfmt.format))
+                .expect("Unable to find suitable surface format.")
+        };
+        let format = surface_format.format;
+
+        let pre_transform = if surface_capabilities
+            .supported_transforms
+            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+        {
+            vk::SurfaceTransformFlagsKHR::IDENTITY
+        } else {
+            surface_capabilities.current_transform
+        };
+
+        let graphics_queue_family_index = [queues.graphics_queue.index];
+        // We've choosed `COLOR_ATTACHMENT` for the same reason like with queue family.
+        let swapchain_usage =
+            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC;
+        let extent = surface_capabilities.current_extent;
+        let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+            .surface(surface.surface)
+            .image_format(format)
+            .image_usage(swapchain_usage)
+            .image_extent(extent)
+            .image_color_space(surface_format.color_space)
+            .min_image_count(desired_image_count)
+            .image_array_layers(surface_capabilities.max_image_array_layers)
+            .queue_family_indices(&graphics_queue_family_index)
+            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .pre_transform(pre_transform)
+            .composite_alpha(surface_capabilities.supported_composite_alpha)
+            .present_mode(present_mode)
+            .clipped(true);
+
+        let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
+
+        let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
+        let present_image_views = {
+            present_images
+                .iter()
+                .map(|&image| {
+                    let create_view_info = vk::ImageViewCreateInfo::builder()
+                        .view_type(vk::ImageViewType::TYPE_2D)
+                        .format(format)
+                        .components(vk::ComponentMapping {
+                            // Why not BGRA?
+                            r: vk::ComponentSwizzle::R,
+                            g: vk::ComponentSwizzle::G,
+                            b: vk::ComponentSwizzle::B,
+                            a: vk::ComponentSwizzle::A,
+                        })
+                        .subresource_range(vk::ImageSubresourceRange {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            base_mip_level: 0,
+                            level_count: 1,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        })
+                        .image(image);
+                    unsafe { self.create_image_view(&create_view_info, None) }
+                })
+                .collect::<VkResult<Vec<_>>>()
+        }?;
+
+        Ok(VkSwapchain {
+            swapchain,
+            swapchain_loader,
+            format: surface_format,
+            images: present_images,
+            image_views: present_image_views,
             device: self.device.clone(),
         })
     }

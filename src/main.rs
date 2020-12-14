@@ -14,73 +14,62 @@ use winit::{
     platform::desktop::EventLoopExtDesktop,
 };
 
-#[repr(C)]
-#[derive(Clone, Debug, Copy)]
-struct Vertex {
-    pos: [f32; 4],
-    color: [f32; 4],
-}
+use std::time::Instant;
+
+const SHADER_PATH: &str = "shaders";
+const SHADER_ENTRY_POINT: &str = "main";
 
 fn main() -> Result<()> {
     // Initialize error hook.
     color_eyre::install()?;
 
+    let time: Instant = Instant::now();
+
     let mut event_loop = winit::event_loop::EventLoop::new();
-    let window = winit::window::Window::new(&event_loop)?;
-    window.set_title("Pilka");
 
-    let instance = ash::VkInstance::new(Some(&window))?;
+    let window = winit::window::WindowBuilder::new()
+        .with_title("Pilka")
+        .with_inner_size(winit::dpi::LogicalSize::new(
+            f64::from(1280),
+            f64::from(720),
+        ))
+        .build(&event_loop)?;
 
-    let surface = instance.create_surface(&window)?;
+    let mut pilka = PilkaRender::new(&window).unwrap();
+    let mut compiler = shaderc::Compiler::new().unwrap();
+    let shaders = compile_shaders(SHADER_PATH, &mut compiler, &pilka.device).unwrap();
 
-    let (device, _device_properties, queues) = instance.create_device_and_queues(Some(&surface))?;
-
-    let mut swapchain = instance.create_swapchain(&device, &surface, &queues)?;
-    let render_pass = device.create_vk_render_pass(&mut swapchain)?;
-
-    let mut command_pool = device.create_commmand_buffer(queues.graphics_queue.1, 3)?;
-
-    //////////////////////////////////////////////////////////////////////////////
-    let mut compiler =
-        shaderc::Compiler::new().with_context(|| "Failed to create shader compiler")?;
-    let vertex_shader_module = ash::VkShaderModule::new(
-        "shaders/shader.vert",
-        shaderc::ShaderKind::Vertex,
-        &mut compiler,
-        &device,
+    for ash::VkShaderModule { path, module: _ } in &shaders {
+        println!("{:?}", path);
+    }
+    for ash::VkShaderModule { path, module } in shaders {
+        pilka.insert_shader_module(path.display().to_string(), module)?;
+    }
+    pilka.build_pipelines(
+        vk::PipelineCache::null(),
+        vec![(
+            VertexShaderEntryPoint {
+                module: "shaders/shader.vert".into(),
+                entry_point: SHADER_ENTRY_POINT.to_string(),
+            },
+            FragmentShaderEntryPoint {
+                module: "shaders/shader.frag".into(),
+                entry_point: SHADER_ENTRY_POINT.to_string(),
+            },
+        )],
     )?;
-    let fragment_shader_module = ash::VkShaderModule::new(
-        "shaders/shader.frag",
-        shaderc::ShaderKind::Fragment,
-        &mut compiler,
-        &device,
-    )?;
-    //////////////////////////////////////////////////////////////////////////////////
-    let graphic_pipeline = ash::VkPipeline::new(
-        vertex_shader_module.module,
-        fragment_shader_module.module,
-        swapchain.extent,
-        &render_pass,
-        device.device.clone(),
-    )?;
-
-    let semaphore_create_info = vk::SemaphoreCreateInfo::default();
-    let present_complete_semaphore =
-        unsafe { device.create_semaphore(&semaphore_create_info, None) }?;
-    let rendering_complete_semaphore =
-        unsafe { device.create_semaphore(&semaphore_create_info, None) }?;
 
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
         match event {
             // What @.@
-            // Event::NewEvents(_) => {
-            //     inputs.wheel_delta = 0.0;
-            // }
+            Event::NewEvents(_) => {
+                pilka.push_constants.time = time.elapsed().as_secs_f32();
+            }
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                 WindowEvent::Resized(winit::dpi::PhysicalSize { width, height }) => {
-                    swapchain.info.image_extent = vk::Extent2D { width, height };
+                    // swapchain.info.image_extent = vk::Extent2D { width, height };
                     // swapchain
                     //     .recreate_swapchain(new_size.width, new_size.height)
                     //     .expect("Failed to recreate swapchain.");
@@ -101,103 +90,16 @@ fn main() -> Result<()> {
                 _ => {}
             },
             Event::MainEventsCleared => {
-                let (present_index, _) = unsafe {
-                    swapchain.swapchain_loader.acquire_next_image(
-                        swapchain.swapchain,
-                        std::u64::MAX,
-                        present_complete_semaphore,
-                        vk::Fence::null(),
-                    )
-                }
-                .unwrap();
-                let clear_values = [vk::ClearValue {
-                    color: vk::ClearColorValue {
-                        float32: [0.0, 0.0, 0.0, 0.0],
-                    },
-                }];
-
-                let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-                    .render_pass(*render_pass)
-                    .framebuffer(swapchain.framebuffers[present_index as usize])
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent: swapchain.extent,
-                    })
-                    .clear_values(&clear_values);
-
-                let wait_mask = &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-                // Start command queue
-                unsafe {
-                    command_pool.record_submit_commandbuffer(
-                        &device,
-                        queues.graphics_queue.0,
-                        wait_mask,
-                        &[present_complete_semaphore],
-                        &[rendering_complete_semaphore],
-                        |device, draw_command_buffer| {
-                            device.cmd_begin_render_pass(
-                                draw_command_buffer,
-                                &render_pass_begin_info,
-                                vk::SubpassContents::INLINE,
-                            );
-                            device.cmd_bind_pipeline(
-                                draw_command_buffer,
-                                vk::PipelineBindPoint::GRAPHICS,
-                                graphic_pipeline.get(),
-                            );
-                            device.cmd_set_viewport(
-                                draw_command_buffer,
-                                0,
-                                &graphic_pipeline.viewports,
-                            );
-                            device.cmd_set_scissor(
-                                draw_command_buffer,
-                                0,
-                                &graphic_pipeline.scissors,
-                            );
-                            // Or draw without the index buffer
-                            device.cmd_draw(draw_command_buffer, 3, 1, 0, 0);
-                            device.cmd_end_render_pass(draw_command_buffer);
-                        },
-                    );
-                }
-
-                let wait_semaphores = [rendering_complete_semaphore];
-                let swapchains = [swapchain.swapchain];
-                let image_indices = [present_index];
-                let present_info = vk::PresentInfoKHR::builder()
-                    .wait_semaphores(&wait_semaphores)
-                    .swapchains(&swapchains)
-                    .image_indices(&image_indices);
-                match unsafe {
-                    swapchain
-                        .swapchain_loader
-                        .queue_present(queues.graphics_queue.0, &present_info)
-                } {
-                    Ok(_) => {}
-                    Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                        // swapchain
-                        //     .recreate_swapchain(swapchain.extent.width, swapchain.extent.height)
-                        //     .expect("Failed to recreate swapchain.");
-                    }
-                    Err(_) => {
-                        panic!("Derpy error.");
-                    }
-                }
+                pilka.render();
             }
             Event::LoopDestroyed => {
-                unsafe { device.device_wait_idle() }.unwrap();
+                unsafe { pilka.device.device_wait_idle() }.unwrap();
             }
             _ => {}
         }
     });
 
     println!("End from the loop. Bye bye~");
-
-    unsafe {
-        device.destroy_semaphore(present_complete_semaphore, None);
-        device.destroy_semaphore(rendering_complete_semaphore, None);
-    }
 
     Ok(())
 }
