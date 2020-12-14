@@ -1,5 +1,4 @@
 # pilka (WIP)
-![Rust](https://github.com/pudnax/pilka/workflows/Rust/badge.svg)
 
 Another one democoding tool 💥
 
