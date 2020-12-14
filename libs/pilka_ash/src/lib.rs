@@ -26,5 +26,8 @@ pub mod ash {
     pub use crate::shader_module::*;
     pub use crate::surface::*;
     pub use crate::swapchain::*;
-    pub use crate::utils;
+    pub use crate::utils as pilka_util;
+
+    pub use raw_window_handle::HasRawWindowHandle;
+    pub use shaderc;
 }

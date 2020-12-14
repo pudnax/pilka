@@ -1,5 +1,5 @@
 use crate::device::{RawDevice, VkDevice};
-use ash::{prelude::VkResult, version::DeviceV1_0, vk};
+use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
 pub struct CommandBuffer {
@@ -10,28 +10,14 @@ pub struct CommandBuffer {
 // TODO(#13): Call vkResetCommandPool before reusing it in another frame.
 //
 // Otherwise the pool will keep on growing until you run out of memory
-pub struct CommandBufferPool {
+pub struct VkCommandPool {
     pub pool: vk::CommandPool,
     pub command_buffers: Vec<CommandBuffer>,
     pub device: Arc<RawDevice>,
     pub active_command_buffer: usize,
 }
 
-impl CommandBufferPool {
-    unsafe fn create_fence(&self, signaled: bool) -> VkResult<vk::Fence> {
-        let device = &self.device;
-        let mut flags = vk::FenceCreateFlags::empty();
-        if signaled {
-            flags |= vk::FenceCreateFlags::SIGNALED;
-        }
-        Ok(device.create_fence(&vk::FenceCreateInfo::builder().flags(flags).build(), None)?)
-    }
-
-    unsafe fn create_semaphore(&self) -> VkResult<vk::Semaphore> {
-        let device = &self.device;
-        Ok(device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?)
-    }
-
+impl VkCommandPool {
     pub fn record_submit_commandbuffer<F: FnOnce(&VkDevice, vk::CommandBuffer)>(
         &mut self,
         device: &VkDevice,
@@ -72,7 +58,9 @@ impl CommandBufferPool {
                 .begin_command_buffer(command_buffer, &command_buffer_begin_info)
                 .expect("Begin cammandbuffer.")
         };
+
         f(device, command_buffer);
+
         unsafe {
             device
                 .end_command_buffer(command_buffer)
@@ -97,7 +85,7 @@ impl CommandBufferPool {
     }
 }
 
-impl Drop for CommandBufferPool {
+impl Drop for VkCommandPool {
     fn drop(&mut self) {
         unsafe {
             for command_buffer in &self.command_buffers {

@@ -1,6 +1,6 @@
 use crate::device::RawDevice;
 use ash::{prelude::VkResult, version::DeviceV1_0, vk};
-use std::{ffi::CString, sync::Arc};
+use std::sync::Arc;
 
 pub struct VkRenderPass {
     pub render_pass: vk::RenderPass,
@@ -41,7 +41,7 @@ pub struct PipelineDescriptor {
 }
 
 impl PipelineDescriptor {
-    fn new(shader_stages: Box<[vk::PipelineShaderStageCreateInfo]>) -> Self {
+    pub fn new(shader_stages: Box<[vk::PipelineShaderStageCreateInfo]>) -> Self {
         let noop_stencil_state = vk::StencilOpState {
             fail_op: vk::StencilOp::KEEP,
             pass_op: vk::StencilOp::KEEP,
@@ -58,11 +58,6 @@ impl PipelineDescriptor {
             max_depth_bounds: 1.0,
             ..Default::default()
         };
-
-        let dynamic_state = Box::new([vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
-        let dynamic_state_info = vk::PipelineDynamicStateCreateInfo::builder()
-            .dynamic_states(dynamic_state.as_ref())
-            .build();
 
         let vertex_input = vk::PipelineVertexInputStateCreateInfo {
             vertex_attribute_description_count: 0,
@@ -143,27 +138,22 @@ impl PipelineDescriptor {
 }
 
 pub struct VkPipeline {
-    pub pipelines: Vec<vk::Pipeline>,
+    pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
-    device: Arc<RawDevice>,
     pub color_blend_attachments: Box<[vk::PipelineColorBlendAttachmentState]>,
     pub dynamic_state: Box<[vk::DynamicState]>,
+    pub device: Arc<RawDevice>,
 }
 
 impl VkPipeline {
     pub fn new(
-        extent: vk::Extent2D,
+        pipeline_cache: vk::PipelineCache,
+        pipeline_layout: vk::PipelineLayout,
+        desc: PipelineDescriptor,
+        // extent: vk::Extent2D,
         render_pass: &VkRenderPass,
         device: Arc<RawDevice>,
-        desc: PipelineDescriptor,
-        pipeline_cache: vk::PipelineCache,
     ) -> VkResult<Self> {
-        let layout_create_info = vk::PipelineLayoutCreateInfo::default();
-        let pipeline_layout = unsafe {
-            device
-                .device
-                .create_pipeline_layout(&layout_create_info, None)
-        }?;
         let viewport = vk::PipelineViewportStateCreateInfo::builder();
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
@@ -179,36 +169,29 @@ impl VkPipeline {
             .layout(pipeline_layout)
             .render_pass(render_pass.render_pass);
 
-        let graphics_pipelines = unsafe {
-            device
-                .device
-                .create_graphics_pipelines(pipeline_cache, &[pipeline_info.build()], None)
+        let pipeline = unsafe {
+            device.create_graphics_pipelines(pipeline_cache, &[pipeline_info.build()], None)
         }
-        .expect("Unable to create graphics pipeline");
+        .expect("Unable to create graphics pipeline")
+        .pop()
+        .unwrap();
 
         Ok(VkPipeline {
-            pipelines: graphics_pipelines,
+            pipeline,
             pipeline_layout,
-            device,
             color_blend_attachments: desc.color_blend_attachments,
             dynamic_state: desc.dynamic_state,
+            device,
         })
-    }
-
-    pub fn get(&self) -> vk::Pipeline {
-        self.pipelines[0]
     }
 }
 
 impl Drop for VkPipeline {
     fn drop(&mut self) {
         unsafe {
-            for pipeline in &self.pipelines {
-                self.device.device.destroy_pipeline(*pipeline, None);
-            }
+            self.device.destroy_pipeline(self.pipeline, None);
 
             self.device
-                .device
                 .destroy_pipeline_layout(self.pipeline_layout, None);
         }
     }

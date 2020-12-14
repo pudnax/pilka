@@ -15,7 +15,6 @@ use std::{borrow::Cow, ffi::CStr, lazy::SyncLazy, ops::Deref, sync::Arc};
 use crate::{
     device::{RawDevice, VkDevice, VkDeviceProperties},
     surface::VkSurface,
-    swapchain::VkSwapchain,
 };
 
 /// Static and lazy initialized array of needed validation layers.
@@ -234,7 +233,7 @@ impl VkInstance {
         let transfer_queue = unsafe { device.get_device_queue(transfer_queue_index, 0) };
         let compute_queue = unsafe { device.get_device_queue(compute_queue_index, 0) };
 
-        let device = Arc::new(RawDevice { device });
+        let device = Arc::new(RawDevice::new(device));
 
         Ok((
             VkDevice {
@@ -309,99 +308,8 @@ impl VkInstance {
         })
     }
 
-    pub fn create_swapchain(
-        &self,
-        device: &VkDevice,
-        surface: &VkSurface,
-        queues: &VkQueues,
-    ) -> VkResult<VkSwapchain> {
-        let surface_capabilities = surface.get_capabilities(device)?;
-
-        let desired_image_count =
-            (surface_capabilities.min_image_count + 1).min(surface_capabilities.max_image_count);
-
-        let present_mode = surface
-            .get_present_modes(device)?
-            .iter()
-            .cloned()
-            .find(|&mode| mode == vk::PresentModeKHR::FIFO)
-            .unwrap_or(vk::PresentModeKHR::MAILBOX);
-
-        let format = surface.get_formats(device)?[0];
-        let surface_format = format.format;
-
-        let pre_transform = if surface_capabilities
-            .supported_transforms
-            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
-        {
-            vk::SurfaceTransformFlagsKHR::IDENTITY
-        } else {
-            surface_capabilities.current_transform
-        };
-
-        let graphics_queue_familty_index = [queues.graphics_queue.index];
-        // We've choosed `COLOR_ATTACHMENT` for the same reason like with queue family.
-        let swapchain_usage =
-            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC;
-        let extent = surface_capabilities.current_extent;
-        let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
-            .surface(surface.surface)
-            .image_format(surface_format)
-            .image_usage(swapchain_usage)
-            .image_extent(extent)
-            .image_color_space(format.color_space)
-            .min_image_count(desired_image_count)
-            .image_array_layers(surface_capabilities.max_image_array_layers)
-            .queue_family_indices(&graphics_queue_familty_index)
-            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .pre_transform(pre_transform)
-            .composite_alpha(surface_capabilities.supported_composite_alpha)
-            .present_mode(present_mode)
-            .clipped(true);
-
-        let swapchain_loader = Swapchain::new(&self.instance, device.deref());
-
-        let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
-
-        let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
-        let present_image_views = {
-            present_images
-                .iter()
-                .map(|&image| {
-                    let create_view_info = vk::ImageViewCreateInfo::builder()
-                        .view_type(vk::ImageViewType::TYPE_2D)
-                        .format(surface_format)
-                        .components(vk::ComponentMapping {
-                            // Why not BGRA?
-                            r: vk::ComponentSwizzle::R,
-                            g: vk::ComponentSwizzle::G,
-                            b: vk::ComponentSwizzle::B,
-                            a: vk::ComponentSwizzle::A,
-                        })
-                        .subresource_range(vk::ImageSubresourceRange {
-                            aspect_mask: vk::ImageAspectFlags::COLOR,
-                            base_mip_level: 0,
-                            level_count: 1,
-                            base_array_layer: 0,
-                            layer_count: 1,
-                        })
-                        .image(image);
-                    unsafe { device.create_image_view(&create_view_info, None) }
-                })
-                .collect::<VkResult<Vec<_>>>()
-        }?;
-
-        Ok(VkSwapchain {
-            swapchain,
-            swapchain_loader,
-            framebuffers: Vec::with_capacity(desired_image_count as usize),
-            device: device.device.clone(),
-            format: surface_format,
-            images: present_images,
-            image_views: present_image_views,
-            extent,
-            info: *swapchain_create_info,
-        })
+    pub fn create_swapchain_loader(&self, device: &VkDevice) -> Swapchain {
+        Swapchain::new(&self.instance, device.device.as_ref().deref())
     }
 }
 
