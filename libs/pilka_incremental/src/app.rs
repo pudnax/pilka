@@ -155,8 +155,11 @@ impl PilkaRender {
         })
     }
 
+    // TODO(#17): Don't use `device_wait_idle` for resizing
+    //
+    // Probably Very bad! Consider waiting for approciate command buffers and fences
+    // (i have no much choice of them) or restrict the amount of resizing events.
     pub fn resize(&mut self) -> VkResult<()> {
-        // TODO: Very bad!
         unsafe { self.device.device_wait_idle() }?;
 
         self.extent = self.surface.resolution(&self.device)?;
