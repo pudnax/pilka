@@ -1,6 +1,10 @@
 use pilka_ash::ash::{prelude::VkResult, version::DeviceV1_0, *};
 use std::{collections::HashMap, ffi::CString, path::Path};
 
+/// The main struct that holds all render primitives
+///
+/// Rust documentation states for FIFO drop order for struct fields.
+/// Or in the other words it's the same order that they're declared.
 pub struct PilkaRender {
     pub scissors: Box<[vk::Rect2D]>,
     pub viewports: Box<[vk::Viewport]>,
