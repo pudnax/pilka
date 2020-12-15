@@ -9,6 +9,7 @@ use ash::{version::DeviceV1_0, vk};
 use eyre::*;
 
 use winit::{
+    dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
     platform::desktop::EventLoopExtDesktop,
@@ -87,6 +88,17 @@ fn main() -> Result<()> {
                         *control_flow = ControlFlow::Exit;
                     }
                 }
+                WindowEvent::CursorMoved {
+                    position: PhysicalPosition { x, y },
+                    ..
+                } => {
+                    let vk::Extent2D { width, height } = pilka.extent;
+
+                    pilka.push_constants.resolution = [
+                        (x / width as f64 * 2.0 - 1.0) as f32,
+                        -(y / height as f64 * 2.0 - 1.0) as f32,
+                    ];
+                }
                 _ => {}
             },
             Event::MainEventsCleared => {
@@ -102,19 +114,4 @@ fn main() -> Result<()> {
     println!("End from the loop. Bye bye~");
 
     Ok(())
-}
-
-pub fn find_memorytype_index(
-    memory_req: &vk::MemoryRequirements,
-    memory_prop: &vk::PhysicalDeviceMemoryProperties,
-    flags: vk::MemoryPropertyFlags,
-) -> Option<u32> {
-    memory_prop.memory_types[..memory_prop.memory_type_count as _]
-        .iter()
-        .enumerate()
-        .find(|(index, memory_type)| {
-            (1 << index) & memory_req.memory_type_bits != 0
-                && (memory_type.property_flags & flags) == flags
-        })
-        .map(|(index, _memory_type)| index as _)
 }

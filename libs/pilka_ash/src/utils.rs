@@ -1,8 +1,25 @@
+use ash::vk;
+
 /// # Safety
 ///
 /// Until you're using it on not ZST or DST it's fine
 pub unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
     std::slice::from_raw_parts((p as *const T) as *const u8, std::mem::size_of::<T>())
+}
+
+pub fn find_memorytype_index(
+    memory_req: &vk::MemoryRequirements,
+    memory_prop: &vk::PhysicalDeviceMemoryProperties,
+    flags: vk::MemoryPropertyFlags,
+) -> Option<u32> {
+    memory_prop.memory_types[..memory_prop.memory_type_count as _]
+        .iter()
+        .enumerate()
+        .find(|(index, memory_type)| {
+            (1 << index) & memory_req.memory_type_bits != 0
+                && (memory_type.property_flags & flags) == flags
+        })
+        .map(|(index, _memory_type)| index as _)
 }
 
 pub fn size_of_slice<T: Sized>(slice: &[T]) -> usize {

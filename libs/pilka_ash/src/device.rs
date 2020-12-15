@@ -245,40 +245,16 @@ impl VkDevice {
         let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
 
         let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
-        let present_image_views = {
-            present_images
-                .iter()
-                .map(|&image| {
-                    let create_view_info = vk::ImageViewCreateInfo::builder()
-                        .view_type(vk::ImageViewType::TYPE_2D)
-                        .format(format)
-                        .components(vk::ComponentMapping {
-                            // Why not BGRA?
-                            r: vk::ComponentSwizzle::R,
-                            g: vk::ComponentSwizzle::G,
-                            b: vk::ComponentSwizzle::B,
-                            a: vk::ComponentSwizzle::A,
-                        })
-                        .subresource_range(vk::ImageSubresourceRange {
-                            aspect_mask: vk::ImageAspectFlags::COLOR,
-                            base_mip_level: 0,
-                            level_count: 1,
-                            base_array_layer: 0,
-                            layer_count: 1,
-                        })
-                        .image(image);
-                    unsafe { self.create_image_view(&create_view_info, None) }
-                })
-                .collect::<VkResult<Vec<_>>>()
-        }?;
+        let present_image_views = VkSwapchain::create_image_views(&present_images, format, self)?;
 
         Ok(VkSwapchain {
             swapchain,
             swapchain_loader,
-            format: surface_format,
+            format,
             images: present_images,
             image_views: present_image_views,
             device: self.device.clone(),
+            info: swapchain_create_info.build(),
         })
     }
 }

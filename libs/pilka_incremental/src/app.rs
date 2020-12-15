@@ -8,6 +8,7 @@ use std::{collections::HashMap, ffi::CString, path::Path};
 pub struct PilkaRender {
     pub scissors: Box<[vk::Rect2D]>,
     pub viewports: Box<[vk::Viewport]>,
+    pub extent: vk::Extent2D,
 
     pub push_constants: PushConstants,
 
@@ -19,7 +20,6 @@ pub struct PilkaRender {
     pub command_pool: VkCommandPool,
 
     pub pipelines: Vec<VkPipeline>,
-    // pub pipeline_desc: PipelineDescriptor,
     pub render_pass: VkRenderPass,
 
     pub framebuffers: Vec<vk::Framebuffer>,
@@ -70,7 +70,8 @@ pub struct FragmentShaderEntryPoint {
 }
 
 pub struct PushConstants {
-    pub wh: [f32; 2],
+    pub resolution: [f32; 2],
+    pub mouse: [f32; 2],
     pub time: f32,
 }
 
@@ -95,32 +96,19 @@ impl PilkaRender {
         let present_complete_semaphore = device.create_semaphore()?;
         let rendering_complete_semaphore = device.create_semaphore()?;
 
-        let framebuffers: Result<Vec<_>, _> = swapchain
-            .image_views
-            .iter()
-            .map(|&present_image_view| {
-                let framebuffer_attachments = [present_image_view];
-                unsafe {
-                    device.create_framebuffer(
-                        &vk::FramebufferCreateInfo::builder()
-                            .render_pass(*render_pass)
-                            .attachments(&framebuffer_attachments)
-                            .width(surface_resolution.width)
-                            .height(surface_resolution.height)
-                            .layers(1),
-                        None,
-                    )
-                }
-            })
-            .collect();
-        let framebuffers = framebuffers?;
+        let framebuffers = swapchain.create_framebuffers(
+            (surface_resolution.width, surface_resolution.height),
+            &render_pass,
+            &device,
+        )?;
 
         let push_constants = PushConstants {
-            wh: surface.resolution_slice(&device)?,
+            resolution: surface.resolution_slice(&device)?,
+            mouse: [0.0; 2],
             time: 0.,
         };
 
-        let (viewports, scissors) = {
+        let (viewports, scissors, extent) = {
             let surface_resolution = surface.resolution(&device)?;
             (
                 Box::new([vk::Viewport {
@@ -135,6 +123,7 @@ impl PilkaRender {
                     offset: vk::Offset2D { x: 0, y: 0 },
                     extent: surface_resolution,
                 }]),
+                surface_resolution,
             )
         };
 
@@ -162,19 +151,26 @@ impl PilkaRender {
 
             viewports,
             scissors,
+            extent,
         })
     }
 
     pub fn render(&mut self) {
-        let (present_index, _) = unsafe {
+        let (present_index, _) = match unsafe {
             self.swapchain.swapchain_loader.acquire_next_image(
                 self.swapchain.swapchain,
                 std::u64::MAX,
                 self.present_complete_semaphore,
                 vk::Fence::null(),
             )
-        }
-        .expect("failed to acquire next image");
+        } {
+            Ok(index) => index,
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                // println!("Oooopsie~ 2");
+                return;
+            }
+            Err(_) => panic!(),
+        };
         let clear_values = [vk::ClearValue {
             color: vk::ClearColorValue {
                 float32: [0.0, 0.0, 1.0, 0.0],
@@ -243,11 +239,14 @@ impl PilkaRender {
             .wait_semaphores(&wait_semaphores)
             .swapchains(&swapchains)
             .image_indices(&image_indices);
-        unsafe {
+        match unsafe {
             self.swapchain
                 .swapchain_loader
                 .queue_present(self.queues.graphics_queue.queue, &present_info)
-                .expect("Failed to submit queue.");
+        } {
+            Ok(_) => {}
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => { /*println!("Oooopsie~ 2") */ }
+            Err(_) => panic!(),
         }
     }
 
