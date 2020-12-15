@@ -2,19 +2,15 @@ use crate::device::{RawDevice, VkDevice};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
-pub struct CommandBuffer {
-    pub command_buffer: vk::CommandBuffer,
-    pub fence: vk::Fence,
-}
-
 // TODO(#13): Call vkResetCommandPool before reusing it in another frame.
 //
 // Otherwise the pool will keep on growing until you run out of memory
 pub struct VkCommandPool {
     pub pool: vk::CommandPool,
-    pub command_buffers: Vec<CommandBuffer>,
-    pub device: Arc<RawDevice>,
     pub active_command_buffer: usize,
+    pub command_buffers: Vec<vk::CommandBuffer>,
+    pub fences: Vec<vk::Fence>,
+    pub device: Arc<RawDevice>,
 }
 
 impl VkCommandPool {
@@ -27,8 +23,8 @@ impl VkCommandPool {
         signal_semaphores: &[vk::Semaphore],
         f: F,
     ) {
-        let submit_fence = self.command_buffers[self.active_command_buffer].fence;
-        let command_buffer = self.command_buffers[self.active_command_buffer].command_buffer;
+        let submit_fence = self.fences[self.active_command_buffer];
+        let command_buffer = self.command_buffers[self.active_command_buffer];
 
         unsafe {
             device
@@ -88,8 +84,8 @@ impl VkCommandPool {
 impl Drop for VkCommandPool {
     fn drop(&mut self) {
         unsafe {
-            for command_buffer in &self.command_buffers {
-                self.device.destroy_fence(command_buffer.fence, None);
+            for &fence in &self.fences {
+                self.device.destroy_fence(fence, None);
             }
 
             self.device.destroy_command_pool(self.pool, None);

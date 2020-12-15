@@ -7,7 +7,7 @@ use ash::{
 use std::sync::Arc;
 
 use crate::{
-    command_pool::{CommandBuffer, VkCommandPool},
+    command_pool::VkCommandPool,
     instance::{VkInstance, VkQueues},
     renderpass_and_pipeline::VkRenderPass,
     surface::VkSurface,
@@ -117,21 +117,15 @@ impl VkDevice {
         let command_buffers =
             unsafe { self.allocate_command_buffers(&command_buffer_allocate_info) }?;
 
-        let command_buffers: VkResult<Vec<CommandBuffer>> = command_buffers
-            .iter()
-            .map(|&command_buffer| {
-                let fence = self.create_fence(true)?;
-                Ok(CommandBuffer {
-                    command_buffer,
-                    fence,
-                })
-            })
+        let fences: Result<_, _> = (0..num_command_buffers)
+            .map(|_| self.create_fence(true))
             .collect();
-        let command_buffers = command_buffers?;
+        let fences = fences?;
 
         Ok(VkCommandPool {
             pool,
             command_buffers,
+            fences,
             device: self.device.clone(),
             active_command_buffer: 0,
         })
