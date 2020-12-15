@@ -57,18 +57,8 @@ impl VkSurface {
     }
 
     pub fn resolution_slice(&self, device: &VkDevice) -> VkResult<[f32; 2]> {
-        let extent = self.get_capabilities(device)?.current_extent;
-        Ok([extent.width as f32, extent.height as f32])
-        // match surface_capabilities.current_extent.width {
-        //     std::u32::MAX => {
-        //         let window_inner = self.window.inner_size();
-        //         vk::Extent2D {
-        //             width: window_inner.width,
-        //             height: window_inner.height,
-        //         }
-        //     }
-        //     _ => surface_capabilities.current_extent,
-        // }
+        let vk::Extent2D { width, height } = self.resolution(device)?;
+        Ok([width as f32, height as f32])
     }
 }
 
