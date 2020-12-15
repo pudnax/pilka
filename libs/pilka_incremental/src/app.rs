@@ -2,29 +2,29 @@ use pilka_ash::ash::{prelude::VkResult, version::DeviceV1_0, *};
 use std::{collections::HashMap, ffi::CString, path::Path};
 
 pub struct PilkaRender {
-    pub instance: VkInstance,
-    pub device: VkDevice,
-    pub queues: VkQueues,
+    pub scissors: Box<[vk::Rect2D]>,
+    pub viewports: Box<[vk::Viewport]>,
 
-    pub surface: VkSurface,
-    pub swapchain: VkSwapchain,
-    pub framebuffers: Vec<vk::Framebuffer>,
-
-    pub render_pass: VkRenderPass,
-    // pub pipeline_desc: PipelineDescriptor,
-    pub pipelines: Vec<VkPipeline>,
-
-    pub command_pool: VkCommandPool,
-    pub present_complete_semaphore: vk::Semaphore,
-    pub rendering_complete_semaphore: vk::Semaphore,
+    pub push_constants: PushConstants,
 
     pub shader_modules: HashMap<String, vk::ShaderModule>,
     pub shader_set: Vec<(VertexShaderEntryPoint, FragmentShaderEntryPoint)>,
 
-    pub push_constants: PushConstants,
+    pub rendering_complete_semaphore: vk::Semaphore,
+    pub present_complete_semaphore: vk::Semaphore,
+    pub command_pool: VkCommandPool,
 
-    pub viewports: Box<[vk::Viewport]>,
-    pub scissors: Box<[vk::Rect2D]>,
+    pub pipelines: Vec<VkPipeline>,
+    // pub pipeline_desc: PipelineDescriptor,
+    pub render_pass: VkRenderPass,
+
+    pub framebuffers: Vec<vk::Framebuffer>,
+    pub swapchain: VkSwapchain,
+    pub surface: VkSurface,
+
+    pub queues: VkQueues,
+    pub device: VkDevice,
+    pub instance: VkInstance,
 }
 
 pub fn compile_shaders<P: AsRef<Path>>(
@@ -276,7 +276,9 @@ impl PilkaRender {
                 ((frag_module, frag_name), (vert_module, vert_name))
             })
             .collect::<Vec<_>>();
-        let viewport = vk::PipelineViewportStateCreateInfo::builder();
+        let viewport = vk::PipelineViewportStateCreateInfo::builder()
+            .viewports(self.viewports.as_ref())
+            .scissors(self.scissors.as_ref());
         let descs = modules_names
             .iter()
             .map(|((frag_module, frag_name), (vert_module, vert_name))| {
@@ -368,6 +370,9 @@ impl Drop for PilkaRender {
             self.device
                 .destroy_semaphore(self.rendering_complete_semaphore, None);
 
+            for &framebuffer in &self.framebuffers {
+                self.device.destroy_framebuffer(framebuffer, None);
+            }
             for &shader_module in self.shader_modules.values() {
                 self.device.destroy_shader_module(shader_module, None);
             }
