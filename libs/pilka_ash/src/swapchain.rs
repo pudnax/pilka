@@ -20,21 +20,23 @@ impl VkSwapchain {
         self.format
     }
 
-    // pub fn recreate_swapchain(
-    //     mut self,
-    //     width: u32,
-    //     height: u32,
-    //     insstance: &VkInstance,
-    //     device: &VkDevice,
-    //     queue: &VkQueues,
-    //     surface: &VkSurface,
-    // ) -> VkResult<()> {
-    //     self.info.image_extent = vk::Extent2D { width, height };
+    pub fn recreate_swapchain(
+        &mut self,
+        (width, height): (u32, u32),
+        device: &VkDevice,
+    ) -> VkResult<()> {
+        self.info.image_extent = vk::Extent2D { width, height };
+        self.info.old_swapchain = self.swapchain;
+        for &image_view in self.image_views.iter() {
+            unsafe { self.device.destroy_image_view(image_view, None) };
+        }
 
-    //     self = insstance.create_swapchain(device, surface, queue).unwrap();
-    //     self.swapchain = unsafe { self.swapchain_loader.create_swapchain(&self.info, None) }?;
+        self.swapchain = unsafe { self.swapchain_loader.create_swapchain(&self.info, None) }?;
+        self.images = unsafe { self.swapchain_loader.get_swapchain_images(self.swapchain)? };
+        self.image_views = Self::create_image_views(&self.images, self.info.image_format, device)?;
 
-    //     self.images = unsafe { self.swapchain_loader.get_swapchain_images(self.swapchain)? };
+        Ok(())
+    }
 
     pub fn create_image_views(
         images: &[vk::Image],

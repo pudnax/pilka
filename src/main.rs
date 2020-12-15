@@ -69,11 +69,19 @@ fn main() -> Result<()> {
             }
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                WindowEvent::Resized(winit::dpi::PhysicalSize { width, height }) => {
-                    // swapchain.info.image_extent = vk::Extent2D { width, height };
-                    // swapchain
-                    //     .recreate_swapchain(new_size.width, new_size.height)
-                    //     .expect("Failed to recreate swapchain.");
+                WindowEvent::Resized(PhysicalSize { .. }) => {
+                    let vk::Extent2D { width, height } =
+                        pilka.surface.resolution(&pilka.device).unwrap();
+                    let vk::Extent2D {
+                        width: old_width,
+                        height: old_height,
+                    } = pilka.extent;
+
+                    if width == old_width && height == old_height {
+                        return;
+                    }
+
+                    pilka.resize().unwrap();
                 }
                 WindowEvent::KeyboardInput {
                     input:

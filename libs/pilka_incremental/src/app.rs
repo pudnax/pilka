@@ -155,6 +155,51 @@ impl PilkaRender {
         })
     }
 
+    pub fn resize(&mut self) -> VkResult<()> {
+        // TODO: Very bad!
+        unsafe { self.device.device_wait_idle() }?;
+
+        self.extent = self.surface.resolution(&self.device)?;
+        let vk::Extent2D { width, height } = self.extent;
+
+        self.viewports = Box::new([vk::Viewport {
+            x: 0.,
+            y: height as f32,
+            width: width as f32,
+            height: -(height as f32),
+            min_depth: 0.0,
+            max_depth: 1.0,
+        }]);
+        self.scissors = Box::new([vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent: vk::Extent2D { width, height },
+        }]);
+        self.push_constants.resolution = [width as f32, height as f32];
+
+        self.swapchain
+            .recreate_swapchain((width, height), &self.device)?;
+
+        for &framebuffer in &self.framebuffers {
+            unsafe { self.device.destroy_framebuffer(framebuffer, None) };
+        }
+        for (framebuffer, present_image) in self
+            .framebuffers
+            .iter_mut()
+            .zip(&self.swapchain.image_views)
+        {
+            let new_framebuffer = VkSwapchain::create_framebuffer(
+                &[*present_image],
+                (width, height),
+                &self.render_pass,
+                &self.device,
+            )?;
+
+            *framebuffer = new_framebuffer;
+        }
+
+        Ok(())
+    }
+
     pub fn render(&mut self) {
         let (present_index, _) = match unsafe {
             self.swapchain.swapchain_loader.acquire_next_image(
