@@ -204,7 +204,7 @@ impl PilkaRender {
     }
 
     pub fn render(&mut self) {
-        let (present_index, _) = match unsafe {
+        let (present_index, is_suboptimal) = match unsafe {
             self.swapchain.swapchain_loader.acquire_next_image(
                 self.swapchain.swapchain,
                 std::u64::MAX,
@@ -212,13 +212,19 @@ impl PilkaRender {
                 vk::Fence::null(),
             )
         } {
-            Ok(index) => index,
+            Ok((index, check)) => (index, check),
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
                 // println!("Oooopsie~ 2");
                 return;
             }
             Err(_) => panic!(),
         };
+        if is_suboptimal {
+            self.resize()
+                .expect("Failed resize on acquiring next present image");
+            return;
+        }
+
         let clear_values = [vk::ClearValue {
             color: vk::ClearColorValue {
                 float32: [0.0, 0.0, 1.0, 0.0],
@@ -292,6 +298,9 @@ impl PilkaRender {
                 .swapchain_loader
                 .queue_present(self.queues.graphics_queue.queue, &present_info)
         } {
+            Ok(is_suboptimal) if is_suboptimal => {
+                self.resize().expect("Failed resize on present.");
+            }
             Ok(_) => {}
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => { /*println!("Oooopsie~ 2") */ }
             Err(_) => panic!(),
