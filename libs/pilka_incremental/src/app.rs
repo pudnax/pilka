@@ -165,7 +165,7 @@ impl PilkaRender {
         self.extent = self.surface.resolution(&self.device)?;
         let vk::Extent2D { width, height } = self.extent;
 
-        self.viewports = Box::new([vk::Viewport {
+        self.viewports.copy_from_slice(&[vk::Viewport {
             x: 0.,
             y: height as f32,
             width: width as f32,

@@ -3,6 +3,7 @@ use ash::{prelude::VkResult, version::DeviceV1_0, vk};
 
 use std::path::{Path, PathBuf};
 
+#[derive(Debug)]
 pub struct VkShaderModule {
     pub path: PathBuf,
     pub module: vk::ShaderModule,
