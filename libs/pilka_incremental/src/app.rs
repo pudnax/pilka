@@ -1,5 +1,8 @@
 use pilka_ash::ash::{prelude::VkResult, version::DeviceV1_0, ShaderInfo, *};
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 /// The main struct that holds all render primitives
 ///
@@ -12,7 +15,7 @@ pub struct PilkaRender {
 
     pub push_constants: PushConstants,
 
-    pub shader_set: HashMap<String, usize>,
+    pub shader_set: HashMap<PathBuf, usize>,
     pub compiler: shaderc::Compiler,
 
     pub rendering_complete_semaphore: vk::Semaphore,
@@ -209,18 +212,14 @@ impl PilkaRender {
         vert_info: ShaderInfo,
         frag_info: ShaderInfo,
         dependencies: &[&str],
-    ) {
+    ) -> VkResult<()> {
         let pipeline_number = self.pipelines.len();
-        self.shader_set.insert(
-            vert_info.name.to_string_lossy().to_string(),
-            pipeline_number,
-        );
-        self.shader_set.insert(
-            frag_info.name.to_string_lossy().to_string(),
-            pipeline_number,
-        );
+        self.shader_set
+            .insert(vert_info.name.clone(), pipeline_number);
+        self.shader_set
+            .insert(frag_info.name.clone(), pipeline_number);
         for deps in dependencies {
-            self.shader_set.insert(deps.to_string(), pipeline_number);
+            self.shader_set.insert(PathBuf::from(deps), pipeline_number);
         }
 
         let vert_module = create_shader_module(
@@ -228,15 +227,13 @@ impl PilkaRender {
             shaderc::ShaderKind::Vertex,
             &mut self.compiler,
             &self.device,
-        )
-        .unwrap();
+        )?;
         let frag_module = create_shader_module(
             frag_info.clone(),
             shaderc::ShaderKind::Fragment,
             &mut self.compiler,
             &self.device,
-        )
-        .unwrap();
+        )?;
         let shader_set = Box::new([
             vk::PipelineShaderStageCreateInfo {
                 module: vert_module,
@@ -252,23 +249,27 @@ impl PilkaRender {
             },
         ]);
 
-        self.pipelines.push(
-            self.new_pipeline(vk::PipelineCache::null(), shader_set, vert_info, frag_info)
-                .unwrap(),
-        );
+        self.pipelines.push(self.new_pipeline(
+            vk::PipelineCache::null(),
+            shader_set,
+            &vert_info,
+            &frag_info,
+        )?);
 
         unsafe {
             self.device.destroy_shader_module(vert_module, None);
             self.device.destroy_shader_module(frag_module, None);
         }
+
+        Ok(())
     }
 
     pub fn new_pipeline(
         &self,
         pipeline_cache: vk::PipelineCache,
         shader_set: Box<[vk::PipelineShaderStageCreateInfo]>,
-        vs_info: ShaderInfo,
-        fs_info: ShaderInfo,
+        vs_info: &ShaderInfo,
+        fs_info: &ShaderInfo,
     ) -> VkResult<VkPipeline> {
         let device = self.device.device.clone();
         let pipeline_layout = self.create_pipeline_layout()?;
@@ -280,34 +281,26 @@ impl PilkaRender {
             pipeline_layout,
             desc,
             &self.render_pass,
-            vs_info,
-            fs_info,
+            vs_info.clone(),
+            fs_info.clone(),
             device,
         )
         .unwrap())
     }
 
-    // pub fn rebuild_pipeline(
-    //     &mut self,
-    //     index: usize,
-    //     shader_set: Box<[vk::PipelineShaderStageCreateInfo]>,
-    // ) -> VkResult<()> {
-    //     self.pipelines[index] = self.new_pipeline(
-    //         vk::PipelineCache::null(),
-    //         shader_set,
-    //         self.pipelines[index]
-    //             .vs_info
-    //             .name
-    //             .to_string_lossy()
-    //             .to_string(),
-    //         self.pipelines[index]
-    //             .fs_info
-    //             .name
-    //             .to_string_lossy()
-    //             .to_string(),
-    //     )?;
-    //     Ok(())
-    // }
+    pub fn rebuild_pipeline(
+        &mut self,
+        index: usize,
+        shader_set: Box<[vk::PipelineShaderStageCreateInfo]>,
+    ) -> VkResult<()> {
+        self.pipelines[index] = self.new_pipeline(
+            vk::PipelineCache::null(),
+            shader_set,
+            &self.pipelines[index].vs_info,
+            &self.pipelines[index].fs_info,
+        )?;
+        Ok(())
+    }
 
     pub fn render(&mut self) {
         let (present_index, is_suboptimal) = match unsafe {
@@ -376,6 +369,8 @@ impl PilkaRender {
                         );
                         device.cmd_set_viewport(draw_command_buffer, 0, &viewports);
                         device.cmd_set_scissor(draw_command_buffer, 0, &scissors);
+                        // TODO: Command buffers have to be recompiled to update
+                        // push constants.
                         device.cmd_push_constants(
                             draw_command_buffer,
                             pipeline.pipeline_layout,

@@ -37,6 +37,7 @@ fn main() -> Result<()> {
         .build(&event_loop)?;
 
     let mut pilka = PilkaRender::new(&window).unwrap();
+    // TODO: Think about canonicalize
     pilka.push_shader_module(
         ash::ShaderInfo {
             name: PathBuf::from("shaders/shader.vert"),
@@ -47,7 +48,7 @@ fn main() -> Result<()> {
             entry_point: "main".to_string(),
         },
         &["bla bla"],
-    );
+    )?;
 
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;

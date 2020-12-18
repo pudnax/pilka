@@ -122,6 +122,7 @@ impl PipelineDescriptor {
     }
 }
 
+// TODO: Remove `ShaderInfo`
 pub struct VkPipeline {
     pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
