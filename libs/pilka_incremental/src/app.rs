@@ -93,7 +93,8 @@ impl PilkaRender {
         let swapchain = device.create_swapchain(swapchain_loader, &surface, &queues)?;
         let render_pass = device.create_vk_render_pass(swapchain.format())?;
 
-        let command_pool = device.create_commmand_buffer(queues.graphics_queue.index, 3)?;
+        let command_pool = device
+            .create_commmand_buffer(queues.graphics_queue.index, swapchain.images.len() as u32)?;
 
         let present_complete_semaphore = device.create_semaphore()?;
         let rendering_complete_semaphore = device.create_semaphore()?;
@@ -329,7 +330,7 @@ impl PilkaRender {
                 float32: [0.0, 0.0, 1.0, 0.0],
             },
         }];
-        let command_pool = &mut self.command_pool;
+
         let viewports = self.viewports.as_ref();
         let scissors = self.scissors.as_ref();
         let push_constants = &self.push_constants;
@@ -350,7 +351,7 @@ impl PilkaRender {
             let wait_mask = &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
             // Start command queue
             unsafe {
-                command_pool.record_submit_commandbuffer(
+                self.command_pool.record_submit_commandbuffer(
                     &self.device,
                     self.queues.graphics_queue.queue,
                     wait_mask,
