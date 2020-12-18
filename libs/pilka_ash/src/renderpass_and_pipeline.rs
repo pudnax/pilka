@@ -1,4 +1,4 @@
-use crate::device::RawDevice;
+use crate::{device::RawDevice, shader_module::ShaderInfo};
 use ash::{prelude::VkResult, version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -74,21 +74,6 @@ impl PipelineDescriptor {
             topology: vk::PrimitiveTopology::TRIANGLE_LIST,
             ..Default::default()
         };
-        // let viewports = [vk::Viewport {
-        //     x: 0.0,
-        //     y: extent.height as f32,
-        //     width: extent.width as f32,
-        //     height: -(extent.height as f32),
-        //     min_depth: 0.0,
-        //     max_depth: 1.0,
-        // }];
-        // let scissors = [vk::Rect2D {
-        //     offset: vk::Offset2D { x: 0, y: 0 },
-        //     extent,
-        // }];
-        // let viewport_state_info = vk::PipelineViewportStateCreateInfo::builder()
-        //     .scissors(&scissors)
-        //     .viewports(&viewports);
 
         let rasterization = vk::PipelineRasterizationStateCreateInfo {
             front_face: vk::FrontFace::COUNTER_CLOCKWISE,
@@ -140,9 +125,10 @@ impl PipelineDescriptor {
 pub struct VkPipeline {
     pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
-    pub color_blend_attachments: Box<[vk::PipelineColorBlendAttachmentState]>,
     pub dynamic_state: Box<[vk::DynamicState]>,
     pub device: Arc<RawDevice>,
+    pub vs_info: ShaderInfo,
+    pub fs_info: ShaderInfo,
 }
 
 impl VkPipeline {
@@ -150,11 +136,15 @@ impl VkPipeline {
         pipeline_cache: vk::PipelineCache,
         pipeline_layout: vk::PipelineLayout,
         desc: PipelineDescriptor,
-        // extent: vk::Extent2D,
         render_pass: &VkRenderPass,
+        vs_info: ShaderInfo,
+        fs_info: ShaderInfo,
         device: Arc<RawDevice>,
     ) -> VkResult<Self> {
-        let viewport = vk::PipelineViewportStateCreateInfo::builder();
+        let viewport = vk::PipelineViewportStateCreateInfo::builder()
+            .viewports(&[vk::Viewport::default()])
+            .scissors(&[vk::Rect2D::default()])
+            .build();
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
             .stages(&desc.shader_stages)
@@ -179,9 +169,10 @@ impl VkPipeline {
         Ok(VkPipeline {
             pipeline,
             pipeline_layout,
-            color_blend_attachments: desc.color_blend_attachments,
             dynamic_state: desc.dynamic_state,
             device,
+            vs_info,
+            fs_info,
         })
     }
 }

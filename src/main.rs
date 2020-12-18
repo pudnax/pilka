@@ -15,10 +15,10 @@ use winit::{
     platform::desktop::EventLoopExtDesktop,
 };
 
-use std::time::Instant;
+use std::{path::PathBuf, time::Instant};
 
-const SHADER_PATH: &str = "shaders";
-const SHADER_ENTRY_POINT: &str = "main";
+// const SHADER_PATH: &str = "shaders";
+// const SHADER_ENTRY_POINT: &str = "main";
 
 fn main() -> Result<()> {
     // Initialize error hook.
@@ -37,28 +37,17 @@ fn main() -> Result<()> {
         .build(&event_loop)?;
 
     let mut pilka = PilkaRender::new(&window).unwrap();
-    let mut compiler = shaderc::Compiler::new().unwrap();
-    let shaders = compile_shaders(SHADER_PATH, &mut compiler, &pilka.device).unwrap();
-
-    for ash::VkShaderModule { path, module: _ } in &shaders {
-        println!("{:?}", path);
-    }
-    for ash::VkShaderModule { path, module } in shaders {
-        pilka.insert_shader_module(path.display().to_string(), module)?;
-    }
-    pilka.build_pipelines(
-        vk::PipelineCache::null(),
-        vec![(
-            VertexShaderEntryPoint {
-                module: "shaders/shader.vert".into(),
-                entry_point: SHADER_ENTRY_POINT.to_string(),
-            },
-            FragmentShaderEntryPoint {
-                module: "shaders/shader.frag".into(),
-                entry_point: SHADER_ENTRY_POINT.to_string(),
-            },
-        )],
-    )?;
+    pilka.push_shader_module(
+        ash::ShaderInfo {
+            name: PathBuf::from("shaders/shader.vert"),
+            entry_point: "main".to_string(),
+        },
+        ash::ShaderInfo {
+            name: PathBuf::from("shaders/shader.frag"),
+            entry_point: "main".to_string(),
+        },
+        &["bla bla"],
+    );
 
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;

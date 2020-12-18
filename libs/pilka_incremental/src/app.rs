@@ -1,5 +1,5 @@
-use pilka_ash::ash::{prelude::VkResult, version::DeviceV1_0, *};
-use std::{collections::HashMap, ffi::CString, path::Path};
+use pilka_ash::ash::{prelude::VkResult, version::DeviceV1_0, ShaderInfo, *};
+use std::{collections::HashMap, path::Path};
 
 /// The main struct that holds all render primitives
 ///
@@ -12,13 +12,14 @@ pub struct PilkaRender {
 
     pub push_constants: PushConstants,
 
-    pub shader_modules: HashMap<String, vk::ShaderModule>,
-    pub shader_set: Vec<(VertexShaderEntryPoint, FragmentShaderEntryPoint)>,
+    pub shader_set: HashMap<String, usize>,
+    pub compiler: shaderc::Compiler,
 
     pub rendering_complete_semaphore: vk::Semaphore,
     pub present_complete_semaphore: vk::Semaphore,
     pub command_pool: VkCommandPool,
 
+    // FIXME: Where is `PipeilineCache`?
     pub pipelines: Vec<VkPipeline>,
     pub render_pass: VkRenderPass,
 
@@ -35,7 +36,7 @@ pub fn compile_shaders<P: AsRef<Path>>(
     dir: P,
     compiler: &mut shaderc::Compiler,
     device: &VkDevice,
-) -> Result<Vec<VkShaderModule>, Box<dyn std::error::Error>> {
+) -> Result<Vec<vk::ShaderModule>, Box<dyn std::error::Error>> {
     let mut shader_modules = Vec::new();
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
@@ -51,22 +52,20 @@ pub fn compile_shaders<P: AsRef<Path>>(
                 );
             }
         };
-        let module = VkShaderModule::new(path, shader_type, compiler, device)
-            .expect("Failed to create shader module");
+        let module = create_shader_module(
+            ShaderInfo {
+                name: path,
+                entry_point: "main".to_string(),
+            },
+            shader_type,
+            compiler,
+            device,
+        )
+        .expect("Failed to create shader module");
         shader_modules.push(module);
     }
 
     Ok(shader_modules)
-}
-
-pub struct VertexShaderEntryPoint {
-    pub module: String,
-    pub entry_point: String,
-}
-
-pub struct FragmentShaderEntryPoint {
-    pub module: String,
-    pub entry_point: String,
 }
 
 pub struct PushConstants {
@@ -127,6 +126,8 @@ impl PilkaRender {
             )
         };
 
+        let compiler = shaderc::Compiler::new().unwrap();
+
         Ok(Self {
             instance,
             device,
@@ -144,8 +145,8 @@ impl PilkaRender {
             present_complete_semaphore,
             rendering_complete_semaphore,
 
-            shader_modules: HashMap::new(),
-            shader_set: vec![],
+            shader_set: HashMap::new(),
+            compiler,
 
             push_constants,
 
@@ -203,6 +204,111 @@ impl PilkaRender {
         Ok(())
     }
 
+    pub fn push_shader_module(
+        &mut self,
+        vert_info: ShaderInfo,
+        frag_info: ShaderInfo,
+        dependencies: &[&str],
+    ) {
+        let pipeline_number = self.pipelines.len();
+        self.shader_set.insert(
+            vert_info.name.to_string_lossy().to_string(),
+            pipeline_number,
+        );
+        self.shader_set.insert(
+            frag_info.name.to_string_lossy().to_string(),
+            pipeline_number,
+        );
+        for deps in dependencies {
+            self.shader_set.insert(deps.to_string(), pipeline_number);
+        }
+
+        let vert_module = create_shader_module(
+            vert_info.clone(),
+            shaderc::ShaderKind::Vertex,
+            &mut self.compiler,
+            &self.device,
+        )
+        .unwrap();
+        let frag_module = create_shader_module(
+            frag_info.clone(),
+            shaderc::ShaderKind::Fragment,
+            &mut self.compiler,
+            &self.device,
+        )
+        .unwrap();
+        let shader_set = Box::new([
+            vk::PipelineShaderStageCreateInfo {
+                module: vert_module,
+                p_name: vert_info.entry_point.as_ptr() as *const i8,
+                stage: vk::ShaderStageFlags::VERTEX,
+                ..Default::default()
+            },
+            vk::PipelineShaderStageCreateInfo {
+                module: frag_module,
+                p_name: frag_info.entry_point.as_ptr() as *const i8,
+                stage: vk::ShaderStageFlags::FRAGMENT,
+                ..Default::default()
+            },
+        ]);
+
+        self.pipelines.push(
+            self.new_pipeline(vk::PipelineCache::null(), shader_set, vert_info, frag_info)
+                .unwrap(),
+        );
+
+        unsafe {
+            self.device.destroy_shader_module(vert_module, None);
+            self.device.destroy_shader_module(frag_module, None);
+        }
+    }
+
+    pub fn new_pipeline(
+        &self,
+        pipeline_cache: vk::PipelineCache,
+        shader_set: Box<[vk::PipelineShaderStageCreateInfo]>,
+        vs_info: ShaderInfo,
+        fs_info: ShaderInfo,
+    ) -> VkResult<VkPipeline> {
+        let device = self.device.device.clone();
+        let pipeline_layout = self.create_pipeline_layout()?;
+
+        let desc = PipelineDescriptor::new(shader_set);
+
+        Ok(VkPipeline::new(
+            pipeline_cache,
+            pipeline_layout,
+            desc,
+            &self.render_pass,
+            vs_info,
+            fs_info,
+            device,
+        )
+        .unwrap())
+    }
+
+    // pub fn rebuild_pipeline(
+    //     &mut self,
+    //     index: usize,
+    //     shader_set: Box<[vk::PipelineShaderStageCreateInfo]>,
+    // ) -> VkResult<()> {
+    //     self.pipelines[index] = self.new_pipeline(
+    //         vk::PipelineCache::null(),
+    //         shader_set,
+    //         self.pipelines[index]
+    //             .vs_info
+    //             .name
+    //             .to_string_lossy()
+    //             .to_string(),
+    //         self.pipelines[index]
+    //             .fs_info
+    //             .name
+    //             .to_string_lossy()
+    //             .to_string(),
+    //     )?;
+    //     Ok(())
+    // }
+
     pub fn render(&mut self) {
         let (present_index, is_suboptimal) = match unsafe {
             self.swapchain.swapchain_loader.acquire_next_image(
@@ -235,7 +341,7 @@ impl PilkaRender {
         let scissors = self.scissors.as_ref();
         let push_constants = &self.push_constants;
 
-        for pipeline in &self.pipelines {
+        for pipeline in &self.pipelines[..] {
             let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
                 .render_pass(*self.render_pass)
                 .framebuffer(self.framebuffers[present_index as usize])
@@ -322,100 +428,79 @@ impl PilkaRender {
         }
     }
 
-    pub fn rebuild_pipelines(&mut self, pipeline_cache: vk::PipelineCache) -> VkResult<()> {
-        let device = self.device.device.clone();
-        let pipeline_layout = self.create_pipeline_layout()?;
-        let modules_names = self
-            .shader_set
-            .iter()
-            .map(|(vert, frag)| {
-                let vert_module = *self.shader_modules.get(&vert.module).unwrap();
-                let vert_name = CString::new(vert.entry_point.clone()).unwrap();
-                let frag_module = *self.shader_modules.get(&frag.module).unwrap();
-                let frag_name = CString::new(frag.entry_point.clone()).unwrap();
-                ((frag_module, frag_name), (vert_module, vert_name))
-            })
-            .collect::<Vec<_>>();
-        let viewport = vk::PipelineViewportStateCreateInfo::builder()
-            .viewports(self.viewports.as_ref())
-            .scissors(self.scissors.as_ref());
-        let descs = modules_names
-            .iter()
-            .map(|((frag_module, frag_name), (vert_module, vert_name))| {
-                PipelineDescriptor::new(Box::new([
-                    vk::PipelineShaderStageCreateInfo {
-                        module: *vert_module,
-                        p_name: (*vert_name).as_ptr(),
-                        stage: vk::ShaderStageFlags::VERTEX,
-                        ..Default::default()
-                    },
-                    vk::PipelineShaderStageCreateInfo {
-                        // `s_type` is optionated
-                        s_type: vk::StructureType::PIPELINE_SHADER_STAGE_CREATE_INFO,
-                        module: *frag_module,
-                        p_name: (*frag_name).as_ptr(),
-                        stage: vk::ShaderStageFlags::FRAGMENT,
-                        ..Default::default()
-                    },
-                ]))
-            })
-            .collect::<Vec<_>>();
-        let pipeline_info = descs
-            .iter()
-            .map(|desc| {
-                vk::GraphicsPipelineCreateInfo::builder()
-                    .stages(&desc.shader_stages)
-                    .vertex_input_state(&desc.vertex_input)
-                    .input_assembly_state(&desc.input_assembly)
-                    .rasterization_state(&desc.rasterization)
-                    .multisample_state(&desc.multisample)
-                    .depth_stencil_state(&desc.depth_stencil)
-                    .color_blend_state(&desc.color_blend)
-                    .dynamic_state(&desc.dynamic_state_info)
-                    .viewport_state(&viewport)
-                    .layout(pipeline_layout)
-                    .render_pass(self.render_pass.render_pass)
-                    .build()
-            })
-            .collect::<Vec<_>>();
-        self.pipelines = unsafe {
-            self.device
-                .create_graphics_pipelines(pipeline_cache, &pipeline_info, None)
-                .expect("Unable to create graphics pipeline")
-        }
-        .iter()
-        .zip(descs)
-        .map(|(&pipeline, desc)| VkPipeline {
-            pipeline,
-            pipeline_layout,
-            color_blend_attachments: desc.color_blend_attachments,
-            dynamic_state: desc.dynamic_state,
-            device: device.clone(),
-        })
-        .collect();
-        Ok(())
-    }
-
-    pub fn build_pipelines(
-        &mut self,
-        pipeline_cache: vk::PipelineCache,
-        shader_set: Vec<(VertexShaderEntryPoint, FragmentShaderEntryPoint)>,
-    ) -> VkResult<()> {
-        self.shader_set = shader_set;
-        self.rebuild_pipelines(pipeline_cache)?;
-        Ok(())
-    }
-
-    pub fn insert_shader_module(
-        &mut self,
-        name: String,
-        shader_module: vk::ShaderModule,
-    ) -> VkResult<()> {
-        if let Some(old_module) = self.shader_modules.insert(name, shader_module) {
-            unsafe { self.device.destroy_shader_module(old_module, None) }
-        };
-        Ok(())
-    }
+    // pub fn rebuild_pipelines(&mut self, pipeline_cache: vk::PipelineCache) -> VkResult<()> {
+    //     let device = self.device.device.clone();
+    //     let pipeline_layout = self.create_pipeline_layout()?;
+    //     let modules_names = self
+    //         .shader_set
+    //         .iter()
+    //         .map(|(vert, frag)| {
+    //             let vert_module = *self.shader_modules.get(&vert.module).unwrap();
+    //             let vert_name = CString::new(vert.entry_point.clone()).unwrap();
+    //             let frag_module = *self.shader_modules.get(&frag.module).unwrap();
+    //             let frag_name = CString::new(frag.entry_point.clone()).unwrap();
+    //             ((frag_module, frag_name), (vert_module, vert_name))
+    //         })
+    //         .collect::<Vec<_>>();
+    //     let viewport = vk::PipelineViewportStateCreateInfo::builder()
+    //         // TODO: Look at this
+    //         .viewports(self.viewports.as_ref())
+    //         .scissors(self.scissors.as_ref());
+    //     let descs = modules_names
+    //         .iter()
+    //         .map(|((frag_module, frag_name), (vert_module, vert_name))| {
+    //             PipelineDescriptor::new(Box::new([
+    //                 vk::PipelineShaderStageCreateInfo {
+    //                     module: *vert_module,
+    //                     p_name: (*vert_name).as_ptr(),
+    //                     stage: vk::ShaderStageFlags::VERTEX,
+    //                     ..Default::default()
+    //                 },
+    //                 vk::PipelineShaderStageCreateInfo {
+    //                     // `s_type` is optionated
+    //                     s_type: vk::StructureType::PIPELINE_SHADER_STAGE_CREATE_INFO,
+    //                     module: *frag_module,
+    //                     p_name: (*frag_name).as_ptr(),
+    //                     stage: vk::ShaderStageFlags::FRAGMENT,
+    //                     ..Default::default()
+    //                 },
+    //             ]))
+    //         })
+    //         .collect::<Vec<_>>();
+    //     let pipeline_info = descs
+    //         .iter()
+    //         .map(|desc| {
+    //             vk::GraphicsPipelineCreateInfo::builder()
+    //                 .stages(&desc.shader_stages)
+    //                 .vertex_input_state(&desc.vertex_input)
+    //                 .input_assembly_state(&desc.input_assembly)
+    //                 .rasterization_state(&desc.rasterization)
+    //                 .multisample_state(&desc.multisample)
+    //                 .depth_stencil_state(&desc.depth_stencil)
+    //                 .color_blend_state(&desc.color_blend)
+    //                 .dynamic_state(&desc.dynamic_state_info)
+    //                 .viewport_state(&viewport)
+    //                 .layout(pipeline_layout)
+    //                 .render_pass(self.render_pass.render_pass)
+    //                 .build()
+    //         })
+    //         .collect::<Vec<_>>();
+    //     self.pipelines = unsafe {
+    //         self.device
+    //             .create_graphics_pipelines(pipeline_cache, &pipeline_info, None)
+    //             .expect("Unable to create graphics pipeline")
+    //     }
+    //     .iter()
+    //     .zip(descs)
+    //     .map(|(&pipeline, desc)| VkPipeline {
+    //         pipeline,
+    //         pipeline_layout,
+    //         dynamic_state: desc.dynamic_state,
+    //         device: device.clone(),
+    //     })
+    //     .collect();
+    //     Ok(())
+    // }
 }
 
 unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
@@ -433,9 +518,9 @@ impl Drop for PilkaRender {
             for &framebuffer in &self.framebuffers {
                 self.device.destroy_framebuffer(framebuffer, None);
             }
-            for &shader_module in self.shader_modules.values() {
-                self.device.destroy_shader_module(shader_module, None);
-            }
+            // for &shader_module in self.shader_modules.values() {
+            //     self.device.destroy_shader_module(shader_module, None);
+            // }
         }
     }
 }
