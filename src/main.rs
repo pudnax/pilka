@@ -54,9 +54,7 @@ fn main() -> Result<()> {
         *control_flow = winit::event_loop::ControlFlow::Poll;
         match event {
             // What @.@
-            Event::NewEvents(_) => {
-                pilka.push_constants.time = time.elapsed().as_secs_f32();
-            }
+            Event::NewEvents(_) => {}
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                 WindowEvent::Resized(PhysicalSize { .. }) => {
@@ -91,11 +89,6 @@ fn main() -> Result<()> {
                     ..
                 } => {
                     let vk::Extent2D { width, height } = pilka.extent;
-
-                    pilka.push_constants.resolution = [
-                        (x / width as f64 * 2.0 - 1.0) as f32,
-                        -(y / height as f64 * 2.0 - 1.0) as f32,
-                    ];
                 }
                 _ => {}
             },

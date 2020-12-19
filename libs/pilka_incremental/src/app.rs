@@ -13,8 +13,6 @@ pub struct PilkaRender {
     pub viewports: Box<[vk::Viewport]>,
     pub extent: vk::Extent2D,
 
-    pub push_constants: PushConstants,
-
     pub shader_set: HashMap<PathBuf, usize>,
     pub compiler: shaderc::Compiler,
 
@@ -71,12 +69,6 @@ pub fn compile_shaders<P: AsRef<Path>>(
     Ok(shader_modules)
 }
 
-pub struct PushConstants {
-    pub resolution: [f32; 2],
-    pub mouse: [f32; 2],
-    pub time: f32,
-}
-
 impl PilkaRender {
     pub fn new<W: HasRawWindowHandle>(window: &W) -> Result<Self, Box<dyn std::error::Error>> {
         let instance = VkInstance::new(Some(window))?;
@@ -104,12 +96,6 @@ impl PilkaRender {
             &render_pass,
             &device,
         )?;
-
-        let push_constants = PushConstants {
-            resolution: surface.resolution_slice(&device)?,
-            mouse: [0.0; 2],
-            time: 0.,
-        };
 
         let (viewports, scissors, extent) = {
             let surface_resolution = surface.resolution(&device)?;
@@ -152,8 +138,6 @@ impl PilkaRender {
             shader_set: HashMap::new(),
             compiler,
 
-            push_constants,
-
             viewports,
             scissors,
             extent,
@@ -182,7 +166,6 @@ impl PilkaRender {
             offset: vk::Offset2D { x: 0, y: 0 },
             extent: vk::Extent2D { width, height },
         }]);
-        self.push_constants.resolution = [width as f32, height as f32];
 
         self.swapchain
             .recreate_swapchain((width, height), &self.device)?;
@@ -333,7 +316,6 @@ impl PilkaRender {
 
         let viewports = self.viewports.as_ref();
         let scissors = self.scissors.as_ref();
-        let push_constants = &self.push_constants;
 
         for pipeline in &self.pipelines[..] {
             let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
@@ -370,15 +352,6 @@ impl PilkaRender {
                         );
                         device.cmd_set_viewport(draw_command_buffer, 0, &viewports);
                         device.cmd_set_scissor(draw_command_buffer, 0, &scissors);
-                        // TODO: Command buffers have to be recompiled to update
-                        // push constants.
-                        device.cmd_push_constants(
-                            draw_command_buffer,
-                            pipeline.pipeline_layout,
-                            vk::ShaderStageFlags::all(),
-                            0,
-                            any_as_u8_slice(&push_constants),
-                        );
 
                         // Or draw without the index buffer
                         device.cmd_draw(draw_command_buffer, 3, 1, 0, 0);
@@ -410,97 +383,16 @@ impl PilkaRender {
     }
 
     pub fn create_pipeline_layout(&self) -> VkResult<vk::PipelineLayout> {
-        let push_constant_range = vk::PushConstantRange::builder()
-            .offset(0)
-            .size(std::mem::size_of::<PushConstants>() as u32)
-            .stage_flags(vk::ShaderStageFlags::all())
-            .build();
-        let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-            .push_constant_ranges(&[push_constant_range])
-            .build();
+        let layout_create_info = vk::PipelineLayoutCreateInfo::builder().build();
         unsafe {
             self.device
                 .create_pipeline_layout(&layout_create_info, None)
         }
     }
-
-    // pub fn rebuild_pipelines(&mut self, pipeline_cache: vk::PipelineCache) -> VkResult<()> {
-    //     let device = self.device.device.clone();
-    //     let pipeline_layout = self.create_pipeline_layout()?;
-    //     let modules_names = self
-    //         .shader_set
-    //         .iter()
-    //         .map(|(vert, frag)| {
-    //             let vert_module = *self.shader_modules.get(&vert.module).unwrap();
-    //             let vert_name = CString::new(vert.entry_point.clone()).unwrap();
-    //             let frag_module = *self.shader_modules.get(&frag.module).unwrap();
-    //             let frag_name = CString::new(frag.entry_point.clone()).unwrap();
-    //             ((frag_module, frag_name), (vert_module, vert_name))
-    //         })
-    //         .collect::<Vec<_>>();
-    //     let viewport = vk::PipelineViewportStateCreateInfo::builder()
-    //         // TODO: Look at this
-    //         .viewports(self.viewports.as_ref())
-    //         .scissors(self.scissors.as_ref());
-    //     let descs = modules_names
-    //         .iter()
-    //         .map(|((frag_module, frag_name), (vert_module, vert_name))| {
-    //             PipelineDescriptor::new(Box::new([
-    //                 vk::PipelineShaderStageCreateInfo {
-    //                     module: *vert_module,
-    //                     p_name: (*vert_name).as_ptr(),
-    //                     stage: vk::ShaderStageFlags::VERTEX,
-    //                     ..Default::default()
-    //                 },
-    //                 vk::PipelineShaderStageCreateInfo {
-    //                     // `s_type` is optionated
-    //                     s_type: vk::StructureType::PIPELINE_SHADER_STAGE_CREATE_INFO,
-    //                     module: *frag_module,
-    //                     p_name: (*frag_name).as_ptr(),
-    //                     stage: vk::ShaderStageFlags::FRAGMENT,
-    //                     ..Default::default()
-    //                 },
-    //             ]))
-    //         })
-    //         .collect::<Vec<_>>();
-    //     let pipeline_info = descs
-    //         .iter()
-    //         .map(|desc| {
-    //             vk::GraphicsPipelineCreateInfo::builder()
-    //                 .stages(&desc.shader_stages)
-    //                 .vertex_input_state(&desc.vertex_input)
-    //                 .input_assembly_state(&desc.input_assembly)
-    //                 .rasterization_state(&desc.rasterization)
-    //                 .multisample_state(&desc.multisample)
-    //                 .depth_stencil_state(&desc.depth_stencil)
-    //                 .color_blend_state(&desc.color_blend)
-    //                 .dynamic_state(&desc.dynamic_state_info)
-    //                 .viewport_state(&viewport)
-    //                 .layout(pipeline_layout)
-    //                 .render_pass(self.render_pass.render_pass)
-    //                 .build()
-    //         })
-    //         .collect::<Vec<_>>();
-    //     self.pipelines = unsafe {
-    //         self.device
-    //             .create_graphics_pipelines(pipeline_cache, &pipeline_info, None)
-    //             .expect("Unable to create graphics pipeline")
-    //     }
-    //     .iter()
-    //     .zip(descs)
-    //     .map(|(&pipeline, desc)| VkPipeline {
-    //         pipeline,
-    //         pipeline_layout,
-    //         dynamic_state: desc.dynamic_state,
-    //         device: device.clone(),
-    //     })
-    //     .collect();
-    //     Ok(())
-    // }
 }
 
 unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-    ::std::slice::from_raw_parts((p as *const T) as *const u8, ::std::mem::size_of::<T>())
+    std::slice::from_raw_parts((p as *const T) as *const u8, std::mem::size_of::<T>())
 }
 
 impl Drop for PilkaRender {
@@ -514,9 +406,6 @@ impl Drop for PilkaRender {
             for &framebuffer in &self.framebuffers {
                 self.device.destroy_framebuffer(framebuffer, None);
             }
-            // for &shader_module in self.shader_modules.values() {
-            //     self.device.destroy_shader_module(shader_module, None);
-            // }
         }
     }
 }
