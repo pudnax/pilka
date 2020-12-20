@@ -47,10 +47,11 @@ pub fn compile_shaders<P: AsRef<Path>>(
             Some("vert") => shaderc::ShaderKind::Vertex,
             Some("comp") => shaderc::ShaderKind::Compute,
             _ => {
-                panic!(
+                println!(
                     "Did not recognize file extension for shader file \"{:?}\"",
                     path
                 );
+                continue;
             }
         };
         let module = create_shader_module(
@@ -207,6 +208,17 @@ impl PilkaRender {
                 .insert(PathBuf::from(deps).canonicalize().unwrap(), pipeline_number);
         }
 
+        let new_pipeline = self.make_pipeline_from_shaders(&vert_info, &frag_info)?;
+        self.pipelines.push(new_pipeline);
+
+        Ok(())
+    }
+
+    pub fn make_pipeline_from_shaders(
+        &mut self,
+        vert_info: &ShaderInfo,
+        frag_info: &ShaderInfo,
+    ) -> VkResult<VkPipeline> {
         let vert_module = create_shader_module(
             vert_info.clone(),
             shaderc::ShaderKind::Vertex,
@@ -222,31 +234,31 @@ impl PilkaRender {
         let shader_set = Box::new([
             vk::PipelineShaderStageCreateInfo {
                 module: vert_module,
-                p_name: vert_info.entry_point.as_ptr() as *const i8,
+                p_name: "main\0".as_ptr() as *const i8,
                 stage: vk::ShaderStageFlags::VERTEX,
                 ..Default::default()
             },
             vk::PipelineShaderStageCreateInfo {
                 module: frag_module,
-                p_name: frag_info.entry_point.as_ptr() as *const i8,
+                p_name: "main\0".as_ptr() as *const i8,
                 stage: vk::ShaderStageFlags::FRAGMENT,
                 ..Default::default()
             },
         ]);
 
-        self.pipelines.push(self.new_pipeline(
+        let new_pipeline = self.new_pipeline(
             vk::PipelineCache::null(),
             shader_set,
             &vert_info,
             &frag_info,
-        )?);
+        )?;
 
         unsafe {
             self.device.destroy_shader_module(vert_module, None);
             self.device.destroy_shader_module(frag_module, None);
         }
 
-        Ok(())
+        Ok(new_pipeline)
     }
 
     pub fn new_pipeline(
@@ -273,17 +285,15 @@ impl PilkaRender {
         .unwrap())
     }
 
-    pub fn rebuild_pipeline(
-        &mut self,
-        index: usize,
-        shader_set: Box<[vk::PipelineShaderStageCreateInfo]>,
-    ) -> VkResult<()> {
-        self.pipelines[index] = self.new_pipeline(
-            vk::PipelineCache::null(),
-            shader_set,
-            &self.pipelines[index].vs_info,
-            &self.pipelines[index].fs_info,
-        )?;
+    pub fn rebuild_pipeline(&mut self, index: usize) -> VkResult<()> {
+        let current_pipeline = &mut self.pipelines[index];
+        let vs_info = current_pipeline.vs_info.clone();
+        let fs_info = current_pipeline.fs_info.clone();
+        dbg!(&fs_info);
+        dbg!(&vs_info);
+        let new_pipeline = self.make_pipeline_from_shaders(&vs_info, &fs_info)?;
+        self.pipelines[index] = new_pipeline;
+
         Ok(())
     }
 
@@ -392,7 +402,7 @@ impl PilkaRender {
     }
 }
 
-unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+unsafe fn _any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
     std::slice::from_raw_parts((p as *const T) as *const u8, std::mem::size_of::<T>())
 }
 

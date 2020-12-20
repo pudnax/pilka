@@ -84,6 +84,7 @@ fn main() -> Result<()> {
                                 pipelines_to_recompile.insert(pilka.shader_set[&path]);
                             }
                         }
+                        println!("{:?}", &pipelines_to_recompile);
                     }
                 }
             }
@@ -119,9 +120,15 @@ fn main() -> Result<()> {
                     if VirtualKeyCode::Escape == keycode {
                         *control_flow = ControlFlow::Exit;
                     }
-                    if VirtualKeyCode::R == keycode {
+                    if VirtualKeyCode::R == keycode && ctrl_pressed {
+                        println!("Event!");
+
+                        unsafe {
+                            // FIXME: Just forget the existing of this function, you lack!
+                            pilka.device.device_wait_idle().unwrap();
+                        }
                         for index in pipelines_to_recompile.drain() {
-                            // pilka.rebuild_pipeline(index).unwrap();
+                            pilka.rebuild_pipeline(index).unwrap();
                         }
                     }
                 }
