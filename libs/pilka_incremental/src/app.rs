@@ -250,7 +250,11 @@ impl PilkaRender {
         let current_pipeline = &mut self.pipelines[index];
         let vs_info = current_pipeline.vs_info.clone();
         let fs_info = current_pipeline.fs_info.clone();
-        let new_pipeline = self.make_pipeline_from_shaders(&vs_info, &fs_info)?;
+        let new_pipeline = match self.make_pipeline_from_shaders(&vs_info, &fs_info) {
+            Ok(res) => res,
+            Err(pilka_ash::ash::vk::Result::ERROR_UNKNOWN) => return Ok(()),
+            Err(e) => return Err(e),
+        };
         self.pipelines[index] = new_pipeline;
 
         Ok(())

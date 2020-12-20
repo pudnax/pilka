@@ -80,7 +80,6 @@ fn main() -> Result<()> {
                                 pipelines_to_recompile.insert(pilka.shader_set[&path]);
                             }
                         }
-                        println!("{:?}", &pipelines_to_recompile);
                     }
                 }
             }
@@ -117,8 +116,6 @@ fn main() -> Result<()> {
                         *control_flow = ControlFlow::Exit;
                     }
                     if VirtualKeyCode::R == keycode && ctrl_pressed {
-                        println!("Event!");
-
                         unsafe {
                             // FIXME: Just forget the existing of this function, you lack!
                             pilka.device.device_wait_idle().unwrap();
