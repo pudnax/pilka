@@ -2,7 +2,7 @@
 
 Another one democoding tool 💥
 
-!(boring_tunnel.png)
+![](boring_tunnel.png)
 
 Used nightly features which is completely unnecessary and have to be removed:
  - [std::sync::SyncLazy](https://doc.rust-lang.org/std/lazy/struct.SyncLazy.html)
