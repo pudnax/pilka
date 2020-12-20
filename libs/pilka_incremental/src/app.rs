@@ -1,8 +1,5 @@
 use pilka_ash::ash::{prelude::VkResult, version::DeviceV1_0, ShaderInfo, *};
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, ffi::CString, path::PathBuf};
 
 /// The main struct that holds all render primitives
 ///
@@ -31,43 +28,6 @@ pub struct PilkaRender {
     pub queues: VkQueues,
     pub device: VkDevice,
     pub instance: VkInstance,
-}
-
-pub fn compile_shaders<P: AsRef<Path>>(
-    dir: P,
-    compiler: &mut shaderc::Compiler,
-    device: &VkDevice,
-) -> Result<Vec<vk::ShaderModule>, Box<dyn std::error::Error>> {
-    let mut shader_modules = Vec::new();
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let shader_type = match path.extension().and_then(std::ffi::OsStr::to_str) {
-            Some("frag") => shaderc::ShaderKind::Fragment,
-            Some("vert") => shaderc::ShaderKind::Vertex,
-            Some("comp") => shaderc::ShaderKind::Compute,
-            _ => {
-                println!(
-                    "Did not recognize file extension for shader file \"{:?}\"",
-                    path
-                );
-                continue;
-            }
-        };
-        let module = create_shader_module(
-            ShaderInfo {
-                name: path,
-                entry_point: "main".to_string(),
-            },
-            shader_type,
-            compiler,
-            device,
-        )
-        .expect("Failed to create shader module");
-        shader_modules.push(module);
-    }
-
-    Ok(shader_modules)
 }
 
 impl PilkaRender {
@@ -232,15 +192,16 @@ impl PilkaRender {
             &self.device,
         )?;
         let shader_set = Box::new([
+            // TODO: Convert entry point into CString
             vk::PipelineShaderStageCreateInfo {
                 module: vert_module,
-                p_name: "main\0".as_ptr() as *const i8,
+                p_name: vert_info.entry_point.as_ptr(),
                 stage: vk::ShaderStageFlags::VERTEX,
                 ..Default::default()
             },
             vk::PipelineShaderStageCreateInfo {
                 module: frag_module,
-                p_name: "main\0".as_ptr() as *const i8,
+                p_name: frag_info.entry_point.as_ptr(),
                 stage: vk::ShaderStageFlags::FRAGMENT,
                 ..Default::default()
             },
@@ -289,8 +250,6 @@ impl PilkaRender {
         let current_pipeline = &mut self.pipelines[index];
         let vs_info = current_pipeline.vs_info.clone();
         let fs_info = current_pipeline.fs_info.clone();
-        dbg!(&fs_info);
-        dbg!(&vs_info);
         let new_pipeline = self.make_pipeline_from_shaders(&vs_info, &fs_info)?;
         self.pipelines[index] = new_pipeline;
 

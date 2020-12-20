@@ -29,6 +29,8 @@ fn main() -> Result<()> {
     color_eyre::install()?;
 
     let _time: Instant = Instant::now();
+    println!("Constrols: ");
+    println!("Ctrl + r -> recompile shaders");
 
     let mut event_loop = winit::event_loop::EventLoop::new();
 
@@ -43,14 +45,8 @@ fn main() -> Result<()> {
     let mut pilka = PilkaRender::new(&window).unwrap();
     // TODO: Think about canonicalize
     pilka.push_shader_module(
-        ash::ShaderInfo {
-            name: PathBuf::from("shaders/shader.vert"),
-            entry_point: "main".to_string(),
-        },
-        ash::ShaderInfo {
-            name: PathBuf::from("shaders/shader.frag"),
-            entry_point: "main".to_string(),
-        },
+        ash::ShaderInfo::new(PathBuf::from("shaders/shader.vert"), "main".to_string())?,
+        ash::ShaderInfo::new(PathBuf::from("shaders/shader.frag"), "main".to_string())?,
         &[],
     )?;
 
