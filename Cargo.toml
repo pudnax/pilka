@@ -17,6 +17,7 @@ ultraviolet = "0.7.5"
 pilka_lib = { path = "libs/pilka_lib" }
 pilka_dyn = { path = "libs/pilka_dyn" }
 shaderc = "0.7.0"
+notify = "5.0.0-pre.4"
 
 [profile.release]
 lto = 'thin'

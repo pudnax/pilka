@@ -8,8 +8,12 @@ use pilka_dyn;
 use ash::{version::DeviceV1_0, vk};
 use eyre::*;
 
+use notify::{
+    event::{EventKind, ModifyKind},
+    RecommendedWatcher, RecursiveMode, Watcher,
+};
 use winit::{
-    dpi::{PhysicalPosition, PhysicalSize},
+    dpi::PhysicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
     platform::desktop::EventLoopExtDesktop,
@@ -24,7 +28,7 @@ fn main() -> Result<()> {
     // Initialize error hook.
     color_eyre::install()?;
 
-    let time: Instant = Instant::now();
+    let _time: Instant = Instant::now();
 
     let mut event_loop = winit::event_loop::EventLoop::new();
 
@@ -50,11 +54,33 @@ fn main() -> Result<()> {
         &["bla bla"],
     )?;
 
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    let mut watcher: RecommendedWatcher = Watcher::new_immediate(move |res| match res {
+        Ok(event) => {
+            tx.send(event).unwrap();
+        }
+        Err(e) => println!("watch error: {:?}", e),
+    })?;
+
+    watcher.watch("shaders/", RecursiveMode::Recursive)?;
+
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
         match event {
             // What @.@
-            Event::NewEvents(_) => {}
+            Event::NewEvents(_) => {
+                if let Ok(rx_event) = rx.try_recv() {
+                    if let notify::Event {
+                        kind: EventKind::Modify(ModifyKind::Data(_)),
+                        ..
+                    } = rx_event
+                    {
+                        println!("Kind: {:?}, path: {:#?}", rx_event.kind, rx_event.paths);
+                    }
+                }
+            }
+
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                 WindowEvent::Resized(PhysicalSize { .. }) => {
@@ -84,12 +110,12 @@ fn main() -> Result<()> {
                         *control_flow = ControlFlow::Exit;
                     }
                 }
-                WindowEvent::CursorMoved {
-                    position: PhysicalPosition { x, y },
-                    ..
-                } => {
-                    let vk::Extent2D { width, height } = pilka.extent;
-                }
+                // WindowEvent::CursorMoved {
+                //     position: PhysicalPosition { x, y },
+                //     ..
+                // } => {
+                //     let vk::Extent2D { width, height } = pilka.extent;
+                // }
                 _ => {}
             },
             Event::MainEventsCleared => {
