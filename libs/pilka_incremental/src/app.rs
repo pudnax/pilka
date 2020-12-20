@@ -199,11 +199,12 @@ impl PilkaRender {
     ) -> VkResult<()> {
         let pipeline_number = self.pipelines.len();
         self.shader_set
-            .insert(vert_info.name.clone(), pipeline_number);
+            .insert(vert_info.name.canonicalize().unwrap(), pipeline_number);
         self.shader_set
-            .insert(frag_info.name.clone(), pipeline_number);
+            .insert(frag_info.name.canonicalize().unwrap(), pipeline_number);
         for deps in dependencies {
-            self.shader_set.insert(PathBuf::from(deps), pipeline_number);
+            self.shader_set
+                .insert(PathBuf::from(deps).canonicalize().unwrap(), pipeline_number);
         }
 
         let vert_module = create_shader_module(

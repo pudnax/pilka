@@ -51,7 +51,7 @@ fn main() -> Result<()> {
             name: PathBuf::from("shaders/shader.frag"),
             entry_point: "main".to_string(),
         },
-        &["bla bla"],
+        &[],
     )?;
 
     let (tx, rx) = std::sync::mpsc::channel();
@@ -65,6 +65,9 @@ fn main() -> Result<()> {
 
     watcher.watch("shaders/", RecursiveMode::Recursive)?;
 
+    let mut pipelines_to_recompile = std::collections::HashSet::new();
+    let mut ctrl_pressed = false;
+
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
         match event {
@@ -76,13 +79,20 @@ fn main() -> Result<()> {
                         ..
                     } = rx_event
                     {
-                        println!("Kind: {:?}, path: {:#?}", rx_event.kind, rx_event.paths);
+                        for path in rx_event.paths {
+                            if pilka.shader_set.contains_key(&path) {
+                                pipelines_to_recompile.insert(pilka.shader_set[&path]);
+                            }
+                        }
                     }
                 }
             }
 
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                WindowEvent::ModifiersChanged(state) => {
+                    ctrl_pressed = state.ctrl();
+                }
                 WindowEvent::Resized(PhysicalSize { .. }) => {
                     let vk::Extent2D { width, height } =
                         pilka.surface.resolution(&pilka.device).unwrap();
@@ -109,6 +119,11 @@ fn main() -> Result<()> {
                     if VirtualKeyCode::Escape == keycode {
                         *control_flow = ControlFlow::Exit;
                     }
+                    if VirtualKeyCode::R == keycode {
+                        for index in pipelines_to_recompile.drain() {
+                            // pilka.rebuild_pipeline(index).unwrap();
+                        }
+                    }
                 }
                 // WindowEvent::CursorMoved {
                 //     position: PhysicalPosition { x, y },
@@ -118,6 +133,7 @@ fn main() -> Result<()> {
                 // }
                 _ => {}
             },
+
             Event::MainEventsCleared => {
                 pilka.render();
             }
