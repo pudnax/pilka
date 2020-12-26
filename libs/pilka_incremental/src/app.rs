@@ -1,5 +1,5 @@
 use pilka_ash::ash::{prelude::VkResult, version::DeviceV1_0, ShaderInfo, *};
-use std::{collections::HashMap, ffi::CString, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf};
 
 /// The main struct that holds all render primitives
 ///
@@ -47,7 +47,7 @@ impl PilkaRender {
         let render_pass = device.create_vk_render_pass(swapchain.format())?;
 
         let command_pool = device
-            .create_commmand_buffer(queues.graphics_queue.index, swapchain.images.len() as u32)?;
+            .create_commmand_pool(queues.graphics_queue.index, swapchain.images.len() as u32)?;
 
         let present_complete_semaphore = device.create_semaphore()?;
         let rendering_complete_semaphore = device.create_semaphore()?;
