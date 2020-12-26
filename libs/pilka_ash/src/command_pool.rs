@@ -8,7 +8,7 @@ use std::sync::Arc;
 pub struct VkCommandPool {
     pub pool: vk::CommandPool,
     pub active_command_buffer: usize,
-    pub command_buffers: Vec<vk::CommandBuffer>,
+    // pub command_buffers: Vec<vk::CommandBuffer>,
     pub fences: Vec<vk::Fence>,
     pub device: Arc<RawDevice>,
 }
@@ -24,7 +24,17 @@ impl VkCommandPool {
         f: F,
     ) {
         let submit_fence = self.fences[self.active_command_buffer];
-        let command_buffer = self.command_buffers[self.active_command_buffer];
+        // let command_buffer = self.command_buffers[self.active_command_buffer];
+        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+            .command_buffer_count(1)
+            .command_pool(self.pool)
+            .level(vk::CommandBufferLevel::PRIMARY);
+
+        let command_buffer =
+            unsafe { device.allocate_command_buffers(&command_buffer_allocate_info) }
+                .unwrap()
+                .pop()
+                .unwrap();
 
         unsafe {
             device
@@ -47,7 +57,7 @@ impl VkCommandPool {
         // };
 
         let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+            .flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE);
 
         unsafe {
             device
@@ -77,7 +87,13 @@ impl VkCommandPool {
                 .expect("Queue submit failed.")
         };
 
-        self.active_command_buffer = (self.active_command_buffer + 1) % self.command_buffers.len();
+        unsafe { device.wait_for_fences(&[submit_fence], true, u64::MAX) }.unwrap();
+        // unsafe { device.free_command_buffers(self.pool, &command_buffers) };
+        unsafe {
+            device.reset_command_pool(self.pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES)
+        }
+        .unwrap();
+        self.active_command_buffer = (self.active_command_buffer + 1) % self.fences.len();
     }
 }
 

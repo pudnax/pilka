@@ -109,13 +109,13 @@ impl VkDevice {
 
         let pool = unsafe { self.create_command_pool(&pool_create_info, None) }?;
 
-        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
-            .command_buffer_count(num_command_buffers)
-            .command_pool(pool)
-            .level(vk::CommandBufferLevel::PRIMARY);
+        // let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+        //     .command_buffer_count(num_command_buffers)
+        //     .command_pool(pool)
+        //     .level(vk::CommandBufferLevel::PRIMARY);
 
-        let command_buffers =
-            unsafe { self.allocate_command_buffers(&command_buffer_allocate_info) }?;
+        // let command_buffers =
+        //     unsafe { self.allocate_command_buffers(&command_buffer_allocate_info) }?;
 
         let fences: Result<_, _> = (0..num_command_buffers)
             .map(|_| self.create_fence(true))
@@ -124,7 +124,7 @@ impl VkDevice {
 
         Ok(VkCommandPool {
             pool,
-            command_buffers,
+            // command_buffers,
             fences,
             device: self.device.clone(),
             active_command_buffer: 0,
