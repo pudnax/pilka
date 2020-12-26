@@ -136,7 +136,7 @@ impl VkDevice {
             .format(format)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .samples(vk::SampleCountFlags::TYPE_1)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .load_op(vk::AttachmentLoadOp::LOAD)
             .store_op(vk::AttachmentStoreOp::STORE)
             .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
             .build()];
