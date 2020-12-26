@@ -98,7 +98,7 @@ impl VkDevice {
         Ok(unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?)
     }
 
-    pub fn create_commmand_buffer(
+    pub fn create_commmand_pool(
         &self,
         queue_family_index: u32,
         num_command_buffers: u32,
