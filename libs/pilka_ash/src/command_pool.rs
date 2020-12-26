@@ -7,8 +7,8 @@ use std::sync::Arc;
 // Otherwise the pool will keep on growing until you run out of memory
 pub struct VkCommandPool {
     pub pool: vk::CommandPool,
-    pub active_command_buffer: usize,
-    // pub command_buffers: Vec<vk::CommandBuffer>,
+    pub active_command: usize,
+    pub command_buffers: Vec<vk::CommandBuffer>,
     pub fences: Vec<vk::Fence>,
     pub device: Arc<RawDevice>,
 }
@@ -23,18 +23,8 @@ impl VkCommandPool {
         signal_semaphores: &[vk::Semaphore],
         f: F,
     ) {
-        let submit_fence = self.fences[self.active_command_buffer];
-        // let command_buffer = self.command_buffers[self.active_command_buffer];
-        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
-            .command_buffer_count(1)
-            .command_pool(self.pool)
-            .level(vk::CommandBufferLevel::PRIMARY);
-
-        let command_buffer =
-            unsafe { device.allocate_command_buffers(&command_buffer_allocate_info) }
-                .unwrap()
-                .pop()
-                .unwrap();
+        let submit_fence = self.fences[self.active_command];
+        let command_buffer = self.command_buffers[self.active_command];
 
         unsafe {
             device
@@ -47,17 +37,8 @@ impl VkCommandPool {
                 .expect("Reset fences failed.")
         };
 
-        // unsafe {
-        //     device
-        //         .reset_command_buffer(
-        //             command_buffer,
-        //             vk::CommandBufferResetFlags::RELEASE_RESOURCES,
-        //         )
-        //         .expect("Reset command buffer failed.")
-        // };
-
         let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE);
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
         unsafe {
             device
@@ -87,13 +68,7 @@ impl VkCommandPool {
                 .expect("Queue submit failed.")
         };
 
-        unsafe { device.wait_for_fences(&[submit_fence], true, u64::MAX) }.unwrap();
-        // unsafe { device.free_command_buffers(self.pool, &command_buffers) };
-        unsafe {
-            device.reset_command_pool(self.pool, vk::CommandPoolResetFlags::RELEASE_RESOURCES)
-        }
-        .unwrap();
-        self.active_command_buffer = (self.active_command_buffer + 1) % self.fences.len();
+        self.active_command = (self.active_command + 1) % self.fences.len();
     }
 }
 
