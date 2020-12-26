@@ -13,6 +13,7 @@ use notify::{
     RecommendedWatcher, RecursiveMode, Watcher,
 };
 use winit::{
+    dpi::PhysicalPosition,
     dpi::PhysicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
@@ -28,7 +29,7 @@ fn main() -> Result<()> {
     // Initialize error hook.
     color_eyre::install()?;
 
-    let _time: Instant = Instant::now();
+    let time: Instant = Instant::now();
     println!("Constrols: ");
     println!("Ctrl + r -> recompile shaders");
 
@@ -82,6 +83,8 @@ fn main() -> Result<()> {
                         }
                     }
                 }
+
+                pilka.push_constant.time = time.elapsed().as_secs_f32();
             }
 
             Event::WindowEvent { event, .. } => match event {
@@ -102,6 +105,8 @@ fn main() -> Result<()> {
                     }
 
                     pilka.resize().unwrap();
+
+                    pilka.push_constant.wh = [width as f32, height as f32];
                 }
                 WindowEvent::KeyboardInput {
                     input:
@@ -125,12 +130,15 @@ fn main() -> Result<()> {
                         }
                     }
                 }
-                // WindowEvent::CursorMoved {
-                //     position: PhysicalPosition { x, y },
-                //     ..
-                // } => {
-                //     let vk::Extent2D { width, height } = pilka.extent;
-                // }
+                WindowEvent::CursorMoved {
+                    position: PhysicalPosition { x, y },
+                    ..
+                } => {
+                    let vk::Extent2D { width, height } = pilka.extent;
+                    let x = (x as f32 / width as f32 - 0.5) * 2.;
+                    let y = -(y as f32 / height as f32 - 0.5) * 2.;
+                    pilka.push_constant.mouse = [x, y];
+                }
                 _ => {}
             },
 
