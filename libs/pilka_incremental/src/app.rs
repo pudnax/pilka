@@ -6,6 +6,8 @@ use std::{collections::HashMap, path::PathBuf};
 /// Rust documentation states for FIFO drop order for struct fields.
 /// Or in the other words it's the same order that they're declared.
 pub struct PilkaRender {
+    pub push_constant: PushConstant,
+
     pub scissors: Box<[vk::Rect2D]>,
     pub viewports: Box<[vk::Viewport]>,
     pub extent: vk::Extent2D,
@@ -28,6 +30,14 @@ pub struct PilkaRender {
     pub queues: VkQueues,
     pub device: VkDevice,
     pub instance: VkInstance,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct PushConstant {
+    pub wh: [f32; 2],
+    pub mouse: [f32; 2],
+    pub time: f32,
 }
 
 impl PilkaRender {
@@ -79,6 +89,12 @@ impl PilkaRender {
 
         let compiler = shaderc::Compiler::new().unwrap();
 
+        let push_constant = PushConstant {
+            wh: surface.resolution_slice(&device)?,
+            mouse: [0.; 2],
+            time: 0.,
+        };
+
         Ok(Self {
             instance,
             device,
@@ -102,6 +118,8 @@ impl PilkaRender {
             viewports,
             scissors,
             extent,
+
+            push_constant,
         })
     }
 
@@ -290,6 +308,7 @@ impl PilkaRender {
 
         let viewports = self.viewports.as_ref();
         let scissors = self.scissors.as_ref();
+        let push_constant = self.push_constant;
 
         for pipeline in &self.pipelines[..] {
             let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
@@ -304,6 +323,7 @@ impl PilkaRender {
                 })
                 .clear_values(&clear_values);
 
+            let pipeline_layout = pipeline.pipeline_layout;
             let wait_mask = &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
             // Start command queue
             unsafe {
@@ -326,6 +346,14 @@ impl PilkaRender {
                         );
                         device.cmd_set_viewport(draw_command_buffer, 0, &viewports);
                         device.cmd_set_scissor(draw_command_buffer, 0, &scissors);
+
+                        device.cmd_push_constants(
+                            draw_command_buffer,
+                            pipeline_layout,
+                            vk::ShaderStageFlags::FRAGMENT,
+                            0,
+                            any_as_u8_slice(&push_constant),
+                        );
 
                         // Or draw without the index buffer
                         device.cmd_draw(draw_command_buffer, 3, 1, 0, 0);
@@ -357,7 +385,14 @@ impl PilkaRender {
     }
 
     pub fn create_pipeline_layout(&self) -> VkResult<vk::PipelineLayout> {
-        let layout_create_info = vk::PipelineLayoutCreateInfo::builder().build();
+        let push_constant_range = vk::PushConstantRange::builder()
+            .offset(0)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .size(std::mem::size_of::<PushConstant>() as u32)
+            .build();
+        let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
+            .push_constant_ranges(&[push_constant_range])
+            .build();
         unsafe {
             self.device
                 .create_pipeline_layout(&layout_create_info, None)
@@ -365,7 +400,7 @@ impl PilkaRender {
     }
 }
 
-unsafe fn _any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
     std::slice::from_raw_parts((p as *const T) as *const u8, std::mem::size_of::<T>())
 }
 
