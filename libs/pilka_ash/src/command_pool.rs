@@ -37,14 +37,14 @@ impl VkCommandPool {
                 .expect("Reset fences failed.")
         };
 
-        unsafe {
-            device
-                .reset_command_buffer(
-                    command_buffer,
-                    vk::CommandBufferResetFlags::RELEASE_RESOURCES,
-                )
-                .expect("Reset command buffer failed.")
-        };
+        // unsafe {
+        //     device
+        //         .reset_command_buffer(
+        //             command_buffer,
+        //             vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+        //         )
+        //         .expect("Reset command buffer failed.")
+        // };
 
         let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
