@@ -22,8 +22,8 @@ use winit::{
 
 use std::{path::PathBuf, time::Instant};
 
-// const SHADER_PATH: &str = "shaders";
-// const SHADER_ENTRY_POINT: &str = "main";
+const SHADER_PATH: &str = "shaders";
+const SHADER_ENTRY_POINT: &str = "main";
 
 fn main() -> Result<()> {
     // Initialize error hook.
@@ -44,10 +44,15 @@ fn main() -> Result<()> {
         .build(&event_loop)?;
 
     let mut pilka = PilkaRender::new(&window).unwrap();
-    // TODO: Think about canonicalize
     pilka.push_shader_module(
-        ash::ShaderInfo::new(PathBuf::from("shaders/shader.vert"), "main".to_string())?,
-        ash::ShaderInfo::new(PathBuf::from("shaders/shader.frag"), "main".to_string())?,
+        ash::ShaderInfo::new(
+            PathBuf::from([SHADER_PATH, "/shader.vert"].concat()),
+            SHADER_ENTRY_POINT.to_string(),
+        )?,
+        ash::ShaderInfo::new(
+            PathBuf::from([SHADER_PATH, "/shader.frag"].concat()),
+            SHADER_ENTRY_POINT.to_string(),
+        )?,
         &[],
     )?;
 
@@ -62,7 +67,6 @@ fn main() -> Result<()> {
 
     watcher.watch("shaders/", RecursiveMode::Recursive)?;
 
-    let mut pipelines_to_recompile = std::collections::HashSet::new();
     let mut ctrl_pressed = false;
 
     event_loop.run_return(|event, _, control_flow| {
@@ -76,9 +80,10 @@ fn main() -> Result<()> {
                         ..
                     } = rx_event
                     {
+                        unsafe { pilka.device.device_wait_idle() }.unwrap();
                         for path in rx_event.paths {
                             if pilka.shader_set.contains_key(&path) {
-                                pipelines_to_recompile.insert(pilka.shader_set[&path]);
+                                pilka.rebuild_pipeline(pilka.shader_set[&path]).unwrap();
                             }
                         }
                     }
@@ -119,15 +124,6 @@ fn main() -> Result<()> {
                 } => {
                     if VirtualKeyCode::Escape == keycode {
                         *control_flow = ControlFlow::Exit;
-                    }
-                    if VirtualKeyCode::R == keycode && ctrl_pressed {
-                        unsafe {
-                            // FIXME: Just forget the existing of this function, you lack!
-                            pilka.device.device_wait_idle().unwrap();
-                        }
-                        for index in pipelines_to_recompile.drain() {
-                            pilka.rebuild_pipeline(index).unwrap();
-                        }
                     }
                 }
                 WindowEvent::CursorMoved {

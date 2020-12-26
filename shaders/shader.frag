@@ -23,9 +23,9 @@ void main() {
   float d = m.y;
 
   m.x += sin(0.5 + pc.time) * 0.1;
-  m.y += 0.25;
+  m.y += 0.8;
 
   vec4 t = plas(m * 3.14, 1.0) / d;
-  /* out_color = vec4(uv, 0.0, 1.0); */
+  out_color = vec4(uv, 0.0, 1.0);
   out_color = t + vec4(pc.mouse, 1.0, 1.0);
 }
