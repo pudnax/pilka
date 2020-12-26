@@ -65,14 +65,13 @@ fn main() -> Result<()> {
         Err(e) => println!("watch error: {:?}", e),
     })?;
 
-    watcher.watch("shaders/", RecursiveMode::Recursive)?;
+    watcher.watch(SHADER_PATH, RecursiveMode::Recursive)?;
 
     let mut ctrl_pressed = false;
 
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
         match event {
-            // What @.@
             Event::NewEvents(_) => {
                 if let Ok(rx_event) = rx.try_recv() {
                     if let notify::Event {
@@ -141,9 +140,7 @@ fn main() -> Result<()> {
             Event::MainEventsCleared => {
                 pilka.render();
             }
-            Event::LoopDestroyed => {
-                unsafe { pilka.device.device_wait_idle() }.unwrap();
-            }
+            Event::LoopDestroyed => unsafe { pilka.device.device_wait_idle() }.unwrap(),
             _ => {}
         }
     });
