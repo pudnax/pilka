@@ -289,7 +289,7 @@ impl PilkaRender {
         } {
             Ok((index, check)) => (index, check),
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                // println!("Oooopsie~ 2");
+                println!("Oooopsie~ Get out-of-date swapchain in first time");
                 return;
             }
             Err(_) => panic!(),
@@ -350,8 +350,9 @@ impl PilkaRender {
                         device.cmd_push_constants(
                             draw_command_buffer,
                             pipeline_layout,
-                            vk::ShaderStageFlags::FRAGMENT,
+                            vk::ShaderStageFlags::ALL_GRAPHICS,
                             0,
+                            // TODO: Find better way to work with c_void
                             any_as_u8_slice(&push_constant),
                         );
 
@@ -379,7 +380,9 @@ impl PilkaRender {
                 self.resize().expect("Failed resize on present.");
             }
             Ok(_) => {}
-            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => { /*println!("Oooopsie~ 2") */ }
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                println!("Oooopsie~ Get out-of-date swapchain");
+            }
             Err(_) => panic!(),
         }
     }
@@ -387,7 +390,7 @@ impl PilkaRender {
     pub fn create_pipeline_layout(&self) -> VkResult<vk::PipelineLayout> {
         let push_constant_range = vk::PushConstantRange::builder()
             .offset(0)
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS)
             .size(std::mem::size_of::<PushConstant>() as u32)
             .build();
         let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
