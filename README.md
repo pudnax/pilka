@@ -1,14 +1,12 @@
 # pilka (WIP)
 
-Another one democoding tool 💥
-
 ![](boring_tunnel.png)
 
 Available features:
  - [X] Hot-reload
+ - [ ] Saving shaders
  - [ ] Taking screenshot
  - [ ] Record video
- - [ ] Dump shaders
 
 Used nightly features which is completely unnecessary and have to be removed:
  - [std::sync::SyncLazy](https://doc.rust-lang.org/std/lazy/struct.SyncLazy.html)
