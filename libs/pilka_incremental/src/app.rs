@@ -19,7 +19,7 @@ pub struct PilkaRender {
     pub present_complete_semaphore: vk::Semaphore,
     pub command_pool: VkCommandPool,
 
-    // FIXME: Where is `PipeilineCache`?
+    pub pipeline_cache: vk::PipelineCache,
     pub pipelines: Vec<VkPipeline>,
     pub render_pass: VkRenderPass,
 
@@ -95,6 +95,10 @@ impl PilkaRender {
             time: 0.,
         };
 
+        let pipeline_cache_create_info = vk::PipelineCacheCreateInfo::builder();
+        let pipeline_cache =
+            unsafe { device.create_pipeline_cache(&pipeline_cache_create_info, None) }?;
+
         Ok(Self {
             instance,
             device,
@@ -107,6 +111,7 @@ impl PilkaRender {
             render_pass,
             // pipeline_desc,
             pipelines: vec![],
+            pipeline_cache,
 
             command_pool,
             present_complete_semaphore,
@@ -225,12 +230,8 @@ impl PilkaRender {
             },
         ]);
 
-        let new_pipeline = self.new_pipeline(
-            vk::PipelineCache::null(),
-            shader_set,
-            &vert_info,
-            &frag_info,
-        )?;
+        let new_pipeline =
+            self.new_pipeline(self.pipeline_cache, shader_set, &vert_info, &frag_info)?;
 
         unsafe {
             self.device.destroy_shader_module(vert_module, None);
@@ -410,6 +411,9 @@ unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
 impl Drop for PilkaRender {
     fn drop(&mut self) {
         unsafe {
+            self.device
+                .destroy_pipeline_cache(self.pipeline_cache, None);
+
             self.device
                 .destroy_semaphore(self.present_complete_semaphore, None);
             self.device
