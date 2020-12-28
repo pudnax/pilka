@@ -11,14 +11,41 @@ Available features:
 Pilka is a cross-platform democoding tool for creating shader* demos, similar to [Bonzomatic](https://github.com/Gargaj/Bonzomatic) or [KodeLife](https://hexler.net/products/kodelife). Supports hot-reloading which means resources is checked, updated in the background.
 
 ## Controls
-- `F1`:  Toggles play/pause
-- `F2`:  Pauses and steps back one frame
-- `F3`:  Pauses and steps forward one frame
-- `F4`:  Restarts playback at frame 0 (Time and Pos = 0)
-- `F9`:  Save shaders
-- `F10`: Start/Stop record
-- `F11`: Take Screenshot
-- `ESC`: Exit the application
+- `F1`:   Toggles play/pause
+- `F2`:   Pauses and steps back one frame
+- `F3`:   Pauses and steps forward one frame
+- `F4`:   Restarts playback at frame 0 (`Time` and `Pos` = 0)
+- `F9`:   Save shaders
+- `F10`:  Start/Stop record video
+- `F11`:  Take Screenshot
+- `ESC`:  Exit the application
+- Arrows: Change `Pos`
+
+## Parameters
+(per-draw-update)
+ - resolution: vec2
+ - mouse: vec2
+ - position: vec2
+ - time: float
+ 
+## Requirements
+Vulkan SDK is required.
+
+## Installation
+
+```Bash
+cargo install pngme
+```
+
+You also can install the application by to downloading the source code
+and build locally.
+
+```Bash
+# or through ssh git@github.com:disDeal/pngcrypt-rs.git
+git clone https://github.com/disDeal/pngcrypt-rs.git
+cd pngcrypt-rs
+cargo install --path .
+```
 
 Used nightly features which is completely unnecessary and have to be removed:
  - [std::sync::SyncLazy](https://doc.rust-lang.org/std/lazy/struct.SyncLazy.html)
