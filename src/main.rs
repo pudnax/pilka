@@ -30,8 +30,6 @@ fn main() -> Result<()> {
     color_eyre::install()?;
 
     let time: Instant = Instant::now();
-    println!("Constrols: ");
-    println!("Ctrl + r -> recompile shaders");
 
     let mut event_loop = winit::event_loop::EventLoop::new();
 
@@ -123,6 +121,19 @@ fn main() -> Result<()> {
                 } => {
                     if VirtualKeyCode::Escape == keycode {
                         *control_flow = ControlFlow::Exit;
+                    }
+                    if VirtualKeyCode::F12 == keycode {
+                        let data = pilka.screenshot().unwrap();
+                        let screen: image::ImageBuffer<image::Bgra<u8>, _> =
+                            image::ImageBuffer::from_raw(
+                                pilka.extent.width,
+                                pilka.extent.height,
+                                data,
+                            )
+                            .expect("ImageBuffer creation");
+
+                        let screen_image = image::DynamicImage::ImageBgra8(screen).to_rgba8();
+                        screen_image.save("screenshot.jpg").unwrap();
                     }
                 }
                 WindowEvent::CursorMoved {

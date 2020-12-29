@@ -18,6 +18,9 @@ pilka_lib = { path = "libs/pilka_lib" }
 pilka_dyn = { path = "libs/pilka_dyn" }
 shaderc = "0.7.0"
 notify = "5.0.0-pre.4"
+chrono = "0.4.19"
+png = "0.16.8"
+image = "0.23.12"
 
 [profile.release]
 lto = 'thin'
