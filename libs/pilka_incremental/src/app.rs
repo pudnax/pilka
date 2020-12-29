@@ -1,4 +1,4 @@
-use pilka_ash::ash::{prelude::VkResult, version::DeviceV1_0, ShaderInfo, *};
+use pilka_ash::ash::{pilka_util, prelude::VkResult, version::DeviceV1_0, ShaderInfo, *};
 use std::{collections::HashMap, path::PathBuf};
 
 /// The main struct that holds all render primitives
@@ -27,6 +27,8 @@ pub struct PilkaRender {
     pub swapchain: VkSwapchain,
     pub surface: VkSurface,
 
+    pub device_properties: VkDeviceProperties,
+
     pub queues: VkQueues,
     pub device: VkDevice,
     pub instance: VkInstance,
@@ -46,7 +48,7 @@ impl PilkaRender {
 
         let surface = instance.create_surface(window)?;
 
-        let (device, _device_properties, queues) =
+        let (device, device_properties, queues) =
             instance.create_device_and_queues(Some(&surface))?;
 
         let surface_resolution = surface.resolution(&device)?;
@@ -103,6 +105,8 @@ impl PilkaRender {
             instance,
             device,
             queues,
+
+            device_properties,
 
             surface,
             swapchain,
@@ -401,6 +405,251 @@ impl PilkaRender {
             self.device
                 .create_pipeline_layout(&layout_create_info, None)
         }
+    }
+
+    pub fn screenshot(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let commandbuf_allocate_info = vk::CommandBufferAllocateInfo::builder()
+            .command_pool(self.command_pool.pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
+        let copybuffer = unsafe {
+            self.device
+                .allocate_command_buffers(&commandbuf_allocate_info)
+        }?[0];
+
+        let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        unsafe {
+            self.device
+                .begin_command_buffer(copybuffer, &cmd_begininfo)?
+        };
+
+        let extent = vk::Extent3D {
+            width: self.extent.width,
+            height: self.extent.height,
+            depth: 1,
+        };
+        let image_create_info = vk::ImageCreateInfo::builder()
+            .format(vk::Format::R8G8B8A8_UNORM)
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(extent)
+            .array_layers(1)
+            .mip_levels(1)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .tiling(vk::ImageTiling::LINEAR)
+            .usage(vk::ImageUsageFlags::TRANSFER_DST)
+            .initial_layout(vk::ImageLayout::UNDEFINED);
+
+        let destination_image = unsafe { self.device.create_image(&image_create_info, None)? };
+        let image_memory_reqs =
+            unsafe { self.device.get_image_memory_requirements(destination_image) };
+
+        let memory_type_index = pilka_util::find_memorytype_index(
+            &image_memory_reqs,
+            &self.device_properties.memory,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        )
+        .unwrap();
+        let alloc_info = vk::MemoryAllocateInfo::builder()
+            .allocation_size(image_memory_reqs.size)
+            .memory_type_index(memory_type_index)
+            .build();
+        let destination_image_memory = unsafe { self.device.allocate_memory(&alloc_info, None) }?;
+        unsafe {
+            self.device
+                .bind_image_memory(destination_image, destination_image_memory, 0)
+        }?;
+
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .image(destination_image)
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .build();
+
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                copybuffer,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[barrier],
+            )
+        };
+
+        // FIXME: index by pool.active_command? What?
+        let source_image = self.swapchain.images[self.command_pool.active_command];
+
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .image(source_image)
+            .src_access_mask(vk::AccessFlags::MEMORY_READ)
+            .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
+            .old_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+            .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .build();
+
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                copybuffer,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[barrier],
+            )
+        };
+
+        let zero_offset = vk::Offset3D::default();
+        let copy_area = vk::ImageCopy::builder()
+            .src_subresource(vk::ImageSubresourceLayers {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                mip_level: 0,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .src_offset(zero_offset)
+            .dst_subresource(vk::ImageSubresourceLayers {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                mip_level: 0,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .dst_offset(zero_offset)
+            .extent(extent)
+            .build();
+
+        unsafe {
+            self.device.cmd_copy_image(
+                copybuffer,
+                source_image,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                destination_image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[copy_area],
+            )
+        };
+
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .image(destination_image)
+            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .new_layout(vk::ImageLayout::GENERAL)
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .build();
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                copybuffer,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[barrier],
+            )
+        };
+
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .image(source_image)
+            .src_access_mask(vk::AccessFlags::TRANSFER_READ)
+            .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+            .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .build();
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                copybuffer,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[barrier],
+            )
+        };
+
+        unsafe { self.device.end_command_buffer(copybuffer) }?;
+        let submit_infos = [vk::SubmitInfo::builder()
+            .command_buffers(&[copybuffer])
+            .build()];
+        let fence = self.device.create_fence(false)?;
+        unsafe {
+            self.device
+                .queue_submit(self.queues.graphics_queue.queue, &submit_infos, fence)
+        }?;
+        unsafe { self.device.wait_for_fences(&[fence], true, u64::MAX) }?;
+        unsafe {
+            self.device
+                .free_command_buffers(self.command_pool.pool, &[copybuffer])
+        };
+
+        let source_ptr = unsafe {
+            self.device.map_memory(
+                destination_image_memory,
+                0,
+                image_memory_reqs.size,
+                vk::MemoryMapFlags::empty(),
+            )
+        }? as *mut u8;
+        let subresource_layout = unsafe {
+            self.device.get_image_subresource_layout(
+                destination_image,
+                vk::ImageSubresource {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    mip_level: 0,
+                    array_layer: 0,
+                },
+            )
+        };
+
+        let mut data = Vec::with_capacity(subresource_layout.size as usize);
+
+        unsafe {
+            std::ptr::copy(
+                source_ptr,
+                data.as_mut_ptr(),
+                subresource_layout.size as usize,
+            );
+            data.set_len(subresource_layout.size as usize);
+        };
+
+        unsafe { self.device.unmap_memory(destination_image_memory) };
+        unsafe { self.device.destroy_image(destination_image, None) };
+        unsafe { self.device.free_memory(destination_image_memory, None) };
+        unsafe { self.device.destroy_fence(fence, None) };
+
+        Ok(data)
     }
 }
 
