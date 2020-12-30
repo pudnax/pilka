@@ -34,16 +34,16 @@ Vulkan SDK is required.
 ## Installation
 
 ```Bash
-cargo install pngme
+cargo install pilka
 ```
 
 You also can install the application by to downloading the source code
 and build locally.
 
 ```Bash
-# or through ssh git@github.com:disDeal/pngcrypt-rs.git
-git clone https://github.com/disDeal/pngcrypt-rs.git
-cd pngcrypt-rs
+# or through ssh git@github.com:pudnax/pilka.git
+git clone https://github.com/pudnax/pilka.git
+cd pilka
 cargo install --path .
 ```
 
