@@ -23,9 +23,9 @@ Pilka is a cross-platform democoding tool for creating shader* demos, similar to
 
 ## Parameters
 (per-draw-update)
+ - position: vec3
  - resolution: vec2
  - mouse: vec2
- - position: vec2
  - time: float
  
 ## Requirements
