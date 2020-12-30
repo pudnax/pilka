@@ -408,7 +408,7 @@ impl PilkaRender {
         }
     }
 
-    // TODO: Make transfer command pool
+    // TODO(#24): Make transfer command pool
     pub fn capture_image(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let commandbuf_allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(self.command_pool.pool)
