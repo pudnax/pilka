@@ -219,7 +219,6 @@ impl PilkaRender {
             &self.device,
         )?;
         let shader_set = Box::new([
-            // TODO: Convert entry point into CString
             vk::PipelineShaderStageCreateInfo {
                 module: vert_module,
                 p_name: vert_info.entry_point.as_ptr(),
@@ -293,8 +292,10 @@ impl PilkaRender {
             )
         } {
             Ok((index, check)) => (index, check),
-            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) | Err(vk::Result::SUBOPTIMAL_KHR) => {
                 println!("Oooopsie~ Get out-of-date swapchain in first time");
+                self.resize()
+                    .expect("Failed resize on acquiring next present image");
                 return;
             }
             Err(_) => panic!(),
@@ -357,7 +358,7 @@ impl PilkaRender {
                             pipeline_layout,
                             vk::ShaderStageFlags::ALL_GRAPHICS,
                             0,
-                            // TODO: Find better way to work with c_void
+                            // TODO(#23): Find the better way to work with c_void
                             any_as_u8_slice(&push_constant),
                         );
 
@@ -384,11 +385,11 @@ impl PilkaRender {
             Ok(is_suboptimal) if is_suboptimal => {
                 self.resize().expect("Failed resize on present.");
             }
-            Ok(_) => {}
-            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                println!("Oooopsie~ Get out-of-date swapchain");
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) | Err(vk::Result::SUBOPTIMAL_KHR) => {
+                self.resize().expect("Failed resize on present.");
             }
-            Err(_) => panic!(),
+            Ok(_) => {}
+            Err(e) => panic!("Unexpected error on presenting image: {}", e),
         }
     }
 
@@ -407,7 +408,8 @@ impl PilkaRender {
         }
     }
 
-    pub fn screenshot(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // TODO: Make transfer command pool
+    pub fn capture_image(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let commandbuf_allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(self.command_pool.pool)
             .level(vk::CommandBufferLevel::PRIMARY)
@@ -419,10 +421,7 @@ impl PilkaRender {
 
         let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        unsafe {
-            self.device
-                .begin_command_buffer(copybuffer, &cmd_begininfo)?
-        };
+        unsafe { self.device.begin_command_buffer(copybuffer, &cmd_begininfo) }?;
 
         let extent = vk::Extent3D {
             width: self.extent.width,
@@ -487,7 +486,6 @@ impl PilkaRender {
             )
         };
 
-        // FIXME: index by pool.active_command? What?
         let source_image = self.swapchain.images[self.command_pool.active_command];
 
         let barrier = vk::ImageMemoryBarrier::builder()
