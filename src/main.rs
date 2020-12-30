@@ -123,7 +123,7 @@ fn main() -> Result<()> {
                         *control_flow = ControlFlow::Exit;
                     }
                     if VirtualKeyCode::F12 == keycode {
-                        let data = pilka.screenshot().unwrap();
+                        let data = pilka.capture_image().unwrap();
                         let screen: image::ImageBuffer<image::Bgra<u8>, _> =
                             image::ImageBuffer::from_raw(
                                 pilka.extent.width,

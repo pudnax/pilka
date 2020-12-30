@@ -1,11 +1,11 @@
 # pilka (WIP)
 
-![](boring_tunnel.png)
+![preview](boring_tunnel.png)
 
 Available features:
  - [X] Hot-reload
  - [ ] Saving shaders
- - [ ] Taking screenshot
+ - [X] Taking screenshot
  - [ ] Record video
 
 Used nightly features which is completely unnecessary and have to be removed:
