@@ -1,4 +1,4 @@
-# pilka (WIP)
+# pilka 🔩 (WIP)
 
 ![](boring_tunnel.png)
 
