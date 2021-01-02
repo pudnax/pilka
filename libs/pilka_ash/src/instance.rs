@@ -10,32 +10,12 @@ use crate::ash::{
 
 use raw_window_handle::HasRawWindowHandle;
 
-use std::{borrow::Cow, ffi::CStr, lazy::SyncLazy, ops::Deref, sync::Arc};
+use std::{ffi::CStr, ops::Deref, sync::Arc};
 
 use crate::{
     device::{RawDevice, VkDevice, VkDeviceProperties},
     surface::VkSurface,
 };
-
-/// Static and lazy initialized array of needed validation layers.
-/// Appear only on debug builds.
-static LAYERS: SyncLazy<Vec<&'static CStr>> = SyncLazy::new(|| {
-    let mut layers: Vec<&'static CStr> = vec![];
-    if cfg!(debug_assertions) {
-        layers.push(CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap());
-    }
-    layers
-});
-
-/// Static and lazy initialized array of needed extensions.
-/// Appear only on debug builds.
-static EXTS: SyncLazy<Vec<&'static CStr>> = SyncLazy::new(|| {
-    let mut exts: Vec<&'static CStr> = vec![];
-    if cfg!(debug_assertions) {
-        exts.push(DebugUtils::name());
-    }
-    exts
-});
 
 #[allow(unused_macros)]
 macro_rules! offset_of {
@@ -56,14 +36,12 @@ pub struct VkInstance {
     pub entry: ash_molten::Entry,
     pub instance: ash::Instance,
     validation_layers: Vec<*const i8>,
-    _dbg_loader: Option<ash::extensions::ext::DebugUtils>,
-    _dbg_callbk: Option<vk::DebugUtilsMessengerEXT>,
+    _dbg_loader: ash::extensions::ext::DebugUtils,
+    _dbg_callbk: vk::DebugUtilsMessengerEXT,
 }
 
 impl VkInstance {
-    pub fn new<W: raw_window_handle::HasRawWindowHandle>(
-        window_handle: Option<&W>,
-    ) -> VkResult<Self> {
+    pub fn new(validation_layers: &[&str], extention_names: &[&CStr]) -> VkResult<Self> {
         let entry = ash::Entry::new().unwrap();
 
         #[cfg(target_os = "macos")]
@@ -77,7 +55,7 @@ impl VkInstance {
 
         // Find approciate validation layers from available.
         let available_layers = entry.enumerate_instance_layer_properties()?;
-        let validation_layers = LAYERS
+        let validation_layers = validation_layers
             .iter()
             .map(|s| unsafe { CStr::from_ptr(s.as_ptr() as *const i8) })
             .filter_map(|lyr| {
@@ -95,16 +73,12 @@ impl VkInstance {
             })
             .collect::<Vec<_>>();
 
-        let surface_extensions = match window_handle {
-            Some(ref handle) => ash_window::enumerate_required_extensions(*handle)?,
-            None => vec![],
-        };
         // Find approciate extensions from available.
         let available_exts = entry.enumerate_instance_extension_properties()?;
-        let extensions = EXTS
+        let extensions = [DebugUtils::name()]
             .iter()
+            .chain(extention_names)
             .map(|s| unsafe { CStr::from_ptr(s.as_ptr() as *const i8) })
-            .chain(surface_extensions)
             .filter_map(|ext| {
                 available_exts
                     .iter()
@@ -133,19 +107,19 @@ impl VkInstance {
 
         let instance = unsafe { entry.create_instance(&instance_info, None) }.unwrap();
 
-        let (_dbg_loader, _dbg_callbk) = if cfg!(debug_assertions) {
+        let (_dbg_loader, _dbg_callbk) = {
             let dbg_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
                 .message_severity(
                     vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING, // | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
+                        // | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+                        // | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
                 )
                 .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
                 .pfn_user_callback(Some(vulkan_debug_callback));
             let dbg_loader = DebugUtils::new(&entry, &instance);
             let dbg_callbk = unsafe { dbg_loader.create_debug_utils_messenger(&dbg_info, None)? };
-            (Some(dbg_loader), Some(dbg_callbk))
-        } else {
-            (None, None)
+            (dbg_loader, dbg_callbk)
         };
 
         Ok(Self {
@@ -329,11 +303,10 @@ impl std::ops::DerefMut for VkInstance {
 
 impl Drop for VkInstance {
     fn drop(&mut self) {
-        if let Some(ref _dbg_loader) = self._dbg_loader {
-            if let Some(_dbg_callbk) = self._dbg_callbk {
-                unsafe { _dbg_loader.destroy_debug_utils_messenger(_dbg_callbk, None) };
-            }
-        }
+        unsafe {
+            self._dbg_loader
+                .destroy_debug_utils_messenger(self._dbg_callbk, None)
+        };
         unsafe { self.instance.destroy_instance(None) };
     }
 }
@@ -345,23 +318,11 @@ unsafe extern "system" fn vulkan_debug_callback(
     _user_data: *mut std::os::raw::c_void,
 ) -> vk::Bool32 {
     let callback_data = &*p_callback_data;
-    let message_id_number: i32 = callback_data.message_id_number as i32;
-
-    let message_id_name = if callback_data.p_message_id_name.is_null() {
-        Cow::from("")
-    } else {
-        CStr::from_ptr(callback_data.p_message_id_name).to_string_lossy()
-    };
-
-    let message = if callback_data.p_message.is_null() {
-        Cow::from("")
-    } else {
-        CStr::from_ptr(callback_data.p_message).to_string_lossy()
-    };
+    let message = CStr::from_ptr(callback_data.p_message).to_string_lossy();
 
     println!(
-        "{:?}:\n{:?} [{} ({})] : {}\n",
-        message_severity, message_type, message_id_name, message_id_number, message,
+        "{:?}:\n{:?} : {}\n",
+        message_severity, message_type, message,
     );
 
     vk::FALSE

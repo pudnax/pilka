@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-#![feature(once_cell)]
 
 mod command_pool;
 mod device;
@@ -12,7 +11,7 @@ mod swapchain;
 pub mod utils;
 
 pub mod ash_window {
-    pub use ash_window::*;
+    pub use ash_window;
 }
 
 pub mod ash {

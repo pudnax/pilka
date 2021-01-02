@@ -1,4 +1,5 @@
 use pilka_ash::ash::{pilka_util, prelude::VkResult, version::DeviceV1_0, ShaderInfo, *};
+use pilka_ash::ash_window;
 use std::{collections::HashMap, path::PathBuf};
 
 /// The main struct that holds all render primitives
@@ -42,9 +43,16 @@ pub struct PushConstant {
     pub time: f32,
 }
 
+// layers.push(CStr::from_bytes_with_nul(b).unwrap());
 impl PilkaRender {
     pub fn new<W: HasRawWindowHandle>(window: &W) -> Result<Self, Box<dyn std::error::Error>> {
-        let instance = VkInstance::new(Some(window))?;
+        let validation_layers = if cfg!(debug_assertions) {
+            vec!["VK_LAYER_KHRONOS_validation\0"]
+        } else {
+            vec![]
+        };
+        let extention_names = ash_window::ash_window::enumerate_required_extensions(window)?;
+        let instance = VkInstance::new(&validation_layers, &extention_names)?;
 
         let surface = instance.create_surface(window)?;
 
