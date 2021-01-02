@@ -431,19 +431,16 @@ impl PilkaRender {
     }
 
     // TODO(#24): Make transfer command pool
-    pub fn capture_image(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn capture_image(&mut self) -> Result<(u32, u32), Box<dyn std::error::Error>> {
         let copybuffer = self.screenshot_ctx.commbuf;
         let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         unsafe { self.device.begin_command_buffer(copybuffer, &cmd_begininfo) }?;
 
-        let extent = {
-            let extent = self.surface.resolution(&self.device)?;
-            vk::Extent3D {
-                width: extent.width,
-                height: extent.height,
-                depth: 1,
-            }
+        let extent = vk::Extent3D {
+            width: self.extent.width,
+            height: self.extent.height,
+            depth: 1,
         };
         let image_create_info = vk::ImageCreateInfo::builder()
             .format(vk::Format::R8G8B8A8_UNORM)
@@ -669,7 +666,10 @@ impl PilkaRender {
         unsafe { self.device.destroy_image(destination_image, None) };
         unsafe { self.device.free_memory(destination_image_memory, None) };
 
-        Ok(())
+        Ok((
+            subresource_layout.row_pitch as u32 / 4,
+            (subresource_layout.size / subresource_layout.row_pitch) as u32,
+        ))
     }
 }
 
