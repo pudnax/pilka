@@ -123,17 +123,21 @@ fn main() -> Result<()> {
                         *control_flow = ControlFlow::Exit;
                     }
                     if VirtualKeyCode::F12 == keycode {
-                        let data = pilka.capture_image().unwrap();
+                        let now = Instant::now();
+                        pilka.capture_image().unwrap();
+                        println!("Capture image: {:#?}", now.elapsed());
+
+                        let now = Instant::now();
                         let screen: image::ImageBuffer<image::Bgra<u8>, _> =
                             image::ImageBuffer::from_raw(
                                 pilka.extent.width,
                                 pilka.extent.height,
-                                data,
+                                pilka.screenshot_ctx.data.clone(),
                             )
                             .expect("ImageBuffer creation");
-
                         let screen_image = image::DynamicImage::ImageBgra8(screen).to_rgba8();
                         screen_image.save("screenshot.jpg").unwrap();
+                        println!("Encode image: {:#?}", now.elapsed());
                     }
                 }
                 WindowEvent::CursorMoved {
