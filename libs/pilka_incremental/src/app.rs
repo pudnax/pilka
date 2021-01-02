@@ -43,6 +43,12 @@ pub struct PushConstant {
     pub time: f32,
 }
 
+impl PushConstant {
+    unsafe fn as_slice(&self) -> &[u8] {
+        std::slice::from_raw_parts((self as *const _) as *const _, std::mem::size_of::<Self>())
+    }
+}
+
 // layers.push(CStr::from_bytes_with_nul(b).unwrap());
 impl PilkaRender {
     pub fn new<W: HasRawWindowHandle>(window: &W) -> Result<Self, Box<dyn std::error::Error>> {
@@ -367,7 +373,7 @@ impl PilkaRender {
                             vk::ShaderStageFlags::ALL_GRAPHICS,
                             0,
                             // TODO(#23): Find the better way to work with c_void
-                            any_as_u8_slice(&push_constant),
+                            push_constant.as_slice(),
                         );
 
                         // Or draw without the index buffer
