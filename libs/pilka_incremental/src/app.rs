@@ -612,8 +612,9 @@ impl PilkaRender {
         };
 
         unsafe { self.device.end_command_buffer(copybuffer) }?;
+        let submit_commbuffers = [copybuffer];
         let submit_infos = [vk::SubmitInfo::builder()
-            .command_buffers(&[copybuffer])
+            .command_buffers(&submit_commbuffers)
             .build()];
         unsafe {
             self.device.queue_submit(
