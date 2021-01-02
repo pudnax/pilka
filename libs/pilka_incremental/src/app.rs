@@ -33,6 +33,7 @@ pub struct PilkaRender {
     pub queues: VkQueues,
     pub device: VkDevice,
     pub instance: VkInstance,
+    pub screenshot_ctx: ScreenshotCtx,
 }
 
 #[repr(C)]
@@ -115,6 +116,12 @@ impl PilkaRender {
         let pipeline_cache =
             unsafe { device.create_pipeline_cache(&pipeline_cache_create_info, None) }?;
 
+        let screenshot_ctx = ScreenshotCtx::init(
+            &device,
+            &command_pool,
+            (extent.width * extent.height * 4) as usize,
+        )?;
+
         Ok(Self {
             instance,
             device,
@@ -143,6 +150,7 @@ impl PilkaRender {
             extent,
 
             push_constant,
+            screenshot_ctx,
         })
     }
 
@@ -423,24 +431,19 @@ impl PilkaRender {
     }
 
     // TODO(#24): Make transfer command pool
-    pub fn capture_image(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        let commandbuf_allocate_info = vk::CommandBufferAllocateInfo::builder()
-            .command_pool(self.command_pool.pool)
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(1);
-        let copybuffer = unsafe {
-            self.device
-                .allocate_command_buffers(&commandbuf_allocate_info)
-        }?[0];
-
+    pub fn capture_image(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let copybuffer = self.screenshot_ctx.commbuf;
         let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         unsafe { self.device.begin_command_buffer(copybuffer, &cmd_begininfo) }?;
 
-        let extent = vk::Extent3D {
-            width: self.extent.width,
-            height: self.extent.height,
-            depth: 1,
+        let extent = {
+            let extent = self.surface.resolution(&self.device)?;
+            vk::Extent3D {
+                width: extent.width,
+                height: extent.height,
+                depth: 1,
+            }
         };
         let image_create_info = vk::ImageCreateInfo::builder()
             .format(vk::Format::R8G8B8A8_UNORM)
@@ -615,16 +618,18 @@ impl PilkaRender {
         let submit_infos = [vk::SubmitInfo::builder()
             .command_buffers(&[copybuffer])
             .build()];
-        let fence = self.device.create_fence(false)?;
         unsafe {
-            self.device
-                .queue_submit(self.queues.graphics_queue.queue, &submit_infos, fence)
+            self.device.queue_submit(
+                self.queues.graphics_queue.queue,
+                &submit_infos,
+                self.screenshot_ctx.fence,
+            )
         }?;
-        unsafe { self.device.wait_for_fences(&[fence], true, u64::MAX) }?;
         unsafe {
             self.device
-                .free_command_buffers(self.command_pool.pool, &[copybuffer])
-        };
+                .wait_for_fences(&[self.screenshot_ctx.fence], true, u64::MAX)
+        }?;
+        unsafe { self.device.reset_fences(&[self.screenshot_ctx.fence]) }?;
 
         let source_ptr = unsafe {
             self.device.map_memory(
@@ -645,29 +650,64 @@ impl PilkaRender {
             )
         };
 
-        let mut data = Vec::with_capacity(subresource_layout.size as usize);
+        if subresource_layout.size > self.screenshot_ctx.data.len() as u64 {
+            self.screenshot_ctx.data = Vec::with_capacity(subresource_layout.size as usize);
+        }
 
         unsafe {
             std::ptr::copy(
                 source_ptr,
-                data.as_mut_ptr(),
+                self.screenshot_ctx.data.as_mut_ptr(),
                 subresource_layout.size as usize,
             );
-            data.set_len(subresource_layout.size as usize);
+            self.screenshot_ctx
+                .data
+                .set_len(subresource_layout.size as usize);
         };
 
         unsafe { self.device.unmap_memory(destination_image_memory) };
         unsafe { self.device.destroy_image(destination_image, None) };
         unsafe { self.device.free_memory(destination_image_memory, None) };
-        unsafe { self.device.destroy_fence(fence, None) };
 
-        Ok(data)
+        Ok(())
+    }
+}
+
+pub struct ScreenshotCtx {
+    fence: vk::Fence,
+    commbuf: vk::CommandBuffer,
+    // memory: vk::DeviceMemory,
+    pub data: Vec<u8>,
+}
+
+impl ScreenshotCtx {
+    pub fn init(device: &VkDevice, command_pool: &VkCommandPool, size: usize) -> VkResult<Self> {
+        let commandbuf_allocate_info = vk::CommandBufferAllocateInfo::builder()
+            .command_pool(command_pool.pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
+        let commbuf = unsafe { device.allocate_command_buffers(&commandbuf_allocate_info) }?[0];
+        let fence = device.create_fence(false)?;
+        let data = Vec::with_capacity(size);
+
+        Ok(Self {
+            commbuf,
+            fence,
+            data,
+        })
+    }
+
+    fn destroy(&self, device: &VkDevice) {
+        unsafe {
+            device.destroy_fence(self.fence, None);
+        }
     }
 }
 
 impl Drop for PilkaRender {
     fn drop(&mut self) {
         unsafe {
+            self.screenshot_ctx.destroy(&self.device);
             self.device
                 .destroy_pipeline_cache(self.pipeline_cache, None);
 
