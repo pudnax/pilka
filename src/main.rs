@@ -124,14 +124,14 @@ fn main() -> Result<()> {
                     }
                     if VirtualKeyCode::F12 == keycode {
                         let now = Instant::now();
-                        pilka.capture_image().unwrap();
+                        let (width, height) = dbg!(pilka.capture_image().unwrap());
                         println!("Capture image: {:#?}", now.elapsed());
 
                         let now = Instant::now();
                         let screen: image::ImageBuffer<image::Bgra<u8>, _> =
                             image::ImageBuffer::from_raw(
-                                pilka.extent.width,
-                                pilka.extent.height,
+                                width,
+                                height,
                                 pilka.screenshot_ctx.data.clone(),
                             )
                             .expect("ImageBuffer creation");
