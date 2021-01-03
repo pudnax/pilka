@@ -1,4 +1,4 @@
-use pilka_ash::ash::{pilka_util, prelude::VkResult, version::DeviceV1_0, ShaderInfo, *};
+use pilka_ash::ash::{prelude::VkResult, version::DeviceV1_0, ShaderInfo, *};
 use pilka_ash::ash_window;
 use std::{collections::HashMap, path::PathBuf};
 
@@ -167,8 +167,10 @@ impl PilkaRender {
 
         let screenshot_ctx = ScreenshotCtx::init(
             &device,
+            &device_properties.memory,
             &command_pool,
-            (extent.width * extent.height * 4) as usize,
+            queues.graphics_queue.queue,
+            extent,
         )?;
 
         Ok(Self {
@@ -548,63 +550,75 @@ impl PilkaRender {
             height: self.extent.height,
             depth: 1,
         };
-        let image_create_info = vk::ImageCreateInfo::builder()
-            .format(vk::Format::R8G8B8A8_UNORM)
-            .image_type(vk::ImageType::TYPE_2D)
-            .extent(extent)
-            .array_layers(1)
-            .mip_levels(1)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .tiling(vk::ImageTiling::LINEAR)
-            .usage(vk::ImageUsageFlags::TRANSFER_DST)
-            .initial_layout(vk::ImageLayout::UNDEFINED);
 
-        let destination_image = unsafe { self.device.create_image(&image_create_info, None)? };
-        let image_memory_reqs =
-            unsafe { self.device.get_image_memory_requirements(destination_image) };
+        if self.screenshot_ctx.extent != extent {
+            unsafe { self.device.destroy_image(self.screenshot_ctx.image, None) };
 
-        let memory_type_index = pilka_util::find_memorytype_index(
-            &image_memory_reqs,
-            &self.device_properties.memory,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        )
-        .unwrap();
-        let alloc_info = vk::MemoryAllocateInfo::builder()
-            .allocation_size(image_memory_reqs.size)
-            .memory_type_index(memory_type_index)
-            .build();
-        let destination_image_memory = unsafe { self.device.allocate_memory(&alloc_info, None) }?;
-        unsafe {
-            self.device
-                .bind_image_memory(destination_image, destination_image_memory, 0)
-        }?;
+            let image_create_info = vk::ImageCreateInfo::builder()
+                .format(vk::Format::R8G8B8A8_UNORM)
+                .image_type(vk::ImageType::TYPE_2D)
+                .extent(extent)
+                .array_layers(1)
+                .mip_levels(1)
+                .samples(vk::SampleCountFlags::TYPE_1)
+                .tiling(vk::ImageTiling::LINEAR)
+                .usage(vk::ImageUsageFlags::TRANSFER_DST)
+                .initial_layout(vk::ImageLayout::UNDEFINED);
 
-        let barrier = vk::ImageMemoryBarrier::builder()
-            .image(destination_image)
-            .src_access_mask(vk::AccessFlags::empty())
-            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .old_layout(vk::ImageLayout::UNDEFINED)
-            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .build();
+            self.screenshot_ctx.image =
+                unsafe { self.device.create_image(&image_create_info, None)? };
+            self.screenshot_ctx.memory_reqs = unsafe {
+                self.device
+                    .get_image_memory_requirements(self.screenshot_ctx.image)
+            };
 
-        unsafe {
-            self.device.cmd_pipeline_barrier(
-                copybuffer,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[barrier],
-            )
-        };
+            if self.screenshot_ctx.memory_reqs.size as usize > self.screenshot_ctx.data.len() {
+                unsafe { self.device.free_memory(self.screenshot_ctx.memory, None) }
+
+                self.screenshot_ctx.data =
+                    Vec::with_capacity(self.screenshot_ctx.memory_reqs.size as usize);
+                self.screenshot_ctx.memory = self.device.alloc_memory(
+                    &self.device_properties.memory,
+                    self.screenshot_ctx.memory_reqs,
+                    vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+                )?;
+            }
+
+            unsafe {
+                self.device.bind_image_memory(
+                    self.screenshot_ctx.image,
+                    self.screenshot_ctx.memory,
+                    0,
+                )
+            }?;
+
+            let barrier = vk::ImageMemoryBarrier::builder()
+                .image(self.screenshot_ctx.image)
+                .src_access_mask(vk::AccessFlags::empty())
+                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .build();
+
+            unsafe {
+                self.device.cmd_pipeline_barrier(
+                    self.screenshot_ctx.commbuf,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[barrier],
+                )
+            };
+        }
 
         let source_image = self.swapchain.images[self.command_pool.active_command];
 
@@ -659,35 +673,9 @@ impl PilkaRender {
                 copybuffer,
                 source_image,
                 vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                destination_image,
+                self.screenshot_ctx.image,
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 &[copy_area],
-            )
-        };
-
-        let barrier = vk::ImageMemoryBarrier::builder()
-            .image(destination_image)
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::MEMORY_READ)
-            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .new_layout(vk::ImageLayout::GENERAL)
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .build();
-        unsafe {
-            self.device.cmd_pipeline_barrier(
-                copybuffer,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[barrier],
             )
         };
 
@@ -737,15 +725,15 @@ impl PilkaRender {
 
         let source_ptr = unsafe {
             self.device.map_memory(
-                destination_image_memory,
+                self.screenshot_ctx.memory,
                 0,
-                image_memory_reqs.size,
+                self.screenshot_ctx.memory_reqs.size,
                 vk::MemoryMapFlags::empty(),
             )
         }? as *mut u8;
         let subresource_layout = unsafe {
             self.device.get_image_subresource_layout(
-                destination_image,
+                self.screenshot_ctx.image,
                 vk::ImageSubresource {
                     aspect_mask: vk::ImageAspectFlags::COLOR,
                     mip_level: 0,
@@ -753,10 +741,6 @@ impl PilkaRender {
                 },
             )
         };
-
-        if subresource_layout.size > self.screenshot_ctx.data.len() as u64 {
-            self.screenshot_ctx.data = Vec::with_capacity(subresource_layout.size as usize);
-        }
 
         unsafe {
             std::ptr::copy(
@@ -769,9 +753,7 @@ impl PilkaRender {
                 .set_len(subresource_layout.size as usize);
         };
 
-        unsafe { self.device.unmap_memory(destination_image_memory) };
-        unsafe { self.device.destroy_image(destination_image, None) };
-        unsafe { self.device.free_memory(destination_image_memory, None) };
+        unsafe { self.device.unmap_memory(self.screenshot_ctx.memory) };
 
         Ok((
             subresource_layout.row_pitch as u32 / 4,
@@ -783,30 +765,111 @@ impl PilkaRender {
 pub struct ScreenshotCtx {
     fence: vk::Fence,
     commbuf: vk::CommandBuffer,
-    // memory: vk::DeviceMemory,
+    memory: vk::DeviceMemory,
+    memory_reqs: vk::MemoryRequirements,
+    image: vk::Image,
     pub data: Vec<u8>,
+    extent: vk::Extent3D,
 }
 
 impl ScreenshotCtx {
-    pub fn init(device: &VkDevice, command_pool: &VkCommandPool, size: usize) -> VkResult<Self> {
+    pub fn init(
+        device: &VkDevice,
+        memory_properties: &vk::PhysicalDeviceMemoryProperties,
+        command_pool: &VkCommandPool,
+        queue: vk::Queue,
+        extent: vk::Extent2D,
+    ) -> VkResult<Self> {
         let commandbuf_allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(command_pool.pool)
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
         let commbuf = unsafe { device.allocate_command_buffers(&commandbuf_allocate_info) }?[0];
         let fence = device.create_fence(false)?;
-        let data = Vec::with_capacity(size);
+        let extent = vk::Extent3D {
+            width: extent.width,
+            height: extent.height,
+            depth: 1,
+        };
+
+        let image_create_info = vk::ImageCreateInfo::builder()
+            .format(vk::Format::R8G8B8A8_UNORM)
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(extent)
+            .array_layers(1)
+            .mip_levels(1)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .tiling(vk::ImageTiling::LINEAR)
+            .usage(vk::ImageUsageFlags::TRANSFER_DST)
+            .initial_layout(vk::ImageLayout::UNDEFINED);
+
+        let image = unsafe { device.create_image(&image_create_info, None)? };
+        let memory_reqs = unsafe { device.get_image_memory_requirements(image) };
+
+        let data = Vec::with_capacity(memory_reqs.size as usize);
+        let memory = device.alloc_memory(
+            memory_properties,
+            memory_reqs,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        )?;
+        unsafe { device.bind_image_memory(image, memory, 0) }?;
+
+        let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        unsafe { device.begin_command_buffer(commbuf, &cmd_begininfo) }?;
+
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .image(image)
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .build();
+
+        unsafe {
+            device.cmd_pipeline_barrier(
+                commbuf,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[barrier],
+            )
+        };
+
+        unsafe { device.end_command_buffer(commbuf) }?;
+        let submit_commbuffers = [commbuf];
+        let submit_infos = [vk::SubmitInfo::builder()
+            .command_buffers(&submit_commbuffers)
+            .build()];
+        unsafe { device.queue_submit(queue, &submit_infos, fence) }?;
+        unsafe { device.wait_for_fences(&[fence], true, u64::MAX) }?;
+        unsafe { device.reset_fences(&[fence]) }?;
 
         Ok(Self {
-            commbuf,
             fence,
+            commbuf,
+            memory,
+            memory_reqs,
+            image,
             data,
+            extent,
         })
     }
 
     fn destroy(&self, device: &VkDevice) {
         unsafe {
             device.destroy_fence(self.fence, None);
+            device.destroy_image(self.image, None);
+            device.free_memory(self.memory, None);
         }
     }
 }
