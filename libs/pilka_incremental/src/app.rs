@@ -416,13 +416,13 @@ impl PilkaRender {
     }
 
     pub fn create_pipeline_layout(&self) -> VkResult<vk::PipelineLayout> {
-        let push_constant_range = vk::PushConstantRange::builder()
+        let push_constant_ranges = [vk::PushConstantRange::builder()
             .offset(0)
             .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS)
             .size(std::mem::size_of::<PushConstant>() as u32)
-            .build();
+            .build()];
         let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-            .push_constant_ranges(&[push_constant_range])
+            .push_constant_ranges(&push_constant_ranges)
             .build();
         unsafe {
             self.device
