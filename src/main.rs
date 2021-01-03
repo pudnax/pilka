@@ -127,6 +127,7 @@ fn main() -> Result<()> {
                         let (width, height) = dbg!(pilka.capture_image().unwrap());
                         println!("Capture image: {:#?}", now.elapsed());
 
+                        // TODO: Do this in the another thread
                         let now = Instant::now();
                         let screen: image::ImageBuffer<image::Bgra<u8>, _> =
                             image::ImageBuffer::from_raw(
