@@ -39,9 +39,10 @@ pub struct PilkaRender {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct PushConstant {
+    pub pos: [f32; 3],
+    pub time: f32,
     pub wh: [f32; 2],
     pub mouse: [f32; 2],
-    pub time: f32,
 }
 
 impl PushConstant {
@@ -156,6 +157,7 @@ impl PilkaRender {
         let compiler = shaderc::Compiler::new().unwrap();
 
         let push_constant = PushConstant {
+            pos: [0.; 3],
             wh: surface.resolution_slice(&device)?,
             mouse: [0.; 2],
             time: 0.,
