@@ -4,7 +4,7 @@
 
 Available features:
  - [X] Hot-reload
- - [ ] Saving shaders
+ - [X] Saving shaders
  - [X] Taking screenshot
  - [ ] Record video
  
@@ -15,9 +15,9 @@ Pilka is a cross-platform democoding tool for creating shader* demos, similar to
 - `F2`:   Pauses and steps back one frame
 - `F3`:   Pauses and steps forward one frame
 - `F4`:   Restarts playback at frame 0 (`Time` and `Pos` = 0)
-- `F9`:   Save shaders
-- `F10`:  Start/Stop record video
+- `F10`:   Save shaders
 - `F11`:  Take Screenshot
+- `F12`:  Start/Stop record video
 - `ESC`:  Exit the application
 - Arrows: Change `Pos`
 

@@ -122,23 +122,54 @@ fn main() -> Result<()> {
                     if VirtualKeyCode::Escape == keycode {
                         *control_flow = ControlFlow::Exit;
                     }
-                    if VirtualKeyCode::F12 == keycode {
+                    if VirtualKeyCode::F10 == keycode {
+                        let dump_folder = std::path::Path::new("shader_dump");
+                        match std::fs::create_dir(dump_folder) {
+                            Ok(_) => {}
+                            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                            Err(e) => panic!("Failed to create folder: {}", e),
+                        }
+                        let dump_folder = dump_folder
+                            .join(chrono::Local::now().format("%d.%m.%Y-%H:%M:%S").to_string());
+                        match std::fs::create_dir(&dump_folder) {
+                            Ok(_) => {}
+                            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                            Err(e) => panic!("Failed to create folder: {}", e),
+                        }
+                        // Doesn't handle modules
+                        for path in pilka.shader_set.keys() {
+                            let to = dump_folder.join(path.file_name().unwrap());
+                            if !to.exists() {
+                                std::fs::File::create(&to).unwrap();
+                            }
+                            std::fs::copy(path, to).unwrap();
+                        }
+                    }
+                    if VirtualKeyCode::F11 == keycode {
                         let now = Instant::now();
                         let (width, height) = pilka.capture_image().unwrap();
-                        println!("Capture image: {:#?}", now.elapsed());
+                        eprintln!("Capture image: {:#?}", now.elapsed());
 
-                        // TODO: Do this in the another thread
-                        let now = Instant::now();
-                        let screen: image::ImageBuffer<image::Bgra<u8>, _> =
-                            image::ImageBuffer::from_raw(
-                                width,
-                                height,
-                                pilka.screenshot_ctx.data.clone(),
-                            )
-                            .expect("ImageBuffer creation");
-                        let screen_image = image::DynamicImage::ImageBgra8(screen).to_rgba8();
-                        screen_image.save("screenshot.jpg").unwrap();
-                        println!("Encode image: {:#?}", now.elapsed());
+                        let frame = pilka.screenshot_ctx.data.clone();
+                        std::thread::spawn(move || {
+                            let now = Instant::now();
+                            let screen: image::ImageBuffer<image::Bgra<u8>, _> =
+                                image::ImageBuffer::from_raw(width, height, frame)
+                                    .expect("ImageBuffer creation");
+                            let screen_image = image::DynamicImage::ImageBgra8(screen).to_rgba8();
+                            match std::fs::create_dir("screenshots") {
+                                Ok(_) => {}
+                                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                                Err(e) => panic!("Failed to create folder: {}", e),
+                            }
+                            screen_image
+                                .save(std::path::Path::new("screenshots").join(format!(
+                                    "screenshot-{}.jpg",
+                                    chrono::Local::now().format("%d.%m.%Y-%H:%M:%S").to_string()
+                                )))
+                                .unwrap();
+                            eprintln!("Encode image: {:#?}", now.elapsed());
+                        });
                     }
                 }
                 WindowEvent::CursorMoved {
