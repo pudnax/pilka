@@ -2,7 +2,6 @@ use crate::device::{RawDevice, VkDevice};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
-// TODO(#13): Call vkResetCommandPool before reusing it in another frame.
 //
 // Otherwise the pool will keep on growing until you run out of memory
 pub struct VkCommandPool {
@@ -14,6 +13,7 @@ pub struct VkCommandPool {
 }
 
 impl VkCommandPool {
+    // TODO: Make `record_submit_commandbuffer` method unmutable
     pub fn record_submit_commandbuffer<F: FnOnce(&VkDevice, vk::CommandBuffer)>(
         &mut self,
         device: &VkDevice,

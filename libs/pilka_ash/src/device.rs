@@ -12,6 +12,7 @@ use crate::{
     renderpass_and_pipeline::VkRenderPass,
     surface::VkSurface,
     swapchain::VkSwapchain,
+    utils,
 };
 
 pub struct VkDevice {
@@ -98,7 +99,7 @@ impl VkDevice {
         Ok(unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?)
     }
 
-    pub fn create_commmand_pool(
+    pub fn create_vk_command_pool(
         &self,
         queue_family_index: u32,
         num_command_buffers: u32,
@@ -134,7 +135,7 @@ impl VkDevice {
     pub fn create_vk_render_pass(&self, format: vk::Format) -> VkResult<VkRenderPass> {
         let renderpass_attachments = [vk::AttachmentDescription::builder()
             .format(format)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .initial_layout(vk::ImageLayout::PRESENT_SRC_KHR)
             .samples(vk::SampleCountFlags::TYPE_1)
             .load_op(vk::AttachmentLoadOp::LOAD)
             .store_op(vk::AttachmentStoreOp::STORE)
@@ -257,6 +258,20 @@ impl VkDevice {
             device: self.device.clone(),
             info: swapchain_create_info.build(),
         })
+    }
+
+    pub fn alloc_memory(
+        &self,
+        memory_properties: &vk::PhysicalDeviceMemoryProperties,
+        allocation_reqs: vk::MemoryRequirements,
+        flags: vk::MemoryPropertyFlags,
+    ) -> VkResult<vk::DeviceMemory> {
+        let memory_type_index =
+            utils::find_memorytype_index(&allocation_reqs, &memory_properties, flags).unwrap();
+        let alloc_info = vk::MemoryAllocateInfo::builder()
+            .allocation_size(allocation_reqs.size)
+            .memory_type_index(memory_type_index);
+        Ok(unsafe { self.device.allocate_memory(&alloc_info, None) }?)
     }
 }
 
