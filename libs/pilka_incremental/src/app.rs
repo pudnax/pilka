@@ -50,7 +50,6 @@ impl PushConstant {
     }
 }
 
-// layers.push(CStr::from_bytes_with_nul(b).unwrap());
 impl PilkaRender {
     pub fn new<W: HasRawWindowHandle>(window: &W) -> Result<Self, Box<dyn std::error::Error>> {
         let validation_layers = if cfg!(debug_assertions) {
@@ -71,10 +70,60 @@ impl PilkaRender {
         let swapchain_loader = instance.create_swapchain_loader(&device);
 
         let swapchain = device.create_swapchain(swapchain_loader, &surface, &queues)?;
-        let render_pass = device.create_vk_render_pass(swapchain.format())?;
-
         let command_pool = device
-            .create_commmand_pool(queues.graphics_queue.index, swapchain.images.len() as u32)?;
+            .create_vk_command_pool(queues.graphics_queue.index, swapchain.images.len() as u32)?;
+        for i in 0..swapchain.images.len() {
+            let submit_fence = command_pool.fences[i];
+            let command_buffer = command_pool.command_buffers[i];
+
+            unsafe { device.wait_for_fences(&[submit_fence], true, std::u64::MAX) }?;
+            unsafe { device.reset_fences(&[submit_fence]) }?;
+
+            let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+            unsafe { device.begin_command_buffer(command_buffer, &command_buffer_begin_info) }?;
+
+            let barrier = vk::ImageMemoryBarrier::builder()
+                .image(swapchain.images[i])
+                .src_access_mask(vk::AccessFlags::empty())
+                .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .build();
+            unsafe {
+                device.cmd_pipeline_barrier(
+                    command_buffer,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[barrier],
+                )
+            };
+
+            unsafe { device.end_command_buffer(command_buffer) }?;
+            let command_buffers = vec![command_buffer];
+            let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
+
+            unsafe {
+                device.queue_submit(
+                    queues.graphics_queue.queue,
+                    &[submit_info.build()],
+                    submit_fence,
+                )
+            }?;
+        }
+
+        let render_pass = device.create_vk_render_pass(swapchain.format())?;
 
         let present_complete_semaphore = device.create_semaphore()?;
         let rendering_complete_semaphore = device.create_semaphore()?;
@@ -196,6 +245,63 @@ impl PilkaRender {
             )?;
 
             *framebuffer = new_framebuffer;
+        }
+
+        for i in 0..self.swapchain.images.len() {
+            let submit_fence = self.command_pool.fences[i];
+            let command_buffer = self.command_pool.command_buffers[i];
+
+            unsafe {
+                self.device
+                    .wait_for_fences(&[submit_fence], true, std::u64::MAX)
+            }?;
+            unsafe { self.device.reset_fences(&[submit_fence]) }?;
+
+            let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+            unsafe {
+                self.device
+                    .begin_command_buffer(command_buffer, &command_buffer_begin_info)
+            }?;
+
+            let barrier = vk::ImageMemoryBarrier::builder()
+                .image(self.swapchain.images[i])
+                .src_access_mask(vk::AccessFlags::empty())
+                .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .build();
+            unsafe {
+                self.device.cmd_pipeline_barrier(
+                    command_buffer,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[barrier],
+                )
+            };
+
+            unsafe { self.device.end_command_buffer(command_buffer) }?;
+            let command_buffers = vec![command_buffer];
+            let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
+
+            unsafe {
+                self.device.queue_submit(
+                    self.queues.graphics_queue.queue,
+                    &[submit_info.build()],
+                    submit_fence,
+                )
+            }?;
         }
 
         Ok(())
