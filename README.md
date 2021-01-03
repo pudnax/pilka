@@ -8,7 +8,7 @@ Available features:
  - [X] Taking screenshot
  - [ ] Record video
  
-Pilka is a cross-platform democoding tool for creating shader* demos, similar to [Bonzomatic](https://github.com/Gargaj/Bonzomatic) or [KodeLife](https://hexler.net/products/kodelife). Supports hot-reloading which means resources is checked, updated in the background.
+Pilka is a cross-platform democoding tool for creating shader* demos, similar to [Bonzomatic](https://github.com/Gargaj/Bonzomatic) or [KodeLife](https://hexler.net/products/kodelife). Supports hot-reloading which means resources are checked, updated in the background.
 
 ## Controls
 - `F1`:   Toggles play/pause
