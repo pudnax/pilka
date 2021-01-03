@@ -41,11 +41,14 @@ pub struct VkInstance {
 }
 
 impl VkInstance {
-    pub fn new(validation_layers: &[&str], extention_names: &[&CStr]) -> VkResult<Self> {
-        let entry = ash::Entry::new().unwrap();
+    pub fn new(
+        validation_layers: &[&str],
+        extention_names: &[&CStr],
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let entry = ash::Entry::new()?;
 
         #[cfg(target_os = "macos")]
-        let entry = ash_molten::MoltenEntry::load().unwrap();
+        let entry = ash_molten::MoltenEntry::load()?;
 
         // Enumerate available vulkan API version and set 1.0.0 otherwise.
         let version = match entry.try_enumerate_instance_version()? {
@@ -105,7 +108,7 @@ impl VkInstance {
             .enabled_layer_names(&validation_layers)
             .enabled_extension_names(&extensions);
 
-        let instance = unsafe { entry.create_instance(&instance_info, None) }.unwrap();
+        let instance = unsafe { entry.create_instance(&instance_info, None) }?;
 
         let (_dbg_loader, _dbg_callbk) = {
             let dbg_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
