@@ -20,7 +20,10 @@ use winit::{
     platform::desktop::EventLoopExtDesktop,
 };
 
-use std::{path::PathBuf, time::Instant};
+use std::{
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 const SHADER_PATH: &str = "shaders";
 const SHADER_ENTRY_POINT: &str = "main";
@@ -136,13 +139,20 @@ fn main() -> Result<()> {
                             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
                             Err(e) => panic!("Failed to create folder: {}", e),
                         }
-                        // Doesn't handle modules
                         for path in pilka.shader_set.keys() {
-                            let to = dump_folder.join(path.file_name().unwrap());
+                            let to = dump_folder.join(
+                                path.strip_prefix(Path::new(SHADER_PATH).canonicalize().unwrap())
+                                    .unwrap(),
+                            );
                             if !to.exists() {
+                                std::fs::create_dir_all(
+                                    &to.parent().unwrap().canonicalize().unwrap(),
+                                )
+                                .unwrap();
                                 std::fs::File::create(&to).unwrap();
                             }
-                            std::fs::copy(path, to).unwrap();
+                            std::fs::copy(path, &to).unwrap();
+                            eprintln!("Saved: {}", &to.display());
                         }
                     }
                     if VirtualKeyCode::F11 == keycode {
