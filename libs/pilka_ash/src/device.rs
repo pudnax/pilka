@@ -195,7 +195,7 @@ impl VkDevice {
             .iter()
             .cloned()
             .find(|&mode| mode == vk::PresentModeKHR::FIFO)
-            .unwrap_or(vk::PresentModeKHR::MAILBOX);
+            .unwrap_or(vk::PresentModeKHR::FIFO);
 
         let surface_format = {
             let acceptable_formats = {

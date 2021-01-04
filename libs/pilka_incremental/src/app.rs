@@ -51,6 +51,16 @@ impl PushConstant {
     }
 }
 
+impl std::fmt::Display for PushConstant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "position:\t{:?}\ntime:\t\t{}\nwidth, height:\t{:?}\nmouse:\t\t{:?}\n",
+            self.pos, self.time, self.wh, self.mouse
+        )
+    }
+}
+
 impl PilkaRender {
     pub fn new<W: HasRawWindowHandle>(window: &W) -> Result<Self, Box<dyn std::error::Error>> {
         let validation_layers = if cfg!(debug_assertions) {
