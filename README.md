@@ -69,6 +69,7 @@ cargo install --path .
 the most of cross-platform issues for you.
 
 [RustFFT](https://crates.io/crates/rustfft) is used to perform Fast FFT for generating textures.
+Version 4.0 I keep trying not to use nightly features.
 
 [cpal](https://crates.io/crates/cpal) is used to capture sound from microphone and probably MIDI devices
 in the future.
