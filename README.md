@@ -74,6 +74,7 @@ the most of cross-platform issues for you.
 in the future.
 
 [png](https://crates.io/crates/png) is used to encode screenshots into png files.
+
 [notify](https://crates.io/crates/notify) is a file watcher and maintains the hot-reload.
 
 [shaderc](https://crates.io/crates/shaderc) is used to compile GLSL shaders on the runtime instead of opening

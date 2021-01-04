@@ -31,6 +31,17 @@ fn main() -> Result<()> {
     // Initialize error hook.
     color_eyre::install()?;
 
+    println!("- `F1`:   Toggles play/pause");
+    println!("- `F2`:   Pauses and steps back one frame");
+    println!("- `F3`:   Pauses and steps forward one frame");
+    println!("- `F4`:   Restarts playback at frame 0 (`Time` and `Pos` = 0)");
+    println!("- `F5`:   Print parameters");
+    println!("- `F10`:  Save shaders");
+    println!("- `F11`:  Take Screenshot");
+    println!("- `F12`:  Start/Stop record video");
+    println!("- `ESC`:  Exit the application");
+    println!("- `Arrows`: Change `Pos`\n");
+
     let mut time = Instant::now();
     let mut backup_time = time.elapsed();
     let dt = 1. / 60.;
@@ -179,9 +190,9 @@ fn main() -> Result<()> {
                         }
                         if VirtualKeyCode::F4 == keycode {
                             pilka.push_constant.pos = [0.; 3];
+                            pilka.push_constant.time = 0.;
                             time = Instant::now();
                             backup_time = time.elapsed();
-                            pilka.push_constant.time = 0.;
                         }
                         if VirtualKeyCode::F5 == keycode {
                             eprintln!("{}", pilka.push_constant);
