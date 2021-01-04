@@ -84,7 +84,7 @@ a process with glslc or glslangValidator.
 learning project and want to touch the maximum untouched Vulkan. For the
 same reason I didn't use `vulkano`, `erupt`, `vulkanism`, etc.
 
-Places from where I steal code:
+### Places from where I steal code:
 
 - [piet-gpu](https://github.com/linebender/piet-gpu)
 - https://github.com/w23/OpenSource
