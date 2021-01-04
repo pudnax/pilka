@@ -32,8 +32,10 @@ fn main() -> Result<()> {
     // Initialize error hook.
     color_eyre::install()?;
 
-    let time: Instant = Instant::now();
+    let mut time = Instant::now();
+    let mut dt = 0.16;
     let mut input = Input::new();
+    let mut pause = false;
 
     let mut event_loop = winit::event_loop::EventLoop::new();
 
@@ -90,26 +92,29 @@ fn main() -> Result<()> {
                     }
                 }
 
-                pilka.push_constant.time = time.elapsed().as_secs_f32();
+                if !pause {
+                    pilka.push_constant.time = time.elapsed().as_secs_f32();
+                    dt = time.elapsed().as_secs_f32() - pilka.push_constant.time;
 
-                let dx = 0.01;
-                if input.left_pressed {
-                    pilka.push_constant.pos[0] -= dx;
-                }
-                if input.right_pressed {
-                    pilka.push_constant.pos[0] += dx;
-                }
-                if input.up_pressed {
-                    pilka.push_constant.pos[1] -= dx;
-                }
-                if input.down_pressed {
-                    pilka.push_constant.pos[1] += dx;
-                }
-                if input.slash_pressed {
-                    pilka.push_constant.pos[2] -= dx;
-                }
-                if input.right_shift_pressed {
-                    pilka.push_constant.pos[2] += dx;
+                    let dx = 0.01;
+                    if input.left_pressed {
+                        pilka.push_constant.pos[0] -= dx;
+                    }
+                    if input.right_pressed {
+                        pilka.push_constant.pos[0] += dx;
+                    }
+                    if input.up_pressed {
+                        pilka.push_constant.pos[1] -= dx;
+                    }
+                    if input.down_pressed {
+                        pilka.push_constant.pos[1] += dx;
+                    }
+                    if input.slash_pressed {
+                        pilka.push_constant.pos[2] -= dx;
+                    }
+                    if input.right_shift_pressed {
+                        pilka.push_constant.pos[2] += dx;
+                    }
                 }
             }
 
@@ -146,9 +151,30 @@ fn main() -> Result<()> {
                     input.update(&keycode, &state);
 
                     if VirtualKeyCode::Escape == keycode {
+                        pause = false;
                         *control_flow = ControlFlow::Exit;
                     }
                     if ElementState::Pressed == state {
+                        if VirtualKeyCode::F1 == keycode {
+                            pause = !pause;
+                        }
+                        if VirtualKeyCode::F2 == keycode {
+                            if !pause {
+                                pause = true;
+                            }
+                            pilka.push_constant.time -= dt;
+                        }
+                        if VirtualKeyCode::F2 == keycode {
+                            if !pause {
+                                pause = true;
+                            }
+                            pilka.push_constant.time += dt;
+                        }
+                        if VirtualKeyCode::F4 == keycode {
+                            pilka.push_constant.pos = [0.; 3];
+                            time = Instant::now();
+                            pilka.push_constant.time = 0.;
+                        }
                         if VirtualKeyCode::F10 == keycode {
                             let dump_folder = std::path::Path::new("shader_dump");
                             match std::fs::create_dir(dump_folder) {
@@ -225,7 +251,6 @@ fn main() -> Result<()> {
             Event::MainEventsCleared => {
                 pilka.render();
             }
-            Event::LoopDestroyed => unsafe { pilka.device.device_wait_idle() }.unwrap(),
             _ => {}
         }
     });
