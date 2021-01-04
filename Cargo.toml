@@ -10,10 +10,8 @@ edition = "2018"
 members = ["libs/*"]
 
 [dependencies]
-bytemuck = "1.4.1"
 color-eyre = "0.5.8"
 eyre = "0.6.3"
-ultraviolet = "0.7.5"
 pilka_lib = { path = "libs/pilka_lib" }
 pilka_dyn = { path = "libs/pilka_dyn" }
 shaderc = "0.7.0"
@@ -21,6 +19,8 @@ notify = "5.0.0-pre.4"
 chrono = "0.4.19"
 png = "0.16.8"
 image = "0.23.12"
+cpal = "0.13.1"
+rustfft = "4.1.0"
 
 [profile.release]
 lto = 'thin'
