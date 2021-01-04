@@ -42,7 +42,7 @@ Available features:
 Vulkan SDK is required.
 
 On recent macOS, to allow sound input to be captured (for FFT textures to be generated), you need to: Open up System Preferences, click on Security & Privacy, click on the Privacy tab then click on the Microphone menu item. Make sure Bonzomatic.app is in the list and ticked... 
-erm, probably. I don't have one
+erm, probably. I don't have macOS.
 
 ## Installation
 
