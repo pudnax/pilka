@@ -17,7 +17,6 @@ use winit::{
     dpi::PhysicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
-    platform::desktop::EventLoopExtDesktop,
 };
 
 use std::{
@@ -33,11 +32,12 @@ fn main() -> Result<()> {
     color_eyre::install()?;
 
     let mut time = Instant::now();
-    let mut dt = 0.16;
+    let mut backup_time = time.elapsed();
+    let dt = 1. / 60.;
     let mut input = Input::new();
     let mut pause = false;
 
-    let mut event_loop = winit::event_loop::EventLoop::new();
+    let event_loop = winit::event_loop::EventLoop::new();
 
     let window = winit::window::WindowBuilder::new()
         .with_title("Pilka")
@@ -71,9 +71,7 @@ fn main() -> Result<()> {
 
     watcher.watch(SHADER_PATH, RecursiveMode::Recursive)?;
 
-    let mut ctrl_pressed = false;
-
-    event_loop.run_return(|event, _, control_flow| {
+    event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
         match event {
             Event::NewEvents(_) => {
@@ -92,10 +90,13 @@ fn main() -> Result<()> {
                     }
                 }
 
-                if !pause {
-                    pilka.push_constant.time = time.elapsed().as_secs_f32();
-                    dt = time.elapsed().as_secs_f32() - pilka.push_constant.time;
+                pilka.push_constant.time = if pause {
+                    backup_time.as_secs_f32()
+                } else {
+                    time.elapsed().as_secs_f32()
+                };
 
+                if !pause {
                     let dx = 0.01;
                     if input.left_pressed {
                         pilka.push_constant.pos[0] -= dx;
@@ -103,10 +104,10 @@ fn main() -> Result<()> {
                     if input.right_pressed {
                         pilka.push_constant.pos[0] += dx;
                     }
-                    if input.up_pressed {
+                    if input.down_pressed {
                         pilka.push_constant.pos[1] -= dx;
                     }
-                    if input.down_pressed {
+                    if input.up_pressed {
                         pilka.push_constant.pos[1] += dx;
                     }
                     if input.slash_pressed {
@@ -120,9 +121,6 @@ fn main() -> Result<()> {
 
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                WindowEvent::ModifiersChanged(state) => {
-                    ctrl_pressed = state.ctrl();
-                }
                 WindowEvent::Resized(PhysicalSize { .. }) => {
                     let vk::Extent2D { width, height } =
                         pilka.surface.resolution(&pilka.device).unwrap();
@@ -151,30 +149,44 @@ fn main() -> Result<()> {
                     input.update(&keycode, &state);
 
                     if VirtualKeyCode::Escape == keycode {
-                        pause = false;
                         *control_flow = ControlFlow::Exit;
                     }
                     if ElementState::Pressed == state {
                         if VirtualKeyCode::F1 == keycode {
-                            pause = !pause;
+                            if !pause {
+                                backup_time = time.elapsed();
+                                pause = true;
+                            } else {
+                                time = Instant::now() - backup_time;
+                                pause = false;
+                            }
                         }
                         if VirtualKeyCode::F2 == keycode {
                             if !pause {
+                                backup_time = time.elapsed();
                                 pause = true;
                             }
-                            pilka.push_constant.time -= dt;
+                            backup_time = backup_time
+                                .checked_sub(std::time::Duration::from_secs_f32(dt))
+                                .unwrap_or_else(Default::default);
                         }
-                        if VirtualKeyCode::F2 == keycode {
+                        if VirtualKeyCode::F3 == keycode {
                             if !pause {
+                                backup_time = time.elapsed();
                                 pause = true;
                             }
-                            pilka.push_constant.time += dt;
+                            backup_time += std::time::Duration::from_secs_f32(dt);
                         }
                         if VirtualKeyCode::F4 == keycode {
                             pilka.push_constant.pos = [0.; 3];
                             time = Instant::now();
+                            backup_time = time.elapsed();
                             pilka.push_constant.time = 0.;
                         }
+                        if VirtualKeyCode::F5 == keycode {
+                            eprintln!("{}", pilka.push_constant);
+                        }
+
                         if VirtualKeyCode::F10 == keycode {
                             let dump_folder = std::path::Path::new("shader_dump");
                             match std::fs::create_dir(dump_folder) {
@@ -236,14 +248,17 @@ fn main() -> Result<()> {
                         }
                     }
                 }
+
                 WindowEvent::CursorMoved {
                     position: PhysicalPosition { x, y },
                     ..
                 } => {
-                    let vk::Extent2D { width, height } = pilka.extent;
-                    let x = (x as f32 / width as f32 - 0.5) * 2.;
-                    let y = -(y as f32 / height as f32 - 0.5) * 2.;
-                    pilka.push_constant.mouse = [x, y];
+                    if !pause {
+                        let vk::Extent2D { width, height } = pilka.extent;
+                        let x = (x as f32 / width as f32 - 0.5) * 2.;
+                        let y = -(y as f32 / height as f32 - 0.5) * 2.;
+                        pilka.push_constant.mouse = [x, y];
+                    }
                 }
                 _ => {}
             },
@@ -251,13 +266,13 @@ fn main() -> Result<()> {
             Event::MainEventsCleared => {
                 pilka.render();
             }
+            Event::LoopDestroyed => {
+                println!("End from the loop. Bye bye~");
+                unsafe { pilka.device.device_wait_idle() }.unwrap();
+            }
             _ => {}
         }
     });
-
-    println!("End from the loop. Bye bye~");
-
-    Ok(())
 }
 
 #[derive(Debug, Default)]

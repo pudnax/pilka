@@ -19,11 +19,12 @@ resources is checked, updated in the background.
 - `F2`:   Pauses and steps back one frame
 - `F3`:   Pauses and steps forward one frame
 - `F4`:   Restarts playback at frame 0 (`Time` and `Pos` = 0)
+- `F5`:   Print parameters
 - `F10`:  Save shaders
 - `F11`:  Take Screenshot
 - `F12`:  Start/Stop record video
 - `ESC`:  Exit the application
-- Arrows: Change `Pos`
+- `Arrows`: Change `Pos`
 
 ## Parameters
 
