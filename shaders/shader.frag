@@ -5,9 +5,10 @@ layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 out_color;
 
 layout(std430, push_constant) uniform PushConstant {
+	vec3 pos;
+	float time;
 	vec2 resolution;
 	vec2 mouse;
-	float time;
 } pc;
 
 vec4 plas(vec2 v, float time) {
@@ -24,6 +25,7 @@ void main() {
 
   m.x += sin(0.5 + pc.time) * 0.1;
   m.y += 0.8;
+  m.xy += pc.pos.xy;
 
   vec4 t = plas(m * 3.14, 1.0) / d;
   out_color = vec4(uv, 0.0, 1.0);
