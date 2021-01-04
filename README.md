@@ -6,7 +6,7 @@ similar to [Bonzomatic](https://github.com/Gargaj/Bonzomatic) or [KodeLife](http
 resources is checked, updated in the background.
 
 Available features:
- 
+
 - [X] Hot-reload
 - [X] Saving shaders
 - [X] Taking screenshot
@@ -41,7 +41,10 @@ Available features:
 
 Vulkan SDK is required.
 
-On recent macOS, to allow sound input to be captured (for FFT textures to be generated), you need to: Open up System Preferences, click on Security & Privacy, click on the Privacy tab then click on the Microphone menu item. Make sure Bonzomatic.app is in the list and ticked... 
+On recent macOS, to allow sound input to be captured (for FFT textures to
+be generated), you need to: Open up System Preferences, click on Security
+& Privacy, click on the Privacy tab then click on the Microphone menu item.
+Make sure Bonzomatic.app is in the list and ticked...
 erm, probably. I don't have macOS.
 
 ## Installation
@@ -61,15 +64,20 @@ cargo install --path .
 ```
 ## Dependencies
 
-[winit](https://crates.io/crates/winit) is the "default" window library in Rust ecosystem. And it covers the most of cross-platform issues for you.
+[winit](https://crates.io/crates/winit) is the "default" window library in Rust ecosystem. And it covers
+the most of cross-platform issues for you.
 [RustFFT](https://crates.io/crates/rustfft) is used to perform Fast FFT for generating textures.
-[cpal](https://crates.io/crates/cpal) is used to capture sound from microphone and probably MIDI devices in the future.
+[cpal](https://crates.io/crates/cpal) is used to capture sound from microphone and probably MIDI devices
+in the future.
 [png](https://crates.io/crates/png) is used to encode screenshots into png files.
 [notify](https://crates.io/crates/notify) is a file watcher and maintains the hot-reload.
-[shaderc](https://crates.io/crates/shaderc) is used to compile GLSL shaders on the runtime instead of openning a process with glslc or glslangValidator.
-[ash](https://crates.io/crates/ash) is a Vulkan bindings. I choosed `ash` because i see this project as a learning project and want to touch the maximum untouched Vulkan. For the same reason i didn't use `vulkano`, `erupt`, `vulkanism`, etc. 
+[shaderc](https://crates.io/crates/shaderc) is used to compile GLSL shaders on the runtime instead of opening
+a process with glslc or glslangValidator.
+[ash](https://crates.io/crates/ash) is a Vulkan bindings. I choose `ash` because I see `pilka` as a
+learning project and want to touch the maximum untouched Vulkan. For the
+same reason I didn't use `vulkano`, `erupt`, `vulkanism`, etc.
 
-Places from where i steal code:
+Places from where I steal code:
 
 - [piet-gpu](https://github.com/linebender/piet-gpu)
 - https://github.com/w23/OpenSource
