@@ -529,7 +529,6 @@ impl<'a> PilkaRender<'a> {
                             pipeline_layout,
                             vk::ShaderStageFlags::ALL_GRAPHICS,
                             0,
-                            // TODO(#23): Find the better way to work with c_void
                             push_constant.as_slice(),
                         );
 
