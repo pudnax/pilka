@@ -68,8 +68,7 @@ cargo install --path .
 [winit](https://crates.io/crates/winit) is the "default" window library in Rust ecosystem. And it covers
 the most of cross-platform issues for you.
 
-[RustFFT](https://crates.io/crates/rustfft) is used to perform Fast FFT for generating textures.
-Version 4.0 I keep trying not to use nightly features.
+[RustFFT](https://crates.io/crates/rustfft) is used to perform Fast FFT for generating sound textures.
 
 [cpal](https://crates.io/crates/cpal) is used to capture sound from microphone and probably MIDI devices
 in the future.
