@@ -243,7 +243,7 @@ fn main() -> Result<()> {
                             let (width, height) = pilka.capture_image().unwrap();
                             eprintln!("Capture image: {:#?}", now.elapsed());
 
-                            let frame = pilka.screenshot_ctx.data.clone();
+                            let frame = pilka.screenshot_ctx.data.to_vec();
                             std::thread::spawn(move || {
                                 let now = Instant::now();
                                 let screen: image::ImageBuffer<image::Bgra<u8>, _> =
