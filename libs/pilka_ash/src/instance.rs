@@ -53,7 +53,7 @@ impl VkInstance {
         // Enumerate available vulkan API version and set 1.0.0 otherwise.
         let version = match entry.try_enumerate_instance_version()? {
             Some(version) => version,
-            None => vk::make_version(2, 0, 0),
+            None => vk::make_version(1, 0, 0),
         };
 
         // Find approciate validation layers from available.

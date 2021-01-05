@@ -60,10 +60,12 @@ fn main() -> Result<()> {
         &[],
     )?;
 
+    println!("Vendor name: {}", pilka.get_vendor_name());
     println!("Device name: {}", pilka.get_device_name()?);
     println!("Device type: {:?}", pilka.get_device_type());
+    println!("Vulkan version: {}", pilka.get_vulkan_version_name()?);
 
-    println!("- `F1`:   Toggles play/pause");
+    println!("\n- `F1`:   Toggles play/pause");
     println!("- `F2`:   Pauses and steps back one frame");
     println!("- `F3`:   Pauses and steps forward one frame");
     println!("- `F4`:   Restarts playback at frame 0 (`Time` and `Pos` = 0)");
