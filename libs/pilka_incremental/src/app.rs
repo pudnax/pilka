@@ -592,85 +592,8 @@ impl<'a> PilkaRender<'a> {
             depth: 1,
         };
 
-        if self.screenshot_ctx.extent != extent {
-            unsafe { self.device.destroy_image(self.screenshot_ctx.image, None) };
-
-            let image_create_info = vk::ImageCreateInfo::builder()
-                .format(vk::Format::R8G8B8A8_SRGB)
-                .image_type(vk::ImageType::TYPE_2D)
-                .extent(extent)
-                .array_layers(1)
-                .mip_levels(1)
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .tiling(vk::ImageTiling::LINEAR)
-                .usage(vk::ImageUsageFlags::TRANSFER_DST)
-                .initial_layout(vk::ImageLayout::UNDEFINED);
-
-            self.screenshot_ctx.image =
-                unsafe { self.device.create_image(&image_create_info, None)? };
-            let memory_reqs = unsafe {
-                self.device
-                    .get_image_memory_requirements(self.screenshot_ctx.image)
-            };
-
-            if memory_reqs.size as usize > self.screenshot_ctx.data.len() {
-                unsafe { self.device.unmap_memory(self.screenshot_ctx.memory) };
-                unsafe { self.device.free_memory(self.screenshot_ctx.memory, None) }
-
-                self.screenshot_ctx.memory = self.device.alloc_memory(
-                    &self.device_properties.memory,
-                    memory_reqs,
-                    vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-                )?;
-
-                self.screenshot_ctx.data = unsafe {
-                    std::slice::from_raw_parts_mut(
-                        self.device.map_memory(
-                            self.screenshot_ctx.memory,
-                            0,
-                            memory_reqs.size,
-                            vk::MemoryMapFlags::empty(),
-                        )? as *mut u8,
-                        memory_reqs.size as usize,
-                    )
-                };
-            }
-
-            unsafe {
-                self.device.bind_image_memory(
-                    self.screenshot_ctx.image,
-                    self.screenshot_ctx.memory,
-                    0,
-                )
-            }?;
-
-            let barrier = vk::ImageMemoryBarrier::builder()
-                .image(self.screenshot_ctx.image)
-                .src_access_mask(vk::AccessFlags::empty())
-                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .old_layout(vk::ImageLayout::UNDEFINED)
-                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .build();
-
-            unsafe {
-                self.device.cmd_pipeline_barrier(
-                    self.screenshot_ctx.commbuf,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[barrier],
-                )
-            };
-        }
+        self.screenshot_ctx
+            .realloc(&self.device, &self.device_properties, extent)?;
 
         let source_image = self.swapchain.images[self.command_pool.active_command];
 
@@ -900,13 +823,92 @@ impl<'a> ScreenshotCtx<'a> {
         })
     }
 
-    fn destroy(&self, device: &VkDevice) {
+    fn destroy(&mut self, device: &VkDevice) {
         unsafe {
             device.unmap_memory(self.memory);
             device.destroy_fence(self.fence, None);
             device.destroy_image(self.image, None);
             device.free_memory(self.memory, None);
         }
+    }
+
+    fn realloc(
+        &mut self,
+        device: &VkDevice,
+        device_properties: &VkDeviceProperties,
+        extent: vk::Extent3D,
+    ) -> VkResult<()> {
+        if self.extent != extent {
+            unsafe { device.destroy_image(self.image, None) };
+
+            let image_create_info = vk::ImageCreateInfo::builder()
+                .format(vk::Format::R8G8B8A8_SRGB)
+                .image_type(vk::ImageType::TYPE_2D)
+                .extent(extent)
+                .array_layers(1)
+                .mip_levels(1)
+                .samples(vk::SampleCountFlags::TYPE_1)
+                .tiling(vk::ImageTiling::LINEAR)
+                .usage(vk::ImageUsageFlags::TRANSFER_DST)
+                .initial_layout(vk::ImageLayout::UNDEFINED);
+
+            self.image = unsafe { device.create_image(&image_create_info, None)? };
+            let memory_reqs = unsafe { device.get_image_memory_requirements(self.image) };
+
+            if memory_reqs.size as usize > self.data.len() {
+                unsafe { device.unmap_memory(self.memory) };
+                unsafe { device.free_memory(self.memory, None) }
+
+                self.memory = device.alloc_memory(
+                    &device_properties.memory,
+                    memory_reqs,
+                    vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+                )?;
+
+                self.data = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        device.map_memory(
+                            self.memory,
+                            0,
+                            memory_reqs.size,
+                            vk::MemoryMapFlags::empty(),
+                        )? as *mut u8,
+                        memory_reqs.size as usize,
+                    )
+                };
+            }
+
+            unsafe { device.bind_image_memory(self.image, self.memory, 0) }?;
+
+            let barrier = vk::ImageMemoryBarrier::builder()
+                .image(self.image)
+                .src_access_mask(vk::AccessFlags::empty())
+                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .build();
+
+            unsafe {
+                device.cmd_pipeline_barrier(
+                    self.commbuf,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[barrier],
+                )
+            };
+        }
+
+        Ok(())
     }
 }
 
