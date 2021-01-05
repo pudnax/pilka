@@ -567,7 +567,7 @@ impl PilkaRender {
             unsafe { self.device.destroy_image(self.screenshot_ctx.image, None) };
 
             let image_create_info = vk::ImageCreateInfo::builder()
-                .format(vk::Format::R8G8B8A8_UNORM)
+                .format(vk::Format::R8G8B8A8_SRGB)
                 .image_type(vk::ImageType::TYPE_2D)
                 .extent(extent)
                 .array_layers(1)
@@ -585,6 +585,7 @@ impl PilkaRender {
             };
 
             if self.screenshot_ctx.memory_reqs.size as usize > self.screenshot_ctx.data.len() {
+                unsafe { self.device.unmap_memory(self.screenshot_ctx.memory) };
                 unsafe { self.device.free_memory(self.screenshot_ctx.memory, None) }
 
                 self.screenshot_ctx.data =
@@ -594,6 +595,15 @@ impl PilkaRender {
                     self.screenshot_ctx.memory_reqs,
                     vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
                 )?;
+
+                self.screenshot_ctx.source_ptr = unsafe {
+                    self.device.map_memory(
+                        self.screenshot_ctx.memory,
+                        0,
+                        self.screenshot_ctx.memory_reqs.size,
+                        vk::MemoryMapFlags::empty(),
+                    )
+                }? as *mut u8;
             }
 
             unsafe {
@@ -735,14 +745,6 @@ impl PilkaRender {
         }?;
         unsafe { self.device.reset_fences(&[self.screenshot_ctx.fence]) }?;
 
-        let source_ptr = unsafe {
-            self.device.map_memory(
-                self.screenshot_ctx.memory,
-                0,
-                self.screenshot_ctx.memory_reqs.size,
-                vk::MemoryMapFlags::empty(),
-            )
-        }? as *mut u8;
         let subresource_layout = unsafe {
             self.device.get_image_subresource_layout(
                 self.screenshot_ctx.image,
@@ -756,7 +758,7 @@ impl PilkaRender {
 
         unsafe {
             std::ptr::copy(
-                source_ptr,
+                self.screenshot_ctx.source_ptr,
                 self.screenshot_ctx.data.as_mut_ptr(),
                 subresource_layout.size as usize,
             );
@@ -764,8 +766,6 @@ impl PilkaRender {
                 .data
                 .set_len(subresource_layout.size as usize);
         };
-
-        unsafe { self.device.unmap_memory(self.screenshot_ctx.memory) };
 
         Ok((
             subresource_layout.row_pitch as u32 / 4,
@@ -779,6 +779,7 @@ pub struct ScreenshotCtx {
     commbuf: vk::CommandBuffer,
     memory: vk::DeviceMemory,
     memory_reqs: vk::MemoryRequirements,
+    source_ptr: *mut u8,
     image: vk::Image,
     pub data: Vec<u8>,
     extent: vk::Extent3D,
@@ -805,7 +806,7 @@ impl ScreenshotCtx {
         };
 
         let image_create_info = vk::ImageCreateInfo::builder()
-            .format(vk::Format::R8G8B8A8_UNORM)
+            .format(vk::Format::R8G8B8A8_SRGB)
             .image_type(vk::ImageType::TYPE_2D)
             .extent(extent)
             .array_layers(1)
@@ -825,6 +826,9 @@ impl ScreenshotCtx {
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
         unsafe { device.bind_image_memory(image, memory, 0) }?;
+        let source_ptr =
+            unsafe { device.map_memory(memory, 0, memory_reqs.size, vk::MemoryMapFlags::empty()) }?
+                as *mut u8;
 
         let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -871,6 +875,7 @@ impl ScreenshotCtx {
             commbuf,
             memory,
             memory_reqs,
+            source_ptr,
             image,
             data,
             extent,
@@ -879,6 +884,7 @@ impl ScreenshotCtx {
 
     fn destroy(&self, device: &VkDevice) {
         unsafe {
+            device.unmap_memory(self.memory);
             device.destroy_fence(self.fence, None);
             device.destroy_image(self.image, None);
             device.free_memory(self.memory, None);
