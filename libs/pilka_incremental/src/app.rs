@@ -1,6 +1,6 @@
 use pilka_ash::ash::{prelude::VkResult, version::DeviceV1_0, ShaderInfo, *};
 use pilka_ash::ash_window;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, ffi::CStr, path::PathBuf};
 
 /// The main struct that holds all render primitives
 ///
@@ -62,6 +62,13 @@ impl std::fmt::Display for PushConstant {
 }
 
 impl PilkaRender {
+    pub fn get_device_name(&self) -> Result<&str, std::str::Utf8Error> {
+        unsafe { CStr::from_ptr(self.device_properties.properties.device_name.as_ptr()) }.to_str()
+    }
+    pub fn get_device_type(&self) -> pilka_ash::ash::vk::PhysicalDeviceType {
+        self.device_properties.properties.device_type
+    }
+
     pub fn new<W: HasRawWindowHandle>(window: &W) -> Result<Self, Box<dyn std::error::Error>> {
         let validation_layers = if cfg!(debug_assertions) {
             vec!["VK_LAYER_KHRONOS_validation\0"]
@@ -603,7 +610,7 @@ impl PilkaRender {
                         self.screenshot_ctx.memory_reqs.size,
                         vk::MemoryMapFlags::empty(),
                     )
-                }? as *mut u8;
+                }? as *const u8;
             }
 
             unsafe {
@@ -779,7 +786,7 @@ pub struct ScreenshotCtx {
     commbuf: vk::CommandBuffer,
     memory: vk::DeviceMemory,
     memory_reqs: vk::MemoryRequirements,
-    source_ptr: *mut u8,
+    source_ptr: *const u8,
     image: vk::Image,
     pub data: Vec<u8>,
     extent: vk::Extent3D,
@@ -828,7 +835,7 @@ impl ScreenshotCtx {
         unsafe { device.bind_image_memory(image, memory, 0) }?;
         let source_ptr =
             unsafe { device.map_memory(memory, 0, memory_reqs.size, vk::MemoryMapFlags::empty()) }?
-                as *mut u8;
+                as *const u8;
 
         let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
