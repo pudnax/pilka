@@ -7,6 +7,7 @@ use std::{collections::HashMap, ffi::CStr, path::PathBuf};
 /// Rust documentation states for FIFO drop order for struct fields.
 /// Or in the other words it's the same order that they're declared.
 pub struct PilkaRender {
+    pub screenshot_ctx: ScreenshotCtx,
     pub push_constant: PushConstant,
 
     pub scissors: Box<[vk::Rect2D]>,
@@ -33,7 +34,6 @@ pub struct PilkaRender {
     pub queues: VkQueues,
     pub device: VkDevice,
     pub instance: VkInstance,
-    pub screenshot_ctx: ScreenshotCtx,
 }
 
 #[repr(C)]
@@ -67,6 +67,28 @@ impl PilkaRender {
     }
     pub fn get_device_type(&self) -> pilka_ash::ash::vk::PhysicalDeviceType {
         self.device_properties.properties.device_type
+    }
+    pub fn get_vendor_name(&self) -> &str {
+        match self.device_properties.properties.vendor_id {
+            0x1002 => "AMD",
+            0x1010 => "ImgTec",
+            0x10DE => "NVIDIA Corporation",
+            0x13B5 => "ARM",
+            0x5143 => "Qualcomm",
+            0x8086 => "INTEL Corporation",
+            _ => "Unknown vendor",
+        }
+    }
+    pub fn get_vulkan_version_name(&self) -> VkResult<String> {
+        match self.instance.entry.try_enumerate_instance_version()? {
+            Some(version) => {
+                let major = version >> 22;
+                let minor = (version >> 12) & 0x3ff;
+                let patch = version & 0xfff;
+                Ok(format!("{}.{}.{}", major, minor, patch))
+            }
+            None => Ok("1.0.0".to_string()),
+        }
     }
 
     pub fn new<W: HasRawWindowHandle>(window: &W) -> Result<Self, Box<dyn std::error::Error>> {
