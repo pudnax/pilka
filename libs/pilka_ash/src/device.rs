@@ -178,7 +178,6 @@ impl VkDevice {
         })
     }
 
-    // TODO(#22): Set up barriers to change image layouts from UNDEFINED
     pub fn create_swapchain(
         &self,
         swapchain_loader: khr::Swapchain,
