@@ -579,7 +579,6 @@ impl<'a> PilkaRender<'a> {
         }
     }
 
-    // TODO(#24): Make transfer command pool
     pub fn capture_image(&mut self) -> Result<(u32, u32), Box<dyn std::error::Error>> {
         let copybuffer = self.screenshot_ctx.commbuf;
         let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
