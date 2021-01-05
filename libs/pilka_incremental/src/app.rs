@@ -6,8 +6,8 @@ use std::{collections::HashMap, ffi::CStr, path::PathBuf};
 ///
 /// Rust documentation states for FIFO drop order for struct fields.
 /// Or in the other words it's the same order that they're declared.
-pub struct PilkaRender {
-    pub screenshot_ctx: ScreenshotCtx,
+pub struct PilkaRender<'a> {
+    pub screenshot_ctx: ScreenshotCtx<'a>,
     pub push_constant: PushConstant,
 
     pub scissors: Box<[vk::Rect2D]>,
@@ -61,7 +61,7 @@ impl std::fmt::Display for PushConstant {
     }
 }
 
-impl PilkaRender {
+impl<'a> PilkaRender<'a> {
     pub fn get_device_name(&self) -> Result<&str, std::str::Utf8Error> {
         unsafe { CStr::from_ptr(self.device_properties.properties.device_name.as_ptr()) }.to_str()
     }
@@ -608,31 +608,32 @@ impl PilkaRender {
 
             self.screenshot_ctx.image =
                 unsafe { self.device.create_image(&image_create_info, None)? };
-            self.screenshot_ctx.memory_reqs = unsafe {
+            let memory_reqs = unsafe {
                 self.device
                     .get_image_memory_requirements(self.screenshot_ctx.image)
             };
 
-            if self.screenshot_ctx.memory_reqs.size as usize > self.screenshot_ctx.data.len() {
+            if memory_reqs.size as usize > self.screenshot_ctx.data.len() {
                 unsafe { self.device.unmap_memory(self.screenshot_ctx.memory) };
                 unsafe { self.device.free_memory(self.screenshot_ctx.memory, None) }
 
-                self.screenshot_ctx.data =
-                    Vec::with_capacity(self.screenshot_ctx.memory_reqs.size as usize);
                 self.screenshot_ctx.memory = self.device.alloc_memory(
                     &self.device_properties.memory,
-                    self.screenshot_ctx.memory_reqs,
+                    memory_reqs,
                     vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
                 )?;
 
-                self.screenshot_ctx.source_ptr = unsafe {
-                    self.device.map_memory(
-                        self.screenshot_ctx.memory,
-                        0,
-                        self.screenshot_ctx.memory_reqs.size,
-                        vk::MemoryMapFlags::empty(),
+                self.screenshot_ctx.data = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        self.device.map_memory(
+                            self.screenshot_ctx.memory,
+                            0,
+                            memory_reqs.size,
+                            vk::MemoryMapFlags::empty(),
+                        )? as *mut u8,
+                        memory_reqs.size as usize,
                     )
-                }? as *const u8;
+                };
             }
 
             unsafe {
@@ -785,17 +786,6 @@ impl PilkaRender {
             )
         };
 
-        unsafe {
-            std::ptr::copy(
-                self.screenshot_ctx.source_ptr,
-                self.screenshot_ctx.data.as_mut_ptr(),
-                subresource_layout.size as usize,
-            );
-            self.screenshot_ctx
-                .data
-                .set_len(subresource_layout.size as usize);
-        };
-
         Ok((
             subresource_layout.row_pitch as u32 / 4,
             (subresource_layout.size / subresource_layout.row_pitch) as u32,
@@ -803,18 +793,16 @@ impl PilkaRender {
     }
 }
 
-pub struct ScreenshotCtx {
+pub struct ScreenshotCtx<'a> {
     fence: vk::Fence,
     commbuf: vk::CommandBuffer,
     memory: vk::DeviceMemory,
-    memory_reqs: vk::MemoryRequirements,
-    source_ptr: *const u8,
     image: vk::Image,
-    pub data: Vec<u8>,
     extent: vk::Extent3D,
+    pub data: &'a [u8],
 }
 
-impl ScreenshotCtx {
+impl<'a> ScreenshotCtx<'a> {
     pub fn init(
         device: &VkDevice,
         memory_properties: &vk::PhysicalDeviceMemoryProperties,
@@ -848,16 +836,19 @@ impl ScreenshotCtx {
         let image = unsafe { device.create_image(&image_create_info, None)? };
         let memory_reqs = unsafe { device.get_image_memory_requirements(image) };
 
-        let data = Vec::with_capacity(memory_reqs.size as usize);
         let memory = device.alloc_memory(
             memory_properties,
             memory_reqs,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
         unsafe { device.bind_image_memory(image, memory, 0) }?;
-        let source_ptr =
-            unsafe { device.map_memory(memory, 0, memory_reqs.size, vk::MemoryMapFlags::empty()) }?
-                as *const u8;
+        let data = unsafe {
+            std::slice::from_raw_parts_mut(
+                device.map_memory(memory, 0, memory_reqs.size, vk::MemoryMapFlags::empty())?
+                    as *mut u8,
+                memory_reqs.size as usize,
+            )
+        };
 
         let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -903,10 +894,8 @@ impl ScreenshotCtx {
             fence,
             commbuf,
             memory,
-            memory_reqs,
-            source_ptr,
-            image,
             data,
+            image,
             extent,
         })
     }
@@ -921,7 +910,7 @@ impl ScreenshotCtx {
     }
 }
 
-impl Drop for PilkaRender {
+impl<'a> Drop for PilkaRender<'a> {
     fn drop(&mut self) {
         unsafe {
             self.screenshot_ctx.destroy(&self.device);
