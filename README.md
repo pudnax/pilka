@@ -32,10 +32,13 @@ Available features:
 
 (per-draw-update)
 
-- position: vec3
-- time: float
-- resolution: vec2
-- mouse: vec2
+| name       | type  | range   |   |   |
+|------------|-------|---------|---|---|
+| position   | vec3  | (-∞, ∞) |   |   |
+| time       | float | [0, ∞)  |   |   |
+| resolution | vec2  | [0, a]  |   |   |
+| mouse      | vec2  | [-1, 1] |   |   |
+| spectrum   | float | [-1, 1] |   |   |
 
 ## Requirements
 

@@ -9,6 +9,7 @@ layout(std430, push_constant) uniform PushConstant {
 	float time;
 	vec2 resolution;
 	vec2 mouse;
+	float spectrum;
 } pc;
 
 vec4 plas(vec2 v, float time) {
@@ -29,5 +30,5 @@ void main() {
 
   vec4 t = plas(m * 3.14, 1.0) / d;
   out_color = vec4(uv, 0.0, 1.0);
-  out_color = t + vec4(pc.mouse, 1.0, 1.0);
+  out_color = t + vec4(pc.mouse, pc.spectrum, 1.0);
 }

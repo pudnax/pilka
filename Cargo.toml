@@ -20,7 +20,7 @@ chrono = "0.4.19"
 png = "0.16.8"
 image = "0.23.12"
 cpal = "0.13.1"
-rustfft = "4.1.0"
+rustfft = "5.0.0"
 
 [profile.release]
 lto = 'thin'

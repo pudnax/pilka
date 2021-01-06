@@ -43,6 +43,7 @@ pub struct PushConstant {
     pub time: f32,
     pub wh: [f32; 2],
     pub mouse: [f32; 2],
+    pub spectrum: f32,
 }
 
 impl PushConstant {
@@ -55,8 +56,8 @@ impl std::fmt::Display for PushConstant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "position:\t{:?}\ntime:\t\t{}\nwidth, height:\t{:?}\nmouse:\t\t{:?}\n",
-            self.pos, self.time, self.wh, self.mouse
+            "position:\t{:?}\ntime:\t\t{}\nwidth, height:\t{:?}\nmouse:\t\t{:?}\nspectrum:\t{}\n",
+            self.pos, self.time, self.wh, self.mouse, self.spectrum
         )
     }
 }
@@ -200,6 +201,7 @@ impl<'a> PilkaRender<'a> {
             wh: surface.resolution_slice(&device)?,
             mouse: [0.; 2],
             time: 0.,
+            spectrum: 0.,
         };
 
         let pipeline_cache_create_info = vk::PipelineCacheCreateInfo::builder();
