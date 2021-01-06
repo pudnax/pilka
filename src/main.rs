@@ -54,17 +54,12 @@ fn main() -> Result<()> {
     where
         T: cpal::Sample,
     {
-        let mut max = f32::MIN;
-        let mut sample = 0.0;
-        for s in input {
-            let s: T = cpal::Sample::from(s);
-            let s = s.to_f32();
-            if s.abs() > max {
-                max = s;
-            }
-            sample += s;
-        }
-        sample /= input.len() as f32 * max;
+        let sample = input
+            .iter()
+            .map(|s| cpal::Sample::from(s))
+            .map(|s: T| s.to_f32())
+            .sum::<f32>()
+            / input.len() as f32;
 
         tx.send(sample.max(-1.0).min(1.0)).unwrap();
     }

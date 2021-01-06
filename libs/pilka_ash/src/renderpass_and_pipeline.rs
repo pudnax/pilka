@@ -84,6 +84,7 @@ impl PipelineDescriptor {
         };
         let multisample = vk::PipelineMultisampleStateCreateInfo {
             rasterization_samples: vk::SampleCountFlags::TYPE_1,
+            alpha_to_coverage_enable: 1,
             ..Default::default()
         };
 
