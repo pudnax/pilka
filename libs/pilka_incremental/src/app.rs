@@ -580,7 +580,7 @@ impl<'a> PilkaRender<'a> {
         }
     }
 
-    pub fn capture_image(&mut self) -> Result<(u32, u32), Box<dyn std::error::Error>> {
+    pub fn capture_frame(&mut self) -> Result<(u32, u32), Box<dyn std::error::Error>> {
         let copybuffer = self.screenshot_ctx.commbuf;
         let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
