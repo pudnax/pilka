@@ -6,6 +6,7 @@ use pilka_lib::*;
 use pilka_dyn;
 
 use ash::{version::DeviceV1_0, vk};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use eyre::*;
 use notify::{
     event::{EventKind, ModifyKind},
@@ -31,6 +32,28 @@ const SHADER_ENTRY_POINT: &str = "main";
 fn main() -> Result<()> {
     // Initialize error hook.
     color_eyre::install()?;
+
+    let host = cpal::default_host();
+
+    let device = host
+        .default_input_device()
+        .context("failed to find input device")?;
+
+    let config = device.default_input_config()?;
+
+    let err_fn = move |err| {
+        eprintln!("an error occured on stream: {}", err);
+    };
+
+    let (audio_tx, audio_rx) = std::sync::mpsc::channel();
+
+    let stream = device.build_input_stream(
+        &config.into(),
+        move |data, _: &_| write_input_data::<f32>(data, &audio_tx),
+        err_fn,
+    )?;
+
+    stream.play()?;
 
     let mut time = Instant::now();
     let mut backup_time = time.elapsed();
@@ -117,6 +140,10 @@ fn main() -> Result<()> {
                 };
 
                 if !pause {
+                    if let Ok(spectrum) = audio_rx.try_recv() {
+                        pilka.push_constant.spectrum = spectrum;
+                    }
+
                     let dx = 0.01;
                     if input.left_pressed {
                         pilka.push_constant.pos[0] -= dx;
@@ -293,4 +320,19 @@ fn main() -> Result<()> {
             _ => {}
         }
     });
+}
+
+use std::sync::mpsc::Sender;
+
+pub fn write_input_data<T>(input: &[T], tx: &Sender<f32>)
+where
+    T: cpal::Sample,
+{
+    let sample = input
+        .iter()
+        .map(|s| cpal::Sample::from(s))
+        .map(|s: T| s.to_f32())
+        .sum::<f32>()
+        / input.len() as f32;
+    tx.send(sample).unwrap();
 }
