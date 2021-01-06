@@ -14,6 +14,7 @@ use notify::{
 };
 use std::{
     path::{Path, PathBuf},
+    sync::mpsc::Sender,
     time::Instant,
 };
 use winit::{
@@ -40,6 +41,8 @@ fn main() -> Result<()> {
         .context("failed to find input device")?;
 
     let config = device.default_input_config()?;
+    let sample_rate = config.sample_rate().0;
+    let num_channels = config.channels();
 
     let err_fn = move |err| {
         eprintln!("an error occured on stream: {}", err);
@@ -47,6 +50,24 @@ fn main() -> Result<()> {
 
     let (audio_tx, audio_rx) = std::sync::mpsc::channel();
 
+    fn write_input_data<T>(input: &[T], tx: &Sender<f32>)
+    where
+        T: cpal::Sample,
+    {
+        let mut max = f32::MIN;
+        let mut sample = 0.0;
+        for s in input {
+            let s: T = cpal::Sample::from(s);
+            let s = s.to_f32();
+            if s.abs() > max {
+                max = s;
+            }
+            sample += s;
+        }
+        sample /= input.len() as f32 * max;
+
+        tx.send(sample.max(-1.0).min(1.0)).unwrap();
+    }
     let stream = device.build_input_stream(
         &config.into(),
         move |data, _: &_| write_input_data::<f32>(data, &audio_tx),
@@ -88,6 +109,8 @@ fn main() -> Result<()> {
     println!("Device name: {}", pilka.get_device_name()?);
     println!("Device type: {:?}", pilka.get_device_type());
     println!("Vulkan version: {}", pilka.get_vulkan_version_name()?);
+    println!("Audio host: {:?}", host.id());
+    println!("Sample rate: {}, channels: {}", sample_rate, num_channels);
 
     println!("\n- `F1`:   Toggles play/pause");
     println!("- `F2`:   Pauses and steps back one frame");
@@ -268,7 +291,7 @@ fn main() -> Result<()> {
                         }
                         if VirtualKeyCode::F11 == keycode {
                             let now = Instant::now();
-                            let (width, height) = pilka.capture_image().unwrap();
+                            let (width, height) = pilka.capture_frame().unwrap();
                             eprintln!("Capture image: {:#?}", now.elapsed());
 
                             let frame = pilka.screenshot_ctx.data;
@@ -320,19 +343,4 @@ fn main() -> Result<()> {
             _ => {}
         }
     });
-}
-
-use std::sync::mpsc::Sender;
-
-pub fn write_input_data<T>(input: &[T], tx: &Sender<f32>)
-where
-    T: cpal::Sample,
-{
-    let sample = input
-        .iter()
-        .map(|s| cpal::Sample::from(s))
-        .map(|s: T| s.to_f32())
-        .sum::<f32>()
-        / input.len() as f32;
-    tx.send(sample).unwrap();
 }

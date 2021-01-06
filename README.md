@@ -1,4 +1,4 @@
-# pilka 🔩 (WIP)
+# pilka 🔩
 
 
 Pilka is a cross-platform democoding tool for creating shader* demos,
