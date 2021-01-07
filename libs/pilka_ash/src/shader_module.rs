@@ -37,36 +37,25 @@ pub fn create_shader_module(
     let shader_text = std::fs::read_to_string(&path.name).unwrap();
     let mut compile_options = shaderc::CompileOptions::new().unwrap();
     compile_options.set_warnings_as_errors();
-    compile_options.set_target_env(shaderc::TargetEnv::Vulkan, 0);
+    compile_options.set_target_env(
+        shaderc::TargetEnv::Vulkan,
+        shaderc::EnvVersion::Vulkan1_2 as u32,
+    );
     compile_options.set_optimization_level(shaderc::OptimizationLevel::Performance);
-    //}
-    // Helps a lot when inspecting in ShaderDoc (will show all original source files before processing) but doesn't seem to hurt performance at all :)
     compile_options.set_generate_debug_info();
 
-    compile_options.add_macro_definition(
-        "FRAGMENT_SHADER",
-        Some(if shader_type == shaderc::ShaderKind::Fragment {
-            "1"
-        } else {
-            "0"
-        }),
-    );
-    compile_options.add_macro_definition(
-        "VERTEX_SHADER",
-        Some(if shader_type == shaderc::ShaderKind::Vertex {
-            "1"
-        } else {
-            "0"
-        }),
-    );
-    compile_options.add_macro_definition(
-        "COMPUTE_SHADER",
-        Some(if shader_type == shaderc::ShaderKind::Compute {
-            "1"
-        } else {
-            "0"
-        }),
-    );
+    match shader_type {
+        shaderc::ShaderKind::Fragment => {
+            compile_options.add_macro_definition("FRAGMENT_SHADER", Some("1"))
+        }
+        shaderc::ShaderKind::Vertex => {
+            compile_options.add_macro_definition("VERTEX_SHADER", Some("1"))
+        }
+        shaderc::ShaderKind::Compute => {
+            compile_options.add_macro_definition("COMPUTE_SHADER", Some("1"))
+        }
+        _ => panic!("We doesn't support {:?} shaders yet", shader_type),
+    }
 
     if cfg!(debug_assertions) {
         compile_options.add_macro_definition("DEBUG", Some("1"));
@@ -99,9 +88,18 @@ pub fn create_shader_module(
         path.entry_point.to_str().unwrap(),
         Some(&compile_options),
     ) {
-        Ok(data) => data,
+        Ok(compilation_artifact) => {
+            if compilation_artifact.get_num_warnings() > 0 {
+                eprintln!(
+                    "[WARNINGS] In shader {:?}:\n{}",
+                    path,
+                    compilation_artifact.get_warning_messages()
+                );
+            }
+            compilation_artifact
+        }
         Err(e) => {
-            println!("{}", e);
+            eprintln!("{}", e);
             return Err(ash::vk::Result::ERROR_UNKNOWN);
         }
     };
