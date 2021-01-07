@@ -5,7 +5,7 @@ use pilka_lib::*;
 #[allow(clippy::single_component_path_imports)]
 use pilka_dyn;
 
-use ash::{version::DeviceV1_0, vk};
+use ash::{version::DeviceV1_0, vk, SHADER_ENTRY_POINT, SHADER_PATH};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use eyre::*;
 use notify::{
@@ -25,10 +25,6 @@ use winit::{
 };
 
 mod input;
-use input::Input;
-
-const SHADER_PATH: &str = "shaders";
-const SHADER_ENTRY_POINT: &str = "main";
 
 fn main() -> Result<()> {
     // Initialize error hook.
@@ -71,11 +67,11 @@ fn main() -> Result<()> {
 
     stream.play()?;
 
+    let mut input = input::Input::new();
+    let mut pause = false;
     let mut time = Instant::now();
     let mut backup_time = time.elapsed();
     let dt = 1. / 60.;
-    let mut input = Input::new();
-    let mut pause = false;
 
     let event_loop = winit::event_loop::EventLoop::new();
 
@@ -88,16 +84,17 @@ fn main() -> Result<()> {
         .build(&event_loop)?;
 
     let mut pilka = PilkaRender::new(&window).unwrap();
+    let shader_dir = PathBuf::new().join(SHADER_PATH);
     pilka.push_shader_module(
         ash::ShaderInfo::new(
-            PathBuf::from([SHADER_PATH, "/shader.vert"].concat()),
+            shader_dir.join("shader.vert"),
             SHADER_ENTRY_POINT.to_string(),
         )?,
         ash::ShaderInfo::new(
-            PathBuf::from([SHADER_PATH, "/shader.frag"].concat()),
+            shader_dir.join("shader.frag"),
             SHADER_ENTRY_POINT.to_string(),
         )?,
-        &[],
+        &[shader_dir.join("prelude.glsl")],
     )?;
 
     println!("Vendor name: {}", pilka.get_vendor_name());
@@ -106,6 +103,10 @@ fn main() -> Result<()> {
     println!("Vulkan version: {}", pilka.get_vulkan_version_name()?);
     println!("Audio host: {:?}", host.id());
     println!("Sample rate: {}, channels: {}", sample_rate, num_channels);
+    println!(
+        "Default shader path:\n\t{}",
+        shader_dir.canonicalize()?.display()
+    );
 
     println!("\n- `F1`:   Toggles play/pause");
     println!("- `F2`:   Pauses and steps back one frame");

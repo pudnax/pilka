@@ -356,7 +356,7 @@ impl<'a> PilkaRender<'a> {
         &mut self,
         vert_info: ShaderInfo,
         frag_info: ShaderInfo,
-        dependencies: &[&str],
+        dependencies: &[PathBuf],
     ) -> VkResult<()> {
         let pipeline_number = self.pipelines.len();
         self.shader_set
@@ -365,7 +365,7 @@ impl<'a> PilkaRender<'a> {
             .insert(frag_info.name.canonicalize().unwrap(), pipeline_number);
         for deps in dependencies {
             self.shader_set
-                .insert(PathBuf::from(deps).canonicalize().unwrap(), pipeline_number);
+                .insert(deps.canonicalize().unwrap(), pipeline_number);
         }
 
         let new_pipeline = self.make_pipeline_from_shaders(&vert_info, &frag_info)?;
