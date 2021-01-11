@@ -13,6 +13,8 @@ use notify::{
     RecommendedWatcher, RecursiveMode, Watcher,
 };
 use std::{
+    fs::File,
+    io::BufWriter,
     path::{Path, PathBuf},
     sync::mpsc::Sender,
     time::Instant,
@@ -293,22 +295,22 @@ fn main() -> Result<()> {
                             let frame = pilka.screenshot_ctx.data;
                             std::thread::spawn(move || {
                                 let now = Instant::now();
-                                let screen: image::ImageBuffer<image::Rgba<u8>, _> =
-                                    image::ImageBuffer::from_raw(width, height, frame.to_vec())
-                                        .expect("ImageBuffer creation");
-                                let screen_image =
-                                    image::DynamicImage::ImageRgba8(screen).to_rgba8();
+                                let path = std::path::Path::new("screenshots").join(format!(
+                                    "screenshot-{}.jpg",
+                                    chrono::Local::now().format("%d.%m.%Y-%H:%M:%S").to_string()
+                                ));
+                                let file = File::create(path).unwrap();
+                                let w = BufWriter::new(file);
+                                let mut encoder = png::Encoder::new(w, width, height);
+                                encoder.set_color(png::ColorType::RGBA);
+                                encoder.set_depth(png::BitDepth::Eight);
+                                let mut writer = encoder.write_header().unwrap();
                                 match std::fs::create_dir("screenshots") {
                                     Ok(_) => {}
                                     Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
                                     Err(e) => panic!("Failed to create folder: {}", e),
                                 }
-                                screen_image
-                                    .save(std::path::Path::new("screenshots").join(format!(
-                                    "screenshot-{}.jpg",
-                                    chrono::Local::now().format("%d.%m.%Y-%H:%M:%S").to_string()
-                                )))
-                                    .unwrap();
+                                writer.write_image_data(&frame).unwrap();
                                 eprintln!("Encode image: {:#?}", now.elapsed());
                             });
                         }
