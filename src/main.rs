@@ -293,11 +293,11 @@ fn main() -> Result<()> {
                             let frame = pilka.screenshot_ctx.data;
                             std::thread::spawn(move || {
                                 let now = Instant::now();
-                                let screen: image::ImageBuffer<image::Bgra<u8>, _> =
+                                let screen: image::ImageBuffer<image::Rgba<u8>, _> =
                                     image::ImageBuffer::from_raw(width, height, frame.to_vec())
                                         .expect("ImageBuffer creation");
                                 let screen_image =
-                                    image::DynamicImage::ImageBgra8(screen).to_rgba8();
+                                    image::DynamicImage::ImageRgba8(screen).to_rgba8();
                                 match std::fs::create_dir("screenshots") {
                                     Ok(_) => {}
                                     Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
