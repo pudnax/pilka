@@ -1,6 +1,6 @@
-#version 450
+#version 460
 
-#include "./prelude.glsl"
+#include <prelude.glsl>
 
 layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 out_color;
