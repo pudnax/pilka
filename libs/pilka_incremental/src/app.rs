@@ -131,7 +131,7 @@ impl<'a> PilkaRender<'a> {
             let barrier = vk::ImageMemoryBarrier::builder()
                 .image(swapchain.images[i])
                 .src_access_mask(vk::AccessFlags::empty())
-                .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                .dst_access_mask(vk::AccessFlags::MEMORY_WRITE)
                 .old_layout(vk::ImageLayout::UNDEFINED)
                 .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
                 .subresource_range(vk::ImageSubresourceRange {
@@ -329,7 +329,7 @@ impl<'a> PilkaRender<'a> {
             let barrier = vk::ImageMemoryBarrier::builder()
                 .image(self.swapchain.images[i])
                 .src_access_mask(vk::AccessFlags::empty())
-                .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                .dst_access_mask(vk::AccessFlags::MEMORY_WRITE)
                 .old_layout(vk::ImageLayout::UNDEFINED)
                 .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
                 .subresource_range(vk::ImageSubresourceRange {
