@@ -186,8 +186,10 @@ impl VkDevice {
     ) -> VkResult<VkSwapchain> {
         let surface_capabilities = surface.get_capabilities(self)?;
 
-        let desired_image_count =
-            (surface_capabilities.min_image_count + 3).min(surface_capabilities.max_image_count);
+        let desired_image_count = {
+            let n = surface_capabilities.min_image_count + 3;
+            n.min(surface_capabilities.max_image_count).max(n)
+        };
 
         let present_mode = surface
             .get_present_modes(self)?
