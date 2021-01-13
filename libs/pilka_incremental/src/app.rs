@@ -643,6 +643,7 @@ impl<'a> PilkaRender<'a> {
             })
             .build();
 
+        // TODO: Do I really need general layout?
         let mut general_berrier = vk::ImageMemoryBarrier::builder()
             .image(self.screenshot_ctx.image.image)
             .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
