@@ -185,6 +185,7 @@ fn main() -> Result<()> {
                         pilka.push_constant.pos[2] += dx;
                     }
                 }
+                pilka.push_constant.wh = pilka.surface.resolution_slice(&pilka.device).unwrap();
             }
 
             Event::WindowEvent { event, .. } => match event {
@@ -202,8 +203,6 @@ fn main() -> Result<()> {
                     }
 
                     pilka.resize().unwrap();
-
-                    pilka.push_constant.wh = [width as f32, height as f32];
                 }
                 WindowEvent::KeyboardInput {
                     input:
