@@ -26,6 +26,7 @@ use winit::{
     event_loop::ControlFlow,
 };
 
+mod encoder;
 mod input;
 
 fn main() -> Result<()> {
