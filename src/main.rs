@@ -314,25 +314,6 @@ fn main() -> Result<()> {
                                 eprintln!("Encode image: {:#?}", now.elapsed());
                             });
                         }
-=======
-                    if VirtualKeyCode::F12 == keycode {
-                        let now = Instant::now();
-                        let (width, height) = dbg!(pilka.capture_image().unwrap());
-                        println!("Capture image: {:#?}", now.elapsed());
-
-                        // TODO: Do this in the another thread
-                        let now = Instant::now();
-                        let screen: image::ImageBuffer<image::Bgra<u8>, _> =
-                            image::ImageBuffer::from_raw(
-                                width,
-                                height,
-                                pilka.screenshot_ctx.data.clone(),
-                            )
-                            .expect("ImageBuffer creation");
-                        let screen_image = image::DynamicImage::ImageBgra8(screen).to_rgba8();
-                        screen_image.save("screenshot.jpg").unwrap();
-                        println!("Encode image: {:#?}", now.elapsed());
->>>>>>> 2eb7e70e11bbb57c8ab5374d86462753df51606b
                     }
                 }
 
