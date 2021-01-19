@@ -1,6 +1,6 @@
 use ffmpeg::{
     codec::{self, packet::Packet},
-    encoder, format, log, media, packet,
+    encoder, format, log, media, packet, sys,
     util::{self, frame},
     Rational,
 };
@@ -69,8 +69,8 @@ impl EncoderContext {
         codec.set_gop(10); // 12
         codec.set_frame_rate(Some((params.fps, 1)));
         codec.set_max_b_frames(2);
-        codec.set_mb_decision(encoder::Decision::RateDistortion);
-        unsafe { (*codec.as_mut_ptr()).pix_fmt = ffmpeg::sys::AVPixelFormat::AV_PIX_FMT_YUV420P };
+        codec.set_mb_decision(encoder::Decision::RateDistortion); //  MPEG1Video
+        codec.set_format(format::Pixel::YUV420P);
 
         let octx = format::output(&path)?;
         let mut frame = frame::Video::empty();
@@ -78,6 +78,11 @@ impl EncoderContext {
         frame.set_height(params.height as u32);
         frame.set_width(params.width as u32);
         frame.set_format(format::Pixel::YUV420P);
+
+        let ret = unsafe { sys::av_frame_get_buffer(frame.as_mut_ptr(), 0) };
+        if ret < 0 {
+            panic!("Error on allocating frame with: {}", ret);
+        }
 
         let packet = frame.packet();
 
