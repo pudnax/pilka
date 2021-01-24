@@ -41,6 +41,67 @@ fn copy_image_as_yuv(image: &[u8], frame: &mut frame::Video, (width, _h): (usize
     }
 }
 
+fn add_stream(
+    params: &VideoParams,
+    format_context: &format::context::Output,
+) -> Result<(), util::error::Error> {
+    // *codec = avocdec_find_encoder(codec_id);
+    let context = encoder::find(codec::Id::MPEG2VIDEO).unwrap();
+    let mut codec = encoder::new().video()?;
+
+    // ost->st = avformat_new_stream(oc, NULL);
+    let mut stream = format_context.add_stream(context)?;
+
+    // Not needed because ffmpeg-rs does it by default, derp
+    // ost->st->id = oc->nb_streams - 1;
+    // let num_streams = format_context.nb_streams() as i32 - 1; // NOTE: Weak spot
+    // unsafe { (*stream.as_mut_ptr()).id = num_streams };
+
+    stream.set_time_base(Rational::new(1, params.fps));
+
+    codec.set_bit_rate(params.bitrate);
+    codec.set_width(params.width as u32);
+    codec.set_height(params.height as u32);
+    codec.set_time_base((1, params.fps));
+    codec.set_gop(10); // 12
+    codec.set_frame_rate(Some((params.fps, 1)));
+    codec.set_max_b_frames(2);
+    // codec.set_mb_decision(encoder::Decision::RateDistortion); //  MPEG1Video
+    codec.set_format(format::Pixel::YUV420P);
+
+    if format_context
+        .format()
+        .flags()
+        .contains(format::Flags::GLOBAL_HEADER)
+    {
+        codec.set_flags(codec::Flags::GLOBAL_HEADER);
+    }
+
+    Ok(())
+}
+
+// TODO: Where is error handling?!!?
+fn alloc_pcture(format: format::Pixel, width: u32, height: u32) -> frame::video::Video {
+    let mut frame = frame::video::Video::empty();
+    unsafe {
+        frame.alloc(format, width, height);
+    }
+
+    frame
+}
+
+fn open_video(
+    video: encoder::Video,
+    output_context: format::context::Output,
+    codec: Codec,
+    stream: ffmpeg::StreamMut,
+    options: &Dictionary,
+) -> Result<(), util::error::Error> {
+    let res = video.open_as_with(codec, *options)?;
+
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy)]
 struct VideoParams {
     fps: i32,
@@ -69,7 +130,7 @@ impl EncoderContext {
         codec.set_gop(10); // 12
         codec.set_frame_rate(Some((params.fps, 1)));
         codec.set_max_b_frames(2);
-        codec.set_mb_decision(encoder::Decision::RateDistortion); //  MPEG1Video
+        // codec.set_mb_decision(encoder::Decision::RateDistortion); //  MPEG1Video
         codec.set_format(format::Pixel::YUV420P);
 
         let octx = format::output(&path)?;
