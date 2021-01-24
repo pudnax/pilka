@@ -60,7 +60,7 @@ fn main() -> Result<()> {
             .sum::<f32>()
             / input.len() as f32;
 
-        tx.send(sample.max(-1.0).min(1.0)).unwrap();
+        tx.send(sample.max(-1.0).min(1.0)).ok();
     }
     let stream = device.build_input_stream(
         &config.into(),
