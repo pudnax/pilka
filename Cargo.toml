@@ -26,3 +26,6 @@ lto = 'thin'
 
 # [profile.dev.package.'*']
 # opt-level = 3
+
+# [profile.dev]
+# debug = 0

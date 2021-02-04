@@ -5,16 +5,24 @@ use pilka_lib::*;
 #[allow(clippy::single_component_path_imports)]
 use pilka_dyn;
 
+mod encoder;
+mod input;
+
 use ash::{version::DeviceV1_0, vk, SHADER_ENTRY_POINT, SHADER_PATH};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use encoder::{Frame, RecordEvent};
 use eyre::*;
+use ffmpeg::codec::packet::Packet;
+use ffmpeg::format::Pixel;
+use ffmpeg::software::scaling;
+use ffmpeg_next as ffmpeg;
 use notify::{
     event::{EventKind, ModifyKind},
     RecommendedWatcher, RecursiveMode, Watcher,
 };
 use std::{
     fs::File,
-    io::BufWriter,
+    io::{BufWriter, Write},
     path::{Path, PathBuf},
     sync::mpsc::Sender,
     time::Instant,
@@ -25,9 +33,6 @@ use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
 };
-
-mod encoder;
-mod input;
 
 fn main() -> Result<()> {
     // Initialize error hook.
@@ -87,6 +92,8 @@ fn main() -> Result<()> {
         .build(&event_loop)?;
 
     let mut pilka = PilkaRender::new(&window).unwrap();
+    let resolution = pilka.surface.resolution_slice(&pilka.device).unwrap();
+
     let shader_dir = PathBuf::new().join(SHADER_PATH);
     pilka.push_shader_module(
         ash::ShaderInfo::new(
@@ -118,7 +125,7 @@ fn main() -> Result<()> {
     println!("- `F5`:   Print parameters");
     println!("- `F10`:  Save shaders");
     println!("- `F11`:  Take Screenshot");
-    // println!("- `F12`:  Start/Stop record video");
+    println!("- `F12`:  Start/Stop record video");
     println!("- `ESC`:  Exit the application");
     println!("- `Arrows`: Change `Pos`\n");
     println!("// Set up our new world⏎ ");
@@ -135,6 +142,90 @@ fn main() -> Result<()> {
     })?;
 
     watcher.watch(SHADER_PATH, RecursiveMode::Recursive)?;
+
+    let mut video_recording = false;
+    let (video_tx, video_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        ffmpeg::init().unwrap();
+
+        let x264_opts = encoder::parse_opts(encoder::DEFAULT_X264_OPTS.to_string()).unwrap();
+        let w = resolution[0] as u32;
+        let h = resolution[1] as u32;
+        let mut video_params = encoder::VideoParams {
+            fps: 60,
+            width: w as u32,
+            height: h as u32,
+            bitrate: 400_000,
+        };
+        let mut recorder = encoder::Recorder::new(&video_params, x264_opts.clone(), true).unwrap();
+
+        let mut packet = Packet::empty();
+
+        let records_folder = Path::new("records");
+        match std::fs::create_dir(records_folder) {
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => panic!("Failed to create folder: {}", e),
+        }
+        let path = records_folder.join(format!(
+            "record-{}.mp4",
+            chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
+        ));
+        let mut f = File::create(path).unwrap();
+        // let mut f = BufWriter::new(file);
+        let mut frame = encoder::alloc_picture(
+            recorder.encoder.format(),
+            recorder.encoder.width(),
+            recorder.encoder.height(),
+        );
+        frame.set_metadata(x264_opts.clone());
+        let mut frame_num = 0;
+
+        let sws = frame.converter(Pixel::YUV420P).unwrap();
+
+        loop {
+            if let Ok(event) = video_rx.try_recv() {
+                match event {
+                    RecordEvent::Start((w, h)) => {
+                        video_params.width = w;
+                        video_params.height = h;
+                        recorder =
+                            encoder::Recorder::new(&video_params, x264_opts.clone(), true).unwrap();
+                        frame = encoder::alloc_picture(
+                            recorder.encoder.format(),
+                            recorder.encoder.width(),
+                            recorder.encoder.height(),
+                        );
+                        frame.set_metadata(x264_opts.clone());
+
+                        let path = records_folder.join(format!(
+                            "record-{}.mp4",
+                            chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
+                        ));
+                        f = File::create(path).unwrap();
+                    }
+                    RecordEvent::Continue(screen_frame) => {
+                        frame_num += 1;
+                        println!("Frame: {}", frame_num);
+
+                        encoder::copy_as_yuv_image(&screen_frame.data, &mut frame, screen_frame.wh);
+
+                        frame.set_pts(Some(frame_num as i64));
+
+                        recorder.encode(&frame, &mut packet, &mut f).unwrap();
+                    }
+                    RecordEvent::End => {
+                        recorder.encoder.send_eof().unwrap();
+
+                        f.write_all(&[0, 0, 1, 0xb7]).unwrap();
+
+                        f.sync_all().unwrap();
+                        frame_num = 0;
+                    }
+                }
+            }
+        }
+    });
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
@@ -204,6 +295,11 @@ fn main() -> Result<()> {
                     }
 
                     pilka.resize().unwrap();
+
+                    if video_recording {
+                        video_recording = false;
+                        video_tx.send(RecordEvent::End).unwrap();
+                    }
                 }
                 WindowEvent::KeyboardInput {
                     input:
@@ -219,6 +315,7 @@ fn main() -> Result<()> {
                     if VirtualKeyCode::Escape == keycode {
                         *control_flow = ControlFlow::Exit;
                     }
+
                     if ElementState::Pressed == state {
                         if VirtualKeyCode::F1 == keycode {
                             if !pause {
@@ -238,6 +335,7 @@ fn main() -> Result<()> {
                                 .checked_sub(std::time::Duration::from_secs_f32(dt))
                                 .unwrap_or_else(Default::default);
                         }
+
                         if VirtualKeyCode::F3 == keycode {
                             if !pause {
                                 backup_time = time.elapsed();
@@ -263,7 +361,7 @@ fn main() -> Result<()> {
                                 Err(e) => panic!("Failed to create folder: {}", e),
                             }
                             let dump_folder = dump_folder
-                                .join(chrono::Local::now().format("%d.%m.%Y-%H:%M:%S").to_string());
+                                .join(chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string());
                             match std::fs::create_dir(&dump_folder) {
                                 Ok(_) => {}
                                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
@@ -287,6 +385,7 @@ fn main() -> Result<()> {
                                 eprintln!("Saved: {}", &to.display());
                             }
                         }
+
                         if VirtualKeyCode::F11 == keycode {
                             let now = Instant::now();
                             let (width, height) = pilka.capture_frame().unwrap();
@@ -295,9 +394,15 @@ fn main() -> Result<()> {
                             let frame = pilka.screenshot_ctx.data;
                             std::thread::spawn(move || {
                                 let now = Instant::now();
-                                let path = std::path::Path::new("screenshots").join(format!(
+                                let screenshots_folder = Path::new("screenshots");
+                                match std::fs::create_dir(screenshots_folder) {
+                                    Ok(_) => {}
+                                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                                    Err(e) => panic!("Failed to create folder: {}", e),
+                                }
+                                let path = screenshots_folder.join(format!(
                                     "screenshot-{}.jpg",
-                                    chrono::Local::now().format("%d.%m.%Y-%H:%M:%S").to_string()
+                                    chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
                                 ));
                                 let file = File::create(path).unwrap();
                                 let w = BufWriter::new(file);
@@ -305,14 +410,21 @@ fn main() -> Result<()> {
                                 encoder.set_color(png::ColorType::RGBA);
                                 encoder.set_depth(png::BitDepth::Eight);
                                 let mut writer = encoder.write_header().unwrap();
-                                match std::fs::create_dir("screenshots") {
-                                    Ok(_) => {}
-                                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-                                    Err(e) => panic!("Failed to create folder: {}", e),
-                                }
                                 writer.write_image_data(&frame).unwrap();
                                 eprintln!("Encode image: {:#?}", now.elapsed());
                             });
+                        }
+
+                        if VirtualKeyCode::F12 == keycode {
+                            if video_recording {
+                                video_tx.send(RecordEvent::End).unwrap()
+                            } else {
+                                let [w, h] = pilka.surface.resolution_slice(&pilka.device).unwrap();
+                                video_tx
+                                    .send(RecordEvent::Start((w as u32, h as u32)))
+                                    .unwrap()
+                            }
+                            video_recording = !video_recording;
                         }
                     }
                 }
@@ -333,6 +445,15 @@ fn main() -> Result<()> {
 
             Event::MainEventsCleared => {
                 pilka.render();
+                if video_recording {
+                    let (width, height) = pilka.capture_frame().unwrap();
+                    video_tx
+                        .send(RecordEvent::Continue(Frame {
+                            data: pilka.screenshot_ctx.data.to_vec(),
+                            wh: (width as u32, height as u32),
+                        }))
+                        .unwrap()
+                }
             }
             Event::LoopDestroyed => {
                 println!("// End from the loop. Bye bye~⏎ ");

@@ -10,7 +10,7 @@ Available features:
 - [X] Hot-reload
 - [X] Saving shaders
 - [X] Taking screenshot
-- [ ] Record video
+- [X] Record video
 
 ![preview](boring_tunnel.png)
 
@@ -87,6 +87,9 @@ when it's mature enough.
 [ash](https://crates.io/crates/ash) is a Vulkan bindings. I choose `ash` because I see `pilka` as a
 learning project and want to touch the maximum untouched Vulkan. For the
 same reason I didn't use `vulkano`, `erupt`, `vulkanism`, etc.
+
+[ffmpeg-next](https://crates.io/crates/ffmpeg-next) is used to record and save to video. For my concerns it's
+temporary solution after which I switch to [rav1e](https://github.com/xiph/rav1e) on it's release.
 
 ### Places of inspiration (from where I steal code):
 

@@ -1,32 +1,20 @@
 use ffmpeg::{
-    codec::{self, packet::Packet},
-    encoder, format, log, media, packet, sys,
-    util::{self, frame},
-    Rational,
+    codec, encoder, format, packet, sys,
+    util::{self, error, frame},
+    Dictionary,
 };
 use ffmpeg_next as ffmpeg;
+use std::{io::Write, time::Instant};
 
-use std::io::Write;
+// const DEFAULT_X264_OPTS: &str = "preset=medium";
+pub const DEFAULT_X264_OPTS: &str = "preset=veryslow,crf=18";
 
-pub fn encode_avframe<W: Write>(
-    encoder: &mut encoder::Encoder,
-    frame: &frame::Video,
-    packet: &mut Packet,
-    stream: &mut W,
-) -> Result<(), Box<dyn std::error::Error>> {
-    encoder.send_frame(frame)?;
-
-    while encoder.receive_packet(packet).is_ok() {}
-    stream.write_all(packet.data().unwrap())?;
-    Ok(())
-}
-
-#[warn(clippy::many_single_char_names)]
-fn copy_image_as_yuv(image: &[u8], frame: &mut frame::Video, (width, _h): (usize, usize)) {
+#[allow(clippy::many_single_char_names)]
+pub fn copy_as_yuv_image(image: &[u8], frame: &mut frame::Video, (width, _h): (u32, u32)) {
     let linesize = unsafe { (*frame.as_ptr()).linesize };
     for (index, chunk) in image.chunks_exact(4).enumerate() {
-        let row = index % width;
-        let col = index / width;
+        let row = index % width as usize;
+        let col = index / width as usize;
         let r = chunk[0] as f32;
         let g = chunk[1] as f32;
         let b = chunk[2] as f32;
@@ -41,118 +29,130 @@ fn copy_image_as_yuv(image: &[u8], frame: &mut frame::Video, (width, _h): (usize
     }
 }
 
-fn add_stream(
-    params: &VideoParams,
-    format_context: &format::context::Output,
-) -> Result<(), util::error::Error> {
-    // *codec = avocdec_find_encoder(codec_id);
-    let context = encoder::find(codec::Id::MPEG2VIDEO).unwrap();
-    let mut codec = encoder::new().video()?;
-
-    // ost->st = avformat_new_stream(oc, NULL);
-    let mut stream = format_context.add_stream(context)?;
-
-    // Not needed because ffmpeg-rs does it by default, derp
-    // ost->st->id = oc->nb_streams - 1;
-    // let num_streams = format_context.nb_streams() as i32 - 1; // NOTE: Weak spot
-    // unsafe { (*stream.as_mut_ptr()).id = num_streams };
-
-    stream.set_time_base(Rational::new(1, params.fps));
-
-    codec.set_bit_rate(params.bitrate);
-    codec.set_width(params.width as u32);
-    codec.set_height(params.height as u32);
-    codec.set_time_base((1, params.fps));
-    codec.set_gop(10); // 12
-    codec.set_frame_rate(Some((params.fps, 1)));
-    codec.set_max_b_frames(2);
-    // codec.set_mb_decision(encoder::Decision::RateDistortion); //  MPEG1Video
-    codec.set_format(format::Pixel::YUV420P);
-
-    if format_context
-        .format()
-        .flags()
-        .contains(format::Flags::GLOBAL_HEADER)
-    {
-        codec.set_flags(codec::Flags::GLOBAL_HEADER);
-    }
-
-    Ok(())
-}
-
-// TODO: Where is error handling?!!?
-fn alloc_pcture(format: format::Pixel, width: u32, height: u32) -> frame::video::Video {
-    let mut frame = frame::video::Video::empty();
-    unsafe {
-        frame.alloc(format, width, height);
-    }
-
-    frame
-}
-
-fn open_video(
-    video: encoder::Video,
-    output_context: format::context::Output,
-    codec: Codec,
-    stream: ffmpeg::StreamMut,
-    options: &Dictionary,
-) -> Result<(), util::error::Error> {
-    let res = video.open_as_with(codec, *options)?;
-
-    Ok(())
-}
-
 #[derive(Debug, Clone, Copy)]
-struct VideoParams {
-    fps: i32,
-    width: usize,
-    height: usize,
-    bitrate: usize,
+pub struct VideoParams {
+    pub fps: i32,
+    pub width: u32,
+    pub height: u32,
+    pub bitrate: usize,
 }
 
-struct EncoderContext {
-    frame: frame::Video,
-    context: ffmpeg::Codec,
-    packet: frame::Packet,
-    output_stream: format::context::Output,
-    codec: encoder::video::Video,
+pub struct Recorder {
+    pub encoder: encoder::Video,
+    logging_enabled: bool,
+    pub frame_count: usize,
+    last_log_frame_count: usize,
+    starting_time: Instant,
+    last_log_time: Instant,
 }
 
-impl EncoderContext {
-    pub fn new(params: VideoParams, path: &std::path::Path) -> Result<Self, util::error::Error> {
-        let context = encoder::find(codec::Id::MPEG2VIDEO).unwrap();
-        let mut codec = encoder::new().video()?;
+impl Recorder {
+    pub fn new(
+        params: &VideoParams,
+        x264_opts: Dictionary,
+        enable_logging: bool,
+    ) -> Result<Self, error::Error> {
+        let codec = encoder::find(codec::Id::MPEG2VIDEO).unwrap();
 
-        codec.set_bit_rate(params.bitrate);
-        codec.set_width(params.width as u32);
-        codec.set_height(params.height as u32);
-        codec.set_time_base((1, params.fps));
-        codec.set_gop(10); // 12
-        codec.set_frame_rate(Some((params.fps, 1)));
-        codec.set_max_b_frames(2);
-        // codec.set_mb_decision(encoder::Decision::RateDistortion); //  MPEG1Video
-        codec.set_format(format::Pixel::YUV420P);
+        let context = codec::Context::new();
+        let mut encoder = context.encoder().video()?;
 
-        let octx = format::output(&path)?;
-        let mut frame = frame::Video::empty();
+        encoder.set_bit_rate(params.bitrate);
+        encoder.set_width(params.width);
+        encoder.set_height(params.height);
+        encoder.set_aspect_ratio((params.width as i32, params.height as i32));
+        encoder.set_time_base((1, params.fps));
+        encoder.set_gop(10); // 12
+        encoder.set_frame_rate(Some((params.fps, 1)));
+        encoder.set_max_b_frames(2);
+        // encoder.set_mb_decision(encoder::Decision::RateDistortion); //  MPEG1Video
+        encoder.set_format(format::Pixel::YUV420P);
 
-        frame.set_height(params.height as u32);
-        frame.set_width(params.width as u32);
-        frame.set_format(format::Pixel::YUV420P);
-
-        let ret = unsafe { sys::av_frame_get_buffer(frame.as_mut_ptr(), 0) };
-        if ret < 0 {
-            panic!("Error on allocating frame with: {}", ret);
-        }
-
-        let packet = frame.packet();
-
+        let encoder = encoder.open_as_with(codec, x264_opts)?;
         Ok(Self {
-            frame,
-            context,
-            packet,
-            output_stream: octx,
-            codec,
+            encoder,
+            logging_enabled: enable_logging,
+            frame_count: 0,
+            last_log_frame_count: 0,
+            starting_time: Instant::now(),
+            last_log_time: Instant::now(),
         })
     }
+
+    pub fn encode<W: Write>(
+        &mut self,
+        frame: &util::frame::Frame,
+        packet: &mut packet::Packet,
+        f: &mut W,
+    ) -> Result<(), util::error::Error> {
+        self.encoder.send_frame(frame)?;
+
+        loop {
+            self.frame_count += 1;
+            self.log_progress();
+
+            match self.encoder.receive_packet(packet) {
+                Ok(_) => {}
+                Err(error::Error::Other {
+                    errno: error::EAGAIN,
+                })
+                | Err(error::Error::Eof) => return Ok(()),
+                Err(e) => panic!("Error on video recording with: {}", e),
+            }
+            f.write_all(packet.data().unwrap()).unwrap();
+        }
+    }
+
+    fn log_progress(&mut self) {
+        if !self.logging_enabled
+            || (self.frame_count - self.last_log_frame_count < 10
+                && self.last_log_time.elapsed().as_secs_f64() < 1.0)
+        {
+            return;
+        }
+        println!(
+            "time elpased: \t{:8.2}\tframe count: {:8}",
+            self.starting_time.elapsed().as_secs_f64(),
+            self.frame_count,
+        );
+        self.last_log_frame_count = self.frame_count;
+        self.last_log_time = Instant::now();
+    }
+}
+
+pub fn parse_opts<'a>(s: String) -> Option<Dictionary<'a>> {
+    let mut dict = Dictionary::new();
+    for keyval in s.split_terminator(',') {
+        let tokens: Vec<&str> = keyval.split('=').collect();
+        match tokens[..] {
+            [key, val] => dict.set(key, val),
+            _ => return None,
+        }
+    }
+    Some(dict)
+}
+
+pub struct Frame {
+    pub data: Vec<u8>,
+    pub wh: (u32, u32),
+}
+
+pub enum RecordEvent {
+    Start((u32, u32)),
+    Continue(Frame),
+    End,
+}
+
+pub fn alloc_picture(format: format::Pixel, width: u32, height: u32) -> frame::video::Video {
+    let mut frame = frame::video::Video::empty();
+    unsafe {
+        frame.set_format(format);
+        frame.set_width(width);
+        frame.set_height(height);
+
+        sys::av_frame_get_buffer(frame.as_mut_ptr(), 0);
+    }
+    assert!(unsafe { sys::av_frame_make_writable(frame.as_mut_ptr()) } >= 0);
+
+    frame
 }

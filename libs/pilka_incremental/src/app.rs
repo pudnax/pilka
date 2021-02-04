@@ -100,7 +100,7 @@ impl<'a> PilkaRender<'a> {
         } else {
             vec![]
         };
-        let validation_layers = vec!["VK_LAYER_KHRONOS_validation\0"];
+        // let validation_layers = vec!["VK_LAYER_KHRONOS_validation\0"];
         let extention_names = ash_window::ash_window::enumerate_required_extensions(window)?;
         let instance = VkInstance::new(&validation_layers, &extention_names)?;
 
