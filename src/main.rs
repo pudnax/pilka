@@ -167,12 +167,9 @@ fn main() -> Result<()> {
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(e) => panic!("Failed to create folder: {}", e),
         }
-        let path = records_folder.join(format!(
-            "record-{}.mp4",
-            chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
-        ));
-        let mut f = File::create(path).unwrap();
-        // let mut f = BufWriter::new(file);
+
+        let mut file = None;
+
         let mut frame = encoder::alloc_picture(
             recorder.encoder.format(),
             recorder.encoder.width(),
@@ -198,11 +195,15 @@ fn main() -> Result<()> {
                         );
                         frame.set_metadata(x264_opts.clone());
 
-                        let path = records_folder.join(format!(
-                            "record-{}.mp4",
-                            chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
-                        ));
-                        f = File::create(path).unwrap();
+                        file = {
+                            let path = records_folder.join(format!(
+                                "record-{}.mp4",
+                                chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
+                            ));
+                            let file = File::create(path).unwrap();
+
+                            Some(BufWriter::new(file))
+                        };
                     }
                     RecordEvent::Continue(screen_frame) => {
                         frame_num += 1;
@@ -212,14 +213,18 @@ fn main() -> Result<()> {
 
                         frame.set_pts(Some(frame_num as i64));
 
-                        recorder.encode(&frame, &mut packet, &mut f).unwrap();
+                        if let Some(ref mut f) = file {
+                            recorder.encode(&frame, &mut packet, f).unwrap();
+                        }
                     }
                     RecordEvent::End => {
                         recorder.encoder.send_eof().unwrap();
 
-                        f.write_all(&[0, 0, 1, 0xb7]).unwrap();
+                        if let Some(ref mut f) = file {
+                            f.write_all(&[0, 0, 1, 0xb7]).unwrap();
+                            f.flush().unwrap();
+                        }
 
-                        f.sync_all().unwrap();
                         frame_num = 0;
                     }
                 }
