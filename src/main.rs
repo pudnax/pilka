@@ -5,24 +5,20 @@ use pilka_lib::*;
 #[allow(clippy::single_component_path_imports)]
 use pilka_dyn;
 
-mod encoder;
 mod input;
+mod recorder;
 
 use ash::{version::DeviceV1_0, vk, SHADER_ENTRY_POINT, SHADER_PATH};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use encoder::{Frame, RecordEvent};
 use eyre::*;
-use ffmpeg::codec::packet::Packet;
-use ffmpeg::format::Pixel;
-use ffmpeg::software::scaling;
-use ffmpeg_next as ffmpeg;
 use notify::{
     event::{EventKind, ModifyKind},
     RecommendedWatcher, RecursiveMode, Watcher,
 };
+use recorder::RecordEvent;
 use std::{
     fs::File,
-    io::{BufWriter, Write},
+    io::BufWriter,
     path::{Path, PathBuf},
     sync::mpsc::Sender,
     time::Instant,
@@ -92,7 +88,6 @@ fn main() -> Result<()> {
         .build(&event_loop)?;
 
     let mut pilka = PilkaRender::new(&window).unwrap();
-    let resolution = pilka.surface.resolution_slice(&pilka.device).unwrap();
 
     let shader_dir = PathBuf::new().join(SHADER_PATH);
     pilka.push_shader_module(
@@ -107,12 +102,29 @@ fn main() -> Result<()> {
         &[shader_dir.join("prelude.glsl")],
     )?;
 
+    let mut has_ffmpeg = false;
+    let ffmpeg_version = match recorder::ffmpeg_version() {
+        Ok(output) => {
+            has_ffmpeg = true;
+            String::from_utf8(output.stdout)?
+                .lines()
+                .next()
+                .unwrap()
+                .to_string()
+        }
+        Err(e) => {
+            has_ffmpeg = false;
+            e.to_string()
+        }
+    };
+
     println!("Vendor name: {}", pilka.get_vendor_name());
     println!("Device name: {}", pilka.get_device_name()?);
     println!("Device type: {:?}", pilka.get_device_type());
     println!("Vulkan version: {}", pilka.get_vulkan_version_name()?);
     println!("Audio host: {:?}", host.id());
     println!("Sample rate: {}, channels: {}", sample_rate, num_channels);
+    println!("{}", ffmpeg_version);
     println!(
         "Default shader path:\n\t{}",
         shader_dir.canonicalize()?.display()
@@ -145,92 +157,7 @@ fn main() -> Result<()> {
 
     let mut video_recording = false;
     let (video_tx, video_rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        ffmpeg::init().unwrap();
-
-        let x264_opts = encoder::parse_opts(encoder::DEFAULT_X264_OPTS.to_string()).unwrap();
-        let w = resolution[0] as u32;
-        let h = resolution[1] as u32;
-        let mut video_params = encoder::VideoParams {
-            fps: 60,
-            width: w as u32,
-            height: h as u32,
-            bitrate: 400_000,
-        };
-        let mut recorder = encoder::Recorder::new(&video_params, x264_opts.clone(), true).unwrap();
-
-        let mut packet = Packet::empty();
-
-        let records_folder = Path::new("records");
-        match std::fs::create_dir(records_folder) {
-            Ok(_) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(e) => panic!("Failed to create folder: {}", e),
-        }
-
-        let mut file = None;
-
-        let mut frame = encoder::alloc_picture(
-            recorder.encoder.format(),
-            recorder.encoder.width(),
-            recorder.encoder.height(),
-        );
-        frame.set_metadata(x264_opts.clone());
-        let mut frame_num = 0;
-
-        let sws = frame.converter(Pixel::YUV420P).unwrap();
-
-        loop {
-            if let Ok(event) = video_rx.try_recv() {
-                match event {
-                    RecordEvent::Start((w, h)) => {
-                        video_params.width = w;
-                        video_params.height = h;
-                        recorder =
-                            encoder::Recorder::new(&video_params, x264_opts.clone(), true).unwrap();
-                        frame = encoder::alloc_picture(
-                            recorder.encoder.format(),
-                            recorder.encoder.width(),
-                            recorder.encoder.height(),
-                        );
-                        frame.set_metadata(x264_opts.clone());
-
-                        file = {
-                            let path = records_folder.join(format!(
-                                "record-{}.mp4",
-                                chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
-                            ));
-                            let file = File::create(path).unwrap();
-
-                            Some(BufWriter::new(file))
-                        };
-                    }
-                    RecordEvent::Continue(screen_frame) => {
-                        frame_num += 1;
-                        println!("Frame: {}", frame_num);
-
-                        encoder::copy_as_yuv_image(&screen_frame.data, &mut frame, screen_frame.wh);
-
-                        frame.set_pts(Some(frame_num as i64));
-
-                        if let Some(ref mut f) = file {
-                            recorder.encode(&frame, &mut packet, f).unwrap();
-                        }
-                    }
-                    RecordEvent::End => {
-                        recorder.encoder.send_eof().unwrap();
-
-                        if let Some(ref mut f) = file {
-                            f.write_all(&[0, 0, 1, 0xb7]).unwrap();
-                            f.flush().unwrap();
-                        }
-
-                        frame_num = 0;
-                    }
-                }
-            }
-        }
-    });
+    std::thread::spawn(move || recorder::record_thread(video_rx));
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
@@ -302,8 +229,12 @@ fn main() -> Result<()> {
                     pilka.resize().unwrap();
 
                     if video_recording {
+                        println!(
+                            "Stop recording. Resolution has been changed {}×{} => {}×{}.",
+                            width, height, old_width, old_height
+                        );
                         video_recording = false;
-                        video_tx.send(RecordEvent::End).unwrap();
+                        video_tx.send(RecordEvent::Finish).unwrap();
                     }
                 }
                 WindowEvent::KeyboardInput {
@@ -420,13 +351,13 @@ fn main() -> Result<()> {
                             });
                         }
 
-                        if VirtualKeyCode::F12 == keycode {
+                        if has_ffmpeg && VirtualKeyCode::F12 == keycode {
                             if video_recording {
-                                video_tx.send(RecordEvent::End).unwrap()
+                                video_tx.send(RecordEvent::Finish).unwrap()
                             } else {
                                 let [w, h] = pilka.surface.resolution_slice(&pilka.device).unwrap();
                                 video_tx
-                                    .send(RecordEvent::Start((w as u32, h as u32)))
+                                    .send(RecordEvent::Start(w as u32, h as u32))
                                     .unwrap()
                             }
                             video_recording = !video_recording;
@@ -451,13 +382,9 @@ fn main() -> Result<()> {
             Event::MainEventsCleared => {
                 pilka.render();
                 if video_recording {
-                    let (width, height) = pilka.capture_frame().unwrap();
-                    video_tx
-                        .send(RecordEvent::Continue(Frame {
-                            data: pilka.screenshot_ctx.data.to_vec(),
-                            wh: (width as u32, height as u32),
-                        }))
-                        .unwrap()
+                    let frame = pilka.screenshot_ctx.data.to_vec();
+                    println!("len: {}, padding: {}", frame.len(), frame.len() % 4);
+                    video_tx.send(RecordEvent::Record(frame)).unwrap()
                 }
             }
             Event::LoopDestroyed => {
