@@ -309,10 +309,10 @@ fn main() -> Result<()> {
 
                         if VirtualKeyCode::F11 == keycode {
                             let now = Instant::now();
-                            let (width, height) = pilka.capture_frame().unwrap();
+                            let (_, (width, height)) = pilka.capture_frame().unwrap();
                             eprintln!("Capture image: {:#?}", now.elapsed());
 
-                            let frame = pilka.screenshot_ctx.data;
+                            let frame = &pilka.screenshot_ctx.data[..(width * height * 4) as usize];
                             std::thread::spawn(move || {
                                 let now = Instant::now();
                                 let screenshots_folder = Path::new(SCREENSHOTS_FOLDER);
@@ -327,7 +327,7 @@ fn main() -> Result<()> {
                                 encoder.set_color(png::ColorType::RGBA);
                                 encoder.set_depth(png::BitDepth::Eight);
                                 let mut writer = encoder.write_header().unwrap();
-                                writer.write_image_data(&frame).unwrap();
+                                writer.write_image_data(frame).unwrap();
                                 eprintln!("Encode image: {:#?}", now.elapsed());
                             });
                         }
@@ -336,7 +336,7 @@ fn main() -> Result<()> {
                             if video_recording {
                                 video_tx.send(RecordEvent::Finish).unwrap()
                             } else {
-                                let (w, h) = pilka.capture_frame().unwrap();
+                                let (_, (w, h)) = pilka.capture_frame().unwrap();
                                 video_tx
                                     .send(RecordEvent::Start(w as u32, h as u32))
                                     .unwrap()
@@ -363,8 +363,8 @@ fn main() -> Result<()> {
             Event::MainEventsCleared => {
                 pilka.render();
                 if video_recording {
-                    let frame = pilka.screenshot_ctx.data.to_vec();
-                    video_tx.send(RecordEvent::Record(frame)).unwrap()
+                    let (frame, _) = pilka.capture_frame().unwrap();
+                    video_tx.send(RecordEvent::Record(frame.to_vec())).unwrap()
                 }
             }
             Event::LoopDestroyed => {
