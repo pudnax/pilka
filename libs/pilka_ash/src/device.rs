@@ -89,14 +89,12 @@ impl VkDevice {
         if signaled {
             flags |= vk::FenceCreateFlags::SIGNALED;
         }
-        Ok(unsafe {
-            device.create_fence(&vk::FenceCreateInfo::builder().flags(flags).build(), None)
-        }?)
+        unsafe { device.create_fence(&vk::FenceCreateInfo::builder().flags(flags).build(), None) }
     }
 
     pub fn create_semaphore(&self) -> VkResult<vk::Semaphore> {
         let device = &self.device;
-        Ok(unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }?)
+        unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) }
     }
 
     pub fn create_vk_command_pool(
@@ -272,7 +270,7 @@ impl VkDevice {
         let alloc_info = vk::MemoryAllocateInfo::builder()
             .allocation_size(allocation_reqs.size)
             .memory_type_index(memory_type_index);
-        Ok(unsafe { self.device.allocate_memory(&alloc_info, None) }?)
+        unsafe { self.device.allocate_memory(&alloc_info, None) }
     }
 }
 

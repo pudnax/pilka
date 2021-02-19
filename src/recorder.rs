@@ -2,9 +2,13 @@ use std::{
     error::Error,
     fmt::{self, Display, Formatter},
     io::{self, Write},
-    process::{Child, Command, Output, Stdio},
+    path::Path,
+    process::{Child, Command, Stdio},
     sync::mpsc,
 };
+
+use crate::create_folder;
+use crate::VIDEO_FOLDER;
 
 pub enum RecordEvent {
     Start(u32, u32),
@@ -40,11 +44,23 @@ impl std::error::Error for ProcessError {
     }
 }
 
-pub fn ffmpeg_version() -> Result<Output, ProcessError> {
+pub fn ffmpeg_version() -> Result<(String, bool), ProcessError> {
     let mut command = Command::new("ffmpeg");
     command.arg("-version");
 
-    command.output().map_err(ProcessError::Other)
+    let res = match command.output().map_err(ProcessError::Other) {
+        Ok(output) => (
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .next()
+                .unwrap()
+                .to_string(),
+            true,
+        ),
+        Err(e) => (e.to_string(), false),
+    };
+    Ok(res)
 }
 
 pub fn new_ffmpeg_command(width: u32, height: u32, filename: &str) -> Result<Child, ProcessError> {
@@ -76,8 +92,6 @@ pub fn new_ffmpeg_command(width: u32, height: u32, filename: &str) -> Result<Chi
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
-    dbg!(&command);
-
     // Not create terminal window
     #[cfg(windows)]
     command.creation_flags(0x08000000);
@@ -89,15 +103,18 @@ pub fn new_ffmpeg_command(width: u32, height: u32, filename: &str) -> Result<Chi
 
 pub fn record_thread(rx: mpsc::Receiver<RecordEvent>) {
     let mut process = None;
+    create_folder(VIDEO_FOLDER).unwrap();
 
     while let Ok(event) = rx.recv() {
         match event {
             RecordEvent::Start(width, height) => {
-                let filename = format!(
+                let dir_path = Path::new(VIDEO_FOLDER);
+                let filename = dir_path.join(format!(
                     "record-{}.mp4",
                     chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
-                );
-                process = Some(new_ffmpeg_command(width, height, &filename).unwrap());
+                ));
+                process =
+                    Some(new_ffmpeg_command(width, height, filename.to_str().unwrap()).unwrap());
             }
             RecordEvent::Record(frame) => {
                 if let Some(ref mut process) = process {
