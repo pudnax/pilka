@@ -52,10 +52,6 @@ erm, probably. I don't have macOS.
 
 ## Installation
 
-```Bash
-cargo install pilka
-```
-
 You also can install the application by to downloading the source code
 and build locally.
 
@@ -88,7 +84,7 @@ when it's mature enough.
 learning project and want to touch the maximum untouched Vulkan. For the
 same reason I didn't use `vulkano`, `erupt`, `vulkanism`, etc.
 
-[ffmpeg-next](https://crates.io/crates/ffmpeg-next) is used to record and save to video. For my concerns it's
+**Ffmpeg** is used to record and save to video. For my concerns it's
 temporary solution after which I switch to [rav1e](https://github.com/xiph/rav1e) on it's release.
 
 ### Places of inspiration (from where I steal code):

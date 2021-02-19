@@ -1,4 +1,7 @@
-use pilka_lib::winit::event::{ElementState, VirtualKeyCode};
+use pilka_lib::{
+    winit::event::{ElementState, VirtualKeyCode},
+    PushConstant,
+};
 
 #[derive(Debug, Default)]
 pub struct Input {
@@ -53,6 +56,28 @@ impl Input {
                 true
             }
             _ => false,
+        }
+    }
+
+    pub fn process_position(&self, push_constant: &mut PushConstant) {
+        let dx = 0.01;
+        if self.left_pressed {
+            push_constant.pos[0] -= dx;
+        }
+        if self.right_pressed {
+            push_constant.pos[0] += dx;
+        }
+        if self.down_pressed {
+            push_constant.pos[1] -= dx;
+        }
+        if self.up_pressed {
+            push_constant.pos[1] += dx;
+        }
+        if self.slash_pressed {
+            push_constant.pos[2] -= dx;
+        }
+        if self.right_shift_pressed {
+            push_constant.pos[2] += dx;
         }
     }
 }
