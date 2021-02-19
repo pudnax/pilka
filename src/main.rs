@@ -8,6 +8,8 @@ use pilka_dyn;
 mod input;
 mod recorder;
 
+use pilka::create_folder;
+
 use ash::{version::DeviceV1_0, vk, SHADER_ENTRY_POINT, SHADER_PATH};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use eyre::*;
@@ -29,6 +31,10 @@ use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
 };
+
+const SCREENSHOTS_FOLDER: &str = "screenshots";
+const SHADER_FOLDER: &str = "shader_dump";
+const VIDEO_FOLDER: &str = "records";
 
 fn main() -> Result<()> {
     // Initialize error hook.
@@ -102,21 +108,7 @@ fn main() -> Result<()> {
         &[shader_dir.join("prelude.glsl")],
     )?;
 
-    let mut has_ffmpeg = false;
-    let ffmpeg_version = match recorder::ffmpeg_version() {
-        Ok(output) => {
-            has_ffmpeg = true;
-            String::from_utf8(output.stdout)?
-                .lines()
-                .next()
-                .unwrap()
-                .to_string()
-        }
-        Err(e) => {
-            has_ffmpeg = false;
-            e.to_string()
-        }
-    };
+    let (ffmpeg_version, has_ffmpeg) = recorder::ffmpeg_version()?;
 
     println!("Vendor name: {}", pilka.get_vendor_name());
     println!("Device name: {}", pilka.get_device_name()?);
@@ -290,19 +282,12 @@ fn main() -> Result<()> {
                         }
 
                         if VirtualKeyCode::F10 == keycode {
-                            let dump_folder = std::path::Path::new("shader_dump");
-                            match std::fs::create_dir(dump_folder) {
-                                Ok(_) => {}
-                                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-                                Err(e) => panic!("Failed to create folder: {}", e),
-                            }
+                            let dump_folder = std::path::Path::new(SHADER_FOLDER);
+                            create_folder(dump_folder).unwrap();
                             let dump_folder = dump_folder
                                 .join(chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string());
-                            match std::fs::create_dir(&dump_folder) {
-                                Ok(_) => {}
-                                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-                                Err(e) => panic!("Failed to create folder: {}", e),
-                            }
+                            create_folder(&dump_folder).unwrap();
+
                             for path in pilka.shader_set.keys() {
                                 let to = dump_folder.join(
                                     path.strip_prefix(
@@ -330,12 +315,8 @@ fn main() -> Result<()> {
                             let frame = pilka.screenshot_ctx.data;
                             std::thread::spawn(move || {
                                 let now = Instant::now();
-                                let screenshots_folder = Path::new("screenshots");
-                                match std::fs::create_dir(screenshots_folder) {
-                                    Ok(_) => {}
-                                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-                                    Err(e) => panic!("Failed to create folder: {}", e),
-                                }
+                                let screenshots_folder = Path::new(SCREENSHOTS_FOLDER);
+                                create_folder(screenshots_folder).unwrap();
                                 let path = screenshots_folder.join(format!(
                                     "screenshot-{}.jpg",
                                     chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
@@ -355,7 +336,7 @@ fn main() -> Result<()> {
                             if video_recording {
                                 video_tx.send(RecordEvent::Finish).unwrap()
                             } else {
-                                let [w, h] = pilka.surface.resolution_slice(&pilka.device).unwrap();
+                                let (w, h) = pilka.capture_frame().unwrap();
                                 video_tx
                                     .send(RecordEvent::Start(w as u32, h as u32))
                                     .unwrap()
@@ -383,7 +364,6 @@ fn main() -> Result<()> {
                 pilka.render();
                 if video_recording {
                     let frame = pilka.screenshot_ctx.data.to_vec();
-                    println!("len: {}, padding: {}", frame.len(), frame.len() % 4);
                     video_tx.send(RecordEvent::Record(frame)).unwrap()
                 }
             }
