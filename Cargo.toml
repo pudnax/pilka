@@ -19,7 +19,6 @@ notify = "5.0.0-pre.4"
 chrono = "0.4.19"
 png = "0.16.8"
 cpal = "0.13.1"
-ffmpeg-next = "4.3.8"
 
 [profile.release]
 lto = 'thin'
