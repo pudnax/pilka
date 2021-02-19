@@ -1025,6 +1025,8 @@ impl<'a> ScreenshotCtx<'a> {
                 vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
 
             if let Some(ref mut blit_image) = self.blit_image {
+                unsafe { device.destroy_image(blit_image.image, None) };
+
                 blit_image.image = unsafe { device.create_image(&image_create_info, None) }?;
                 blit_image.memory_requirements =
                     unsafe { device.get_image_memory_requirements(blit_image.image) };
