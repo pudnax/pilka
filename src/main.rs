@@ -66,7 +66,7 @@ fn main() -> Result<()> {
     let shader_dir = PathBuf::new().join(SHADER_PATH);
 
     if !shader_dir.is_dir() {
-        default_shaders::create_default_shaders(SHADER_FOLDER)?;
+        default_shaders::create_default_shaders(&shader_dir)?;
     }
 
     pilka.push_shader_module(
