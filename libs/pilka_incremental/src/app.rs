@@ -4,6 +4,8 @@ use pilka_ash::ash::{
 use pilka_ash::ash_window;
 use std::{collections::HashMap, ffi::CStr, path::PathBuf};
 
+type Frame<'a> = (&'a [u8], (u32, u32));
+
 /// The main struct that holds all render primitives
 ///
 /// Rust documentation states for FIFO drop order for struct fields.
@@ -597,7 +599,7 @@ impl<'a> PilkaRender<'a> {
         }
     }
 
-    pub fn capture_frame(&mut self) -> Result<(u32, u32), Box<dyn std::error::Error>> {
+    pub fn capture_frame(&mut self) -> Result<Frame, Box<dyn std::error::Error>> {
         let copybuffer = self.screenshot_ctx.commbuf;
         let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -847,10 +849,12 @@ impl<'a> PilkaRender<'a> {
             )
         };
 
-        Ok((
+        let (w, h) = (
             subresource_layout.row_pitch as u32 / 4,
             (subresource_layout.size / subresource_layout.row_pitch) as u32,
-        ))
+        );
+
+        Ok((&self.screenshot_ctx.data[..(w * h * 4) as usize], (w, h)))
     }
 }
 
