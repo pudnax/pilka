@@ -5,13 +5,15 @@ use pilka_lib::*;
 #[allow(clippy::single_component_path_imports)]
 use pilka_dyn;
 
+mod audio;
+mod default_shaders;
 mod input;
 mod recorder;
 
 use pilka::create_folder;
 
 use ash::{version::DeviceV1_0, vk, SHADER_ENTRY_POINT, SHADER_PATH};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::StreamTrait;
 use eyre::*;
 use notify::{
     event::{EventKind, ModifyKind},
@@ -22,7 +24,6 @@ use std::{
     fs::File,
     io::BufWriter,
     path::{Path, PathBuf},
-    sync::mpsc::Sender,
     time::Instant,
 };
 use winit::{
@@ -40,40 +41,7 @@ fn main() -> Result<()> {
     // Initialize error hook.
     color_eyre::install()?;
 
-    let host = cpal::default_host();
-
-    let device = host
-        .default_input_device()
-        .context("failed to find input device")?;
-
-    let config = device.default_input_config()?;
-    let sample_rate = config.sample_rate().0;
-    let num_channels = config.channels();
-
-    let err_fn = move |err| {
-        eprintln!("an error occured on stream: {}", err);
-    };
-
-    let (audio_tx, audio_rx) = std::sync::mpsc::channel();
-
-    fn write_input_data<T>(input: &[T], tx: &Sender<f32>)
-    where
-        T: cpal::Sample,
-    {
-        let sample = input
-            .iter()
-            .map(|s| cpal::Sample::from(s))
-            .map(|s: T| s.to_f32())
-            .sum::<f32>()
-            / input.len() as f32;
-
-        tx.send(sample.max(-1.0).min(1.0)).ok();
-    }
-    let stream = device.build_input_stream(
-        &config.into(),
-        move |data, _: &_| write_input_data::<f32>(data, &audio_tx),
-        err_fn,
-    )?;
+    let (stream, audio_rx, audio_config) = audio::create_audio_stream()?;
 
     stream.play()?;
 
@@ -96,6 +64,11 @@ fn main() -> Result<()> {
     let mut pilka = PilkaRender::new(&window).unwrap();
 
     let shader_dir = PathBuf::new().join(SHADER_PATH);
+
+    if !shader_dir.is_dir() {
+        default_shaders::create_default_shaders(SHADER_FOLDER)?;
+    }
+
     pilka.push_shader_module(
         ash::ShaderInfo::new(
             shader_dir.join("shader.vert"),
@@ -114,8 +87,11 @@ fn main() -> Result<()> {
     println!("Device name: {}", pilka.get_device_name()?);
     println!("Device type: {:?}", pilka.get_device_type());
     println!("Vulkan version: {}", pilka.get_vulkan_version_name()?);
-    println!("Audio host: {:?}", host.id());
-    println!("Sample rate: {}, channels: {}", sample_rate, num_channels);
+    println!("Audio host: {:?}", audio_config.host_id);
+    println!(
+        "Sample rate: {}, channels: {}",
+        audio_config.sample_rate, audio_config.num_channels
+    );
     println!("{}", ffmpeg_version);
     println!(
         "Default shader path:\n\t{}",
@@ -181,25 +157,7 @@ fn main() -> Result<()> {
                         pilka.push_constant.spectrum = spectrum;
                     }
 
-                    let dx = 0.01;
-                    if input.left_pressed {
-                        pilka.push_constant.pos[0] -= dx;
-                    }
-                    if input.right_pressed {
-                        pilka.push_constant.pos[0] += dx;
-                    }
-                    if input.down_pressed {
-                        pilka.push_constant.pos[1] -= dx;
-                    }
-                    if input.up_pressed {
-                        pilka.push_constant.pos[1] += dx;
-                    }
-                    if input.slash_pressed {
-                        pilka.push_constant.pos[2] -= dx;
-                    }
-                    if input.right_shift_pressed {
-                        pilka.push_constant.pos[2] += dx;
-                    }
+                    input.process_position(&mut pilka.push_constant);
                 }
                 pilka.push_constant.wh = pilka.surface.resolution_slice(&pilka.device).unwrap();
             }
