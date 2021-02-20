@@ -1,6 +1,6 @@
 [package]
 name = "pilka"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2018"
 license = "GPL-2.0-or-later"
@@ -23,8 +23,8 @@ members = ["libs/*"]
 [dependencies]
 color-eyre = "0.5.8"
 eyre = "0.6.3"
-pilka_lib = { path = "libs/pilka_lib" }
-pilka_dyn = { path = "libs/pilka_dyn" }
+pilka_lib = { version = "0.1.0", path = "libs/pilka_lib" }
+pilka_dyn = { version = "0.1.0", path = "libs/pilka_dyn" }
 notify = "5.0.0-pre.4"
 chrono = "0.4.19"
 png = "0.16.8"
