@@ -1,6 +1,6 @@
 [package]
 name = "pilka"
-version = "0.2.6"
+version = "0.2.7"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2018"
 license = "GPL-2.0-or-later"
@@ -9,7 +9,7 @@ repository = "https://github.com/pudnax/pilka/"
 readme = "README.md"
 keywords = ["graphics", "glsl", "shaders", "creative", "vulkan"]
 exclude = [".gitignore", ".github", "screenshots", "records", "shader_dump"]
-categories = ["command-line-utilities", "Graphics", "Rendering"]
+categories = ["command-line-utilities", "graphics", "rendering"]
 
 [badges]
 appveyor = { repository = "https://github.com/pudnax/pilka", branch = "master", service = "github" }
