@@ -2,8 +2,8 @@
 
 
 Pilka is a cross-platform democoding tool for creating shader* demos,
-similar to [Bonzomatic](https://github.com/Gargaj/Bonzomatic) or [KodeLife](https://hexler.net/products/kodelife). Supports hot-reloading which means
-resources is checked, updated in the background.
+similar to [Bonzomatic](https://github.com/Gargaj/Bonzomatic) or [KodeLife](https://hexler.net/products/kodelife). Supports hot-reloading, which means
+resources is checked and updated in the background.
 
 Available features:
 
@@ -13,6 +13,14 @@ Available features:
 - [X] Record video
 
 ![preview](boring_tunnel.png)
+
+## How
+
+In current state `pilka` tries to seek `shaders` folder with the files
+`shader.vert` and `shader.frag`, on fail `pilka` will generate
+default setup for you. Then open shader in your favourite code editor (VS,
+emacs, vim, ed etc.) and `pilka` would fetch changes recompiling
+shaders after each save.
 
 ## Controls
 
