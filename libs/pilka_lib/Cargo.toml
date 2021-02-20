@@ -1,6 +1,6 @@
 [package]
 name = "pilka_lib"
-version = "0.1.0"
+version = "0.2.3"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2018"
 license = "GPL-2.0-or-later"
@@ -21,5 +21,5 @@ maintenance = { status = "experimental" }
 dynamic = ["pilka_dyn"]
 
 [dependencies]
-pilka_dyn = { version = "0.1.0", path = "./../pilka_dyn", optional = true }
-pilka_incremental = { version = "0.1.0", path = "./../pilka_incremental" }
+pilka_dyn = { version = "0.2.3", path = "./../pilka_dyn", optional = true }
+pilka_incremental = { version = "0.2.3", path = "./../pilka_incremental" }
