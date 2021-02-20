@@ -14,7 +14,6 @@ Available features:
 
 ![preview](boring_tunnel.png)
 
-
 ## Controls
 
 - `F1`:   Toggles play/pause
@@ -51,6 +50,10 @@ Make sure `pilka` is in the list and ticked...
 erm, probably. I don't have macOS.
 
 ## Installation
+
+```Bash
+cargo install pilka
+```
 
 You also can install the application by to downloading the source code
 and build locally.
