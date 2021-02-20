@@ -3,9 +3,20 @@ name = "pilka_incremental"
 version = "0.1.0"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2018"
+license = "GPL-2.0-or-later"
+description = "Glue crate which combine everything"
+repository = "https://github.com/pudnax/pilka/"
+readme = "README.md"
+keywords = ["graphics", "glsl", "shaders", "creative", "vulkan"]
+exclude = [".gitignore", ".github", "screenshots", "records", "shader_dump"]
+categories = ["command-line-utilities", "graphics", "rendering"]
+
+[badges]
+appveyor = { repository = "https://github.com/pudnax/pilka", branch = "master", service = "github" }
+maintenance = { status = "experimental" }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pilka_winit = { path = "./../pilka_winit" }
-pilka_ash = { path = "./../pilka_ash" }
+pilka_winit = { version = "0.1.1", path = "./../pilka_winit" }
+pilka_ash = { version = "0.1.1", path = "./../pilka_ash" }
