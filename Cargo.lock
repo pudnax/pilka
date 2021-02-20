@@ -1388,7 +1388,7 @@ dependencies = [
 
 [[package]]
 name = "pilka_ash"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ash",
  "ash-molten",
@@ -1422,7 +1422,7 @@ dependencies = [
 
 [[package]]
 name = "pilka_winit"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "winit",
 ]
