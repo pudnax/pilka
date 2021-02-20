@@ -3,6 +3,17 @@ name = "pilka_lib"
 version = "0.1.0"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2018"
+license = "GPL-2.0-or-later"
+description = "Util crate for Pilka"
+repository = "https://github.com/pudnax/pilka/"
+readme = "README.md"
+keywords = ["graphics", "glsl", "shaders", "shadertoy", "creative", "vulkan"]
+exclude = [".gitignore", ".github", "screenshots", "records", "shader_dump"]
+categories = ["command-line-utilities", "Graphics", "Rendering"]
+
+[badges]
+appveyor = { repository = "https://github.com/pudnax/pilka", branch = "master", service = "github" }
+maintenance = { status = "experimental" }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,6 +21,5 @@ edition = "2018"
 dynamic = ["pilka_dyn"]
 
 [dependencies]
-pilka_dyn = { path = "./../pilka_dyn", optional = true }
-pilka_incremental = { path = "./../pilka_incremental" }
-
+pilka_dyn = { version = "0.1.0", path = "./../pilka_dyn", optional = true }
+pilka_incremental = { version = "0.1.0", path = "./../pilka_incremental" }
