@@ -67,8 +67,8 @@ pub fn new_ffmpeg_command(width: u32, height: u32, filename: &str) -> Result<Chi
     #[rustfmt::skip]
     let args = [
         "-framerate", "60",
-        "-f", "rawvideo",
         "-pix_fmt", "rgba",
+        "-f", "rawvideo",
         "-i", "pipe:",
         "-c:v", "libx264",
         "-crf", "15",
@@ -78,6 +78,7 @@ pub fn new_ffmpeg_command(width: u32, height: u32, filename: &str) -> Result<Chi
         "-colorspace", "bt709",
         "-color_range", "tv",
         "-chroma_sample_location", "center",
+        "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
         "-y",
     ];
