@@ -100,6 +100,10 @@ fn main() -> Result<()> {
 
     print_help();
 
+    println!("// Set up our new world⏎ ");
+    println!("// And let's begin the⏎ ");
+    println!("\tSIMULATION⏎ \n");
+
     let (tx, rx) = std::sync::mpsc::channel();
 
     let mut watcher: RecommendedWatcher = Watcher::new_immediate(move |res| match res {
@@ -326,17 +330,15 @@ fn main() -> Result<()> {
 }
 
 fn print_help() {
-    println!("\n- `F1`:   Toggles play/pause");
-    println!("- `F2`:   Pauses and steps back one frame");
-    println!("- `F3`:   Pauses and steps forward one frame");
-    println!("- `F4`:   Restarts playback at frame 0 (`Time` and `Pos` = 0)");
-    println!("- `F5`:   Print parameters");
+    println!("\n- `F1`:   Print help");
+    println!("- `F2`:   Toggle play/pause");
+    println!("- `F3`:   Pause and step back one frame");
+    println!("- `F4`:   Pause and step forward one frame");
+    println!("- `F5`:   Restart playback at frame 0 (`Time` and `Pos` = 0)");
+    println!("- `F6`:   Print parameters");
     println!("- `F10`:  Save shaders");
     println!("- `F11`:  Take Screenshot");
     println!("- `F12`:  Start/Stop record video");
     println!("- `ESC`:  Exit the application");
     println!("- `Arrows`: Change `Pos`\n");
-    println!("// Set up our new world⏎ ");
-    println!("// And let's begin the⏎ ");
-    println!("\tSIMULATION⏎ \n");
 }
