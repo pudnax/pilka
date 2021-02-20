@@ -7,9 +7,9 @@ license = "GPL-2.0-or-later"
 description = "Util crate for Pilka"
 repository = "https://github.com/pudnax/pilka/"
 readme = "README.md"
-keywords = ["graphics", "glsl", "shaders", "shadertoy", "creative", "vulkan"]
+keywords = ["graphics", "glsl", "shaders", "creative", "vulkan"]
 exclude = [".gitignore", ".github", "screenshots", "records", "shader_dump"]
-categories = ["command-line-utilities", "Graphics", "Rendering"]
+categories = ["command-line-utilities", "graphics", "rendering"]
 
 [badges]
 appveyor = { repository = "https://github.com/pudnax/pilka", branch = "master", service = "github" }
