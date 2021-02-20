@@ -1,8 +1,19 @@
 [package]
 name = "pilka"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2018"
+license = "GPL-2.0-or-later"
+description = "Another democoding tool for creative coding with shaders."
+repository = "https://github.com/pudnax/pilka/"
+readme = "README.md"
+exclude = [".gitignore", ".github", "screenshots", "records", "shader_dump"]
+keywords = ["graphics", "glsl", "shaders", "shadertoy", "creative", "vulkan"]
+categories = ["command-line-utilities", "Graphics", "Rendering"]
+
+[badges]
+appveyor = { repository = "https://github.com/pudnax/pilka", branch = "master", service = "github" }
+maintenance = { status = "experimental" }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -14,7 +25,6 @@ color-eyre = "0.5.8"
 eyre = "0.6.3"
 pilka_lib = { path = "libs/pilka_lib" }
 pilka_dyn = { path = "libs/pilka_dyn" }
-shaderc = "0.7.0"
 notify = "5.0.0-pre.4"
 chrono = "0.4.19"
 png = "0.16.8"

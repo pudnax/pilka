@@ -98,19 +98,7 @@ fn main() -> Result<()> {
         shader_dir.canonicalize()?.display()
     );
 
-    println!("\n- `F1`:   Toggles play/pause");
-    println!("- `F2`:   Pauses and steps back one frame");
-    println!("- `F3`:   Pauses and steps forward one frame");
-    println!("- `F4`:   Restarts playback at frame 0 (`Time` and `Pos` = 0)");
-    println!("- `F5`:   Print parameters");
-    println!("- `F10`:  Save shaders");
-    println!("- `F11`:  Take Screenshot");
-    println!("- `F12`:  Start/Stop record video");
-    println!("- `ESC`:  Exit the application");
-    println!("- `Arrows`: Change `Pos`\n");
-    println!("// Set up our new world⏎ ");
-    println!("// And let's begin the⏎ ");
-    println!("\tSIMULATION⏎ \n");
+    print_help();
 
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -204,6 +192,9 @@ fn main() -> Result<()> {
 
                     if ElementState::Pressed == state {
                         if VirtualKeyCode::F1 == keycode {
+                            print_help();
+                        }
+                        if VirtualKeyCode::F2 == keycode {
                             if !pause {
                                 backup_time = time.elapsed();
                                 pause = true;
@@ -212,7 +203,7 @@ fn main() -> Result<()> {
                                 pause = false;
                             }
                         }
-                        if VirtualKeyCode::F2 == keycode {
+                        if VirtualKeyCode::F3 == keycode {
                             if !pause {
                                 backup_time = time.elapsed();
                                 pause = true;
@@ -222,20 +213,20 @@ fn main() -> Result<()> {
                                 .unwrap_or_else(Default::default);
                         }
 
-                        if VirtualKeyCode::F3 == keycode {
+                        if VirtualKeyCode::F4 == keycode {
                             if !pause {
                                 backup_time = time.elapsed();
                                 pause = true;
                             }
                             backup_time += std::time::Duration::from_secs_f32(dt);
                         }
-                        if VirtualKeyCode::F4 == keycode {
+                        if VirtualKeyCode::F5 == keycode {
                             pilka.push_constant.pos = [0.; 3];
                             pilka.push_constant.time = 0.;
                             time = Instant::now();
                             backup_time = time.elapsed();
                         }
-                        if VirtualKeyCode::F5 == keycode {
+                        if VirtualKeyCode::F6 == keycode {
                             eprintln!("{}", pilka.push_constant);
                         }
 
@@ -332,4 +323,20 @@ fn main() -> Result<()> {
             _ => {}
         }
     });
+}
+
+fn print_help() {
+    println!("\n- `F1`:   Toggles play/pause");
+    println!("- `F2`:   Pauses and steps back one frame");
+    println!("- `F3`:   Pauses and steps forward one frame");
+    println!("- `F4`:   Restarts playback at frame 0 (`Time` and `Pos` = 0)");
+    println!("- `F5`:   Print parameters");
+    println!("- `F10`:  Save shaders");
+    println!("- `F11`:  Take Screenshot");
+    println!("- `F12`:  Start/Stop record video");
+    println!("- `ESC`:  Exit the application");
+    println!("- `Arrows`: Change `Pos`\n");
+    println!("// Set up our new world⏎ ");
+    println!("// And let's begin the⏎ ");
+    println!("\tSIMULATION⏎ \n");
 }
