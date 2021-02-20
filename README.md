@@ -16,10 +16,11 @@ Available features:
 
 ## Controls
 
-- `F1`:   Toggles play/pause
-- `F2`:   Pauses and steps back one frame
-- `F3`:   Pauses and steps forward one frame
-- `F4`:   Restarts playback at frame 0 (`Time` and `Pos` = 0)
+- `F1`:   Print help
+- `F1`:   Toggle play/pause
+- `F2`:   Pause and step back one frame
+- `F3`:   Pause and step forward one frame
+- `F4`:   Restart playback at frame 0 (`Time` and `Pos` = 0)
 - `F5`:   Print parameters
 - `F10`:  Save shaders
 - `F11`:  Take Screenshot
