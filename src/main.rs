@@ -198,6 +198,7 @@ fn main() -> Result<()> {
                         if VirtualKeyCode::F1 == keycode {
                             print_help();
                         }
+
                         if VirtualKeyCode::F2 == keycode {
                             if !pause {
                                 backup_time = time.elapsed();
@@ -207,6 +208,7 @@ fn main() -> Result<()> {
                                 pause = false;
                             }
                         }
+
                         if VirtualKeyCode::F3 == keycode {
                             if !pause {
                                 backup_time = time.elapsed();
@@ -224,65 +226,28 @@ fn main() -> Result<()> {
                             }
                             backup_time += std::time::Duration::from_secs_f32(dt);
                         }
+
                         if VirtualKeyCode::F5 == keycode {
                             pilka.push_constant.pos = [0.; 3];
                             pilka.push_constant.time = 0.;
                             time = Instant::now();
                             backup_time = time.elapsed();
                         }
+
                         if VirtualKeyCode::F6 == keycode {
                             eprintln!("{}", pilka.push_constant);
                         }
 
                         if VirtualKeyCode::F10 == keycode {
-                            let dump_folder = std::path::Path::new(SHADER_FOLDER);
-                            create_folder(dump_folder).unwrap();
-                            let dump_folder = dump_folder
-                                .join(chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string());
-                            create_folder(&dump_folder).unwrap();
-
-                            for path in pilka.shader_set.keys() {
-                                let to = dump_folder.join(
-                                    path.strip_prefix(
-                                        Path::new(SHADER_PATH).canonicalize().unwrap(),
-                                    )
-                                    .unwrap(),
-                                );
-                                if !to.exists() {
-                                    std::fs::create_dir_all(
-                                        &to.parent().unwrap().canonicalize().unwrap(),
-                                    )
-                                    .unwrap();
-                                    std::fs::File::create(&to).unwrap();
-                                }
-                                std::fs::copy(path, &to).unwrap();
-                                eprintln!("Saved: {}", &to.display());
-                            }
+                            save_shaders(&pilka);
                         }
 
                         if VirtualKeyCode::F11 == keycode {
                             let now = Instant::now();
                             let (_, (width, height)) = pilka.capture_frame().unwrap();
                             eprintln!("Capture image: {:#?}", now.elapsed());
-
                             let frame = &pilka.screenshot_ctx.data[..(width * height * 4) as usize];
-                            std::thread::spawn(move || {
-                                let now = Instant::now();
-                                let screenshots_folder = Path::new(SCREENSHOTS_FOLDER);
-                                create_folder(screenshots_folder).unwrap();
-                                let path = screenshots_folder.join(format!(
-                                    "screenshot-{}.jpg",
-                                    chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
-                                ));
-                                let file = File::create(path).unwrap();
-                                let w = BufWriter::new(file);
-                                let mut encoder = png::Encoder::new(w, width, height);
-                                encoder.set_color(png::ColorType::RGBA);
-                                encoder.set_depth(png::BitDepth::Eight);
-                                let mut writer = encoder.write_header().unwrap();
-                                writer.write_image_data(frame).unwrap();
-                                eprintln!("Encode image: {:#?}", now.elapsed());
-                            });
+                            save_screenshot(frame, width, height);
                         }
 
                         if has_ffmpeg && VirtualKeyCode::F12 == keycode {
@@ -341,4 +306,45 @@ fn print_help() {
     println!("- `F12`:  Start/Stop record video");
     println!("- `ESC`:  Exit the application");
     println!("- `Arrows`: Change `Pos`\n");
+}
+
+fn save_screenshot(frame: &'static [u8], width: u32, height: u32) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let now = Instant::now();
+        let screenshots_folder = Path::new(SCREENSHOTS_FOLDER);
+        create_folder(screenshots_folder).unwrap();
+        let path = screenshots_folder.join(format!(
+            "screenshot-{}.jpg",
+            chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
+        ));
+        let file = File::create(path).unwrap();
+        let w = BufWriter::new(file);
+        let mut encoder = png::Encoder::new(w, width, height);
+        encoder.set_color(png::ColorType::RGBA);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().unwrap();
+        writer.write_image_data(frame).unwrap();
+        eprintln!("Encode image: {:#?}", now.elapsed());
+    })
+}
+
+fn save_shaders(pilka: &PilkaRender) {
+    let dump_folder = std::path::Path::new(SHADER_FOLDER);
+    create_folder(dump_folder).unwrap();
+    let dump_folder =
+        dump_folder.join(chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string());
+    create_folder(&dump_folder).unwrap();
+
+    for path in pilka.shader_set.keys() {
+        let to = dump_folder.join(
+            path.strip_prefix(Path::new(SHADER_PATH).canonicalize().unwrap())
+                .unwrap(),
+        );
+        if !to.exists() {
+            std::fs::create_dir_all(&to.parent().unwrap().canonicalize().unwrap()).unwrap();
+            std::fs::File::create(&to).unwrap();
+        }
+        std::fs::copy(path, &to).unwrap();
+        eprintln!("Saved: {}", &to.display());
+    }
 }
