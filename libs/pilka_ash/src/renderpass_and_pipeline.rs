@@ -126,15 +126,18 @@ pub struct VkPipeline {
     pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
     pub dynamic_state: Box<[vk::DynamicState]>,
+    pub descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
     pub device: Arc<RawDevice>,
     pub vs_info: ShaderInfo,
     pub fs_info: ShaderInfo,
 }
 
 impl VkPipeline {
+    #[allow(clippy::clippy::too_many_arguments)]
     pub fn new(
         pipeline_cache: vk::PipelineCache,
         pipeline_layout: vk::PipelineLayout,
+        descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
         desc: PipelineDescriptor,
         render_pass: &VkRenderPass,
         vs_info: ShaderInfo,
@@ -170,6 +173,7 @@ impl VkPipeline {
             pipeline,
             pipeline_layout,
             dynamic_state: desc.dynamic_state,
+            descriptor_set_layouts,
             device,
             vs_info,
             fs_info,
@@ -180,6 +184,11 @@ impl VkPipeline {
 impl Drop for VkPipeline {
     fn drop(&mut self) {
         unsafe {
+            for desc_set_layout in &self.descriptor_set_layouts {
+                self.device
+                    .destroy_descriptor_set_layout(*desc_set_layout, None);
+            }
+
             self.device.destroy_pipeline(self.pipeline, None);
 
             self.device

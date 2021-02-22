@@ -5,6 +5,8 @@
 layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 out_color;
 
+layout(set = 0, binding = 0) uniform sampler2D previous_frame;
+
 layout(std430, push_constant) uniform PushConstant {
 	vec3 pos;
 	float time;
@@ -21,8 +23,10 @@ float worldSDF(in vec3 pos) {
 }
 
 void main() {
-	vec3 O = vec3(0.0, 0.0, 3.0);
-	vec3 D = normalize(vec3(uv, -2.));
+	vec2 uu = uv + -pc.mouse;
+
+	vec3 O = vec3(0.0, 0.0, 3.0) + pc.pos;
+	vec3 D = normalize(vec3(uu, -2.));
 
 	vec2 path = ray_march(O, D);
 	vec3 normal = wnormal(O);
@@ -37,5 +41,10 @@ void main() {
 	vec3 dlight = enlight(at, wnormal(at), diffuse, l_col, l_pos);
 
     vec3 col = dlight * 10.;
-    out_color = vec4(col, 1.0);
+
+	vec4 tex = texture(previous_frame, (uv * pc.resolution.y + 1.0) * 0.5);
+
+    out_color = vec4(pow(col, vec3(1/1.12)), 1.0);
+
+	out_color = vec4(uu, 0.0, 1.0);
 }

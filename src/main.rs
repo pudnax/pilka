@@ -69,7 +69,7 @@ fn main() -> Result<()> {
         default_shaders::create_default_shaders(&shader_dir)?;
     }
 
-    pilka.push_shader_module(
+    pilka.push_render_pipeline(
         ash::ShaderInfo::new(
             shader_dir.join("shader.vert"),
             SHADER_ENTRY_POINT.to_string(),
