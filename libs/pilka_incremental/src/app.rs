@@ -1,5 +1,7 @@
 use pilka_ash::ash::{
-    prelude::VkResult, version::DeviceV1_0, version::InstanceV1_0, ShaderInfo, *,
+    prelude::VkResult,
+    version::{DeviceV1_0, InstanceV1_0},
+    ShaderInfo, *,
 };
 use pilka_ash::ash_window;
 use std::{collections::HashMap, ffi::CStr, path::PathBuf};
@@ -631,12 +633,18 @@ impl<'a> PilkaRender<'a> {
             &mut self.compiler,
             &self.device,
         )?;
-        let frag_module = create_shader_module(
+        let frag_module = match create_shader_module(
             frag_info.clone(),
             shaderc::ShaderKind::Fragment,
             &mut self.compiler,
             &self.device,
-        )?;
+        ) {
+            Ok(module) => module,
+            Err(e) => {
+                unsafe { self.device.destroy_shader_module(vert_module, None) };
+                return Err(e);
+            }
+        };
         let shader_set = Box::new([
             vk::PipelineShaderStageCreateInfo {
                 module: vert_module,
