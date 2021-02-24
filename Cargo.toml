@@ -1,10 +1,10 @@
 [package]
 name = "pilka"
-version = "0.2.9"
+version = "0.2.91"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2018"
 license = "GPL-2.0-or-later"
-description = "Another democoding tool for creative coding with shaders."
+description = "Another live-coding tool for creating shaders demos."
 repository = "https://github.com/pudnax/pilka/"
 readme = "README.md"
 keywords = ["graphics", "glsl", "shaders", "creative", "vulkan"]
