@@ -1450,7 +1450,7 @@ dependencies = [
 
 [[package]]
 name = "pilka_lib"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "pilka_dyn",
  "pilka_incremental",
