@@ -4,8 +4,14 @@ use ash::{prelude::VkResult, version::DeviceV1_0, vk};
 use std::ffi::CString;
 use std::path::{Path, PathBuf};
 
+// FIXME: Make them changeable in runtime
 pub const SHADER_PATH: &str = "shaders";
 pub const SHADER_ENTRY_POINT: &str = "main";
+
+pub enum ShaderSet {
+    Graphics { vert: ShaderInfo, frag: ShaderInfo },
+    Compute(ShaderInfo),
+}
 
 #[derive(Hash, Debug, Clone)]
 pub struct ShaderInfo {
@@ -29,7 +35,7 @@ pub struct VkShaderModule {
 }
 
 pub fn create_shader_module(
-    path: ShaderInfo,
+    path: &ShaderInfo,
     shader_type: shaderc::ShaderKind,
     compiler: &mut shaderc::Compiler,
     device: &VkDevice,

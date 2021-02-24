@@ -2,6 +2,13 @@ use crate::{device::RawDevice, shader_module::ShaderInfo};
 use ash::{prelude::VkResult, version::DeviceV1_0, vk};
 use std::sync::Arc;
 
+pub type VkPipeline = VkGeneralPipeline;
+
+pub enum Pipeline {
+    Graphics(VkPipeline),
+    Compute(VkComputePipeline),
+}
+
 pub struct VkRenderPass {
     pub render_pass: vk::RenderPass,
     pub device: Arc<RawDevice>,
@@ -122,7 +129,7 @@ impl PipelineDescriptor {
     }
 }
 
-pub struct VkPipeline {
+pub struct VkGeneralPipeline {
     pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
     pub dynamic_state: Box<[vk::DynamicState]>,
@@ -132,7 +139,7 @@ pub struct VkPipeline {
     pub fs_info: ShaderInfo,
 }
 
-impl VkPipeline {
+impl VkGeneralPipeline {
     #[allow(clippy::clippy::too_many_arguments)]
     pub fn new(
         pipeline_cache: vk::PipelineCache,
@@ -169,7 +176,7 @@ impl VkPipeline {
         .pop()
         .unwrap();
 
-        Ok(VkPipeline {
+        Ok(VkGeneralPipeline {
             pipeline,
             pipeline_layout,
             dynamic_state: desc.dynamic_state,
@@ -181,7 +188,65 @@ impl VkPipeline {
     }
 }
 
-impl Drop for VkPipeline {
+impl Drop for VkGeneralPipeline {
+    fn drop(&mut self) {
+        unsafe {
+            for desc_set_layout in &self.descriptor_set_layouts {
+                self.device
+                    .destroy_descriptor_set_layout(*desc_set_layout, None);
+            }
+
+            self.device.destroy_pipeline(self.pipeline, None);
+
+            self.device
+                .destroy_pipeline_layout(self.pipeline_layout, None);
+        }
+    }
+}
+
+pub struct VkComputePipeline {
+    pub pipeline: vk::Pipeline,
+    pub pipeline_layout: vk::PipelineLayout,
+    pub descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
+    pub cs_info: ShaderInfo,
+    pub device: Arc<RawDevice>,
+}
+
+impl VkComputePipeline {
+    #[allow(clippy::clippy::too_many_arguments)]
+    pub fn new(
+        pipeline_layout: vk::PipelineLayout,
+        descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
+        shader_stage: vk::PipelineShaderStageCreateInfo,
+        cs_info: ShaderInfo,
+        device: Arc<RawDevice>,
+    ) -> VkResult<Self> {
+        let pipeline_info = vk::ComputePipelineCreateInfo::builder()
+            .stage(shader_stage)
+            .layout(pipeline_layout);
+
+        let pipeline = unsafe {
+            device.create_compute_pipelines(
+                vk::PipelineCache::null(),
+                &[pipeline_info.build()],
+                None,
+            )
+        }
+        .expect("Unable to create graphics pipeline")
+        .pop()
+        .unwrap();
+
+        Ok(Self {
+            pipeline,
+            pipeline_layout,
+            descriptor_set_layouts,
+            device,
+            cs_info,
+        })
+    }
+}
+
+impl Drop for VkComputePipeline {
     fn drop(&mut self) {
         unsafe {
             for desc_set_layout in &self.descriptor_set_layouts {
