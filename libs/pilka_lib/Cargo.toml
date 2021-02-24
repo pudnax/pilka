@@ -22,4 +22,4 @@ dynamic = ["pilka_dyn"]
 
 [dependencies]
 pilka_dyn = { version = "0.2.3", path = "./../pilka_dyn", optional = true }
-pilka_incremental = { version = "0.2.3", path = "./../pilka_incremental" }
+pilka_incremental = { version = "0.2.4", path = "./../pilka_incremental" }
