@@ -30,6 +30,10 @@ const FRAG_SHADER: &str = "
 layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 out_color;
 
+layout(set = 0, binding = 0) uniform sampler2D previous_frame;
+#define T(t) (texture(t, vec2(uv.x, -uv.y)))
+#define T_off(t,off) (texture(t, vec2(uv.x + off.x, -(uv.y + off.y))))
+
 layout(std430, push_constant) uniform PushConstant {
 	vec3 pos;
 	float time;
