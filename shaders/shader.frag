@@ -1,5 +1,7 @@
 #version 460
 
+// In the beginning, colours never existed. There's nothing that can be done before you...
+
 #include <prelude.glsl>
 
 layout(location = 0) in vec2 uv;
