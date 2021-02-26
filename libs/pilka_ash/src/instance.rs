@@ -238,6 +238,7 @@ impl VkInstance {
         // Choose graphics and transfer queue families.
         let queuefamilyproperties =
             unsafe { self.get_physical_device_queue_family_properties(physical_device) };
+        dbg!(&queuefamilyproperties);
         let mut found_graphics_q_index = None;
         let mut found_transfer_q_index = None;
         let mut found_compute_q_index = None;
@@ -331,6 +332,7 @@ unsafe extern "system" fn vulkan_debug_callback(
     vk::FALSE
 }
 
+#[derive(Debug)]
 pub struct VkQueue {
     pub queue: vk::Queue,
     pub index: u32,
@@ -342,6 +344,7 @@ impl VkQueue {
     }
 }
 
+#[derive(Debug)]
 pub struct VkQueues {
     pub graphics_queue: VkQueue,
     pub transfer_queue: VkQueue,
@@ -349,8 +352,8 @@ pub struct VkQueues {
 }
 
 #[derive(Copy, Clone)]
-pub struct QueueFamilies {
-    pub graphics_q_index: Option<u32>,
-    pub transfer_q_index: Option<u32>,
-    pub compute_q_index: Option<u32>,
+struct QueueFamilies {
+    graphics_q_index: Option<u32>,
+    transfer_q_index: Option<u32>,
+    compute_q_index: Option<u32>,
 }
