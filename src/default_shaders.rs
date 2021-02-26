@@ -7,17 +7,15 @@ use crate::create_folder;
 pub fn create_default_shaders<P: AsRef<Path>>(name: P) -> std::io::Result<()> {
     create_folder(&name)?;
 
-    let path = name.as_ref().join("prelude.glsl");
-    let mut file = File::create(path)?;
-    file.write_all(PRELUDE.as_bytes())?;
+    let create_file = |filename: &str, content: &str| -> std::io::Result<()> {
+        let path = name.as_ref().join(filename);
+        let mut file = File::create(path)?;
+        file.write_all(content.as_bytes())
+    };
 
-    let path = name.as_ref().join("shader.frag");
-    let mut file = File::create(path)?;
-    file.write_all(FRAG_SHADER.as_bytes())?;
-
-    let path = name.as_ref().join("shader.vert");
-    let mut file = File::create(path)?;
-    file.write_all(VERT_SHADER.as_bytes())?;
+    create_file("prelude.glsl", PRELUDE)?;
+    create_file("shader.frag", FRAG_SHADER)?;
+    create_file("shader.vert", VERT_SHADER)?;
 
     Ok(())
 }
