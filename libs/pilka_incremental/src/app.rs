@@ -274,40 +274,6 @@ impl<'a> PilkaRender<'a> {
             need2steps,
         )?;
 
-        // unsafe {
-        //     let formats = [
-        //         vk::Format::B8G8R8A8_SRGB,
-        //         vk::Format::B8G8R8A8_UNORM,
-        //         vk::Format::B8G8R8A8_UINT,
-        //         vk::Format::B8G8R8A8_SINT,
-        //         vk::Format::B8G8R8A8_SNORM,
-        //         vk::Format::B8G8R8A8_USCALED,
-        //         vk::Format::B8G8R8A8_SSCALED,
-        //         vk::Format::R8G8B8A8_SRGB,
-        //         vk::Format::R8G8B8A8_UNORM,
-        //         vk::Format::R8G8B8A8_UINT,
-        //         vk::Format::R8G8B8A8_SINT,
-        //         vk::Format::R8G8B8A8_SNORM,
-        //         vk::Format::R8G8B8A8_USCALED,
-        //         vk::Format::R8G8B8A8_SSCALED,
-        //     ];
-        //     for format in &formats {
-        //         match instance.get_physical_device_image_format_properties(
-        //             device.physical_device,
-        //             *format,
-        //             vk::ImageType::TYPE_2D,
-        //             vk::ImageTiling::OPTIMAL,
-        //             vk::ImageUsageFlags::TRANSFER_DST
-        //                 | vk::ImageUsageFlags::STORAGE
-        //                 | vk::ImageUsageFlags::SAMPLED,
-        //             vk::ImageCreateFlags::empty(),
-        //         ) {
-        //             Ok(s) => println!("{:?}: {:?}", format, s),
-        //             Err(_) => println!("Not supported: {:?}", format),
-        //         }
-        //     }
-        // }
-
         let previous_frame = {
             let extent = vk::Extent3D {
                 width: extent.width,
