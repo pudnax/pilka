@@ -93,9 +93,12 @@ pub fn new_ffmpeg_command(width: u32, height: u32, filename: &str) -> Result<Chi
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
-    // Not create terminal window
     #[cfg(windows)]
-    command.creation_flags(0x08000000);
+    {
+        const WINAPI_UM_WINBASE_CREATE_NO_WINDOW: u32 = 0x08000000;
+        // Not create terminal window
+        command.creation_flags(WINAPI_UM_WINBASE_CREATE_NO_WINDOW);
+    }
 
     let child = command.spawn().map_err(ProcessError::SpawnError)?;
 
