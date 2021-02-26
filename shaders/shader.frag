@@ -46,7 +46,5 @@ void main() {
 
     vec3 col = dlight * 10.;
 
-	vec3 tex = T_off(previous_frame, pc.mouse).rgb;
-
-    out_color = vec4(pow(col + tex * 0.1, vec3(1 / 1.12)), 1.0);
+    out_color = vec4(pow(col, vec3(1 / 1.12)), 1.0);
 }
