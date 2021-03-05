@@ -173,9 +173,9 @@ impl VkInstance {
 
         let queue_families = self.create_queue_families(physical_device, surface)?;
 
-        let graphics_queue_index = queue_families.graphics_q_index.unwrap();
-        let transfer_queue_index = queue_families.transfer_q_index.unwrap();
-        let compute_queue_index = queue_families.compute_q_index.unwrap();
+        let graphics_queue_index = queue_families.graphics_q_index.unwrap_or(0);
+        let transfer_queue_index = queue_families.transfer_q_index.unwrap_or(0);
+        let compute_queue_index = queue_families.compute_q_index.unwrap_or(0);
 
         let priorities = [1.0f32];
 
@@ -211,11 +211,14 @@ impl VkInstance {
         let compute_queue = unsafe { device.get_device_queue(compute_queue_index, 0) };
 
         let device = Arc::new(RawDevice::new(device));
+        let memory_properties =
+            unsafe { self.get_physical_device_memory_properties(physical_device) };
 
         Ok((
             VkDevice {
                 device,
                 physical_device,
+                memory_properties,
             },
             VkDeviceProperties {
                 memory,
@@ -238,7 +241,6 @@ impl VkInstance {
         // Choose graphics and transfer queue families.
         let queuefamilyproperties =
             unsafe { self.get_physical_device_queue_family_properties(physical_device) };
-        dbg!(&queuefamilyproperties);
         let mut found_graphics_q_index = None;
         let mut found_transfer_q_index = None;
         let mut found_compute_q_index = None;
