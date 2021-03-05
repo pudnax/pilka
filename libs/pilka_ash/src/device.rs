@@ -18,6 +18,7 @@ use crate::{
 pub struct VkDevice {
     pub device: Arc<RawDevice>,
     pub physical_device: vk::PhysicalDevice,
+    pub memory_properties: vk::PhysicalDeviceMemoryProperties,
 }
 
 // #[derive(Clone)]
@@ -271,6 +272,134 @@ impl VkDevice {
             .allocation_size(allocation_reqs.size)
             .memory_type_index(memory_type_index);
         unsafe { self.device.allocate_memory(&alloc_info, None) }
+    }
+
+    pub fn flush_cmd_buffer(
+        &self,
+        cmd_buffer: &vk::CommandBuffer,
+        queue: &vk::Queue,
+        pool: &vk::CommandPool,
+        free: bool,
+    ) -> VkResult<()> {
+        unsafe { self.end_command_buffer(*cmd_buffer) }?;
+
+        let command_buffers = [*cmd_buffer];
+        let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
+
+        let fence = self.create_fence(false)?;
+
+        let submits = [submit_info.build()];
+        unsafe { self.queue_submit(*queue, &submits, fence) }?;
+
+        let fences = [fence];
+        unsafe { self.wait_for_fences(&fences, true, !0) }?;
+
+        unsafe { self.destroy_fence(fence, None) };
+
+        if free {
+            unsafe { self.free_command_buffers(*pool, &command_buffers) };
+        }
+
+        Ok(())
+    }
+
+    pub fn create_vk_buffer_from_slice<T>(
+        &self,
+        usage_flags: vk::BufferUsageFlags,
+        memory_prop_flags: vk::MemoryPropertyFlags,
+        data: &[T],
+    ) -> VkResult<VkBuffer<T>> {
+        let size = (data.len() * std::mem::size_of::<T>()) as u64;
+        let mut buffer = self.create_vk_buffer(usage_flags, memory_prop_flags, size)?;
+        buffer.mapped = {
+            let tmp = unsafe {
+                std::slice::from_raw_parts_mut::<T>(
+                    self.map_memory(buffer.memory, 0, size, vk::MemoryMapFlags::empty())? as _,
+                    data.len(),
+                )
+            };
+            unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), tmp.as_mut_ptr(), data.len()) };
+            Some(tmp)
+        };
+        Ok(buffer)
+    }
+
+    pub fn create_vk_buffer<T>(
+        &self,
+        usage_flags: vk::BufferUsageFlags,
+        memory_prop_flags: vk::MemoryPropertyFlags,
+        size: vk::DeviceSize,
+    ) -> VkResult<VkBuffer<T>> {
+        let buffer_create_info = vk::BufferCreateInfo::builder()
+            .size(size)
+            .usage(usage_flags);
+        let buffer = unsafe { self.create_buffer(&buffer_create_info, None) }?;
+
+        let memory_reqs = unsafe { self.get_buffer_memory_requirements(buffer) };
+
+        let memory_type_index =
+            utils::find_memorytype_index(&memory_reqs, &self.memory_properties, memory_prop_flags)
+                .unwrap();
+        let mut mem_alloc_flags = vk::MemoryAllocateFlagsInfoKHR::default();
+        let alloc_info = vk::MemoryAllocateInfo::builder()
+            .allocation_size(memory_reqs.size)
+            .memory_type_index(memory_type_index)
+            .push_next({
+                if usage_flags.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
+                    mem_alloc_flags.flags = vk::MemoryAllocateFlagsKHR::DEVICE_ADDRESS_KHR;
+                }
+                &mut mem_alloc_flags
+            });
+        let buffer_memory = unsafe { self.device.allocate_memory(&alloc_info, None) }?;
+
+        let descriptor = vk::DescriptorBufferInfo::builder()
+            .offset(0)
+            .buffer(buffer)
+            .range(vk::WHOLE_SIZE)
+            .build();
+
+        unsafe { self.bind_buffer_memory(buffer, buffer_memory, 0) }?;
+
+        Ok(VkBuffer {
+            buffer,
+            memory: buffer_memory,
+            mem_reqs: memory_reqs,
+            descriptor,
+            mapped: None,
+        })
+    }
+}
+
+pub struct VkBuffer<'a, T> {
+    buffer: vk::Buffer,
+    memory: vk::DeviceMemory,
+    mem_reqs: vk::MemoryRequirements,
+    descriptor: vk::DescriptorBufferInfo,
+    mapped: Option<&'a mut [T]>,
+}
+
+impl<T> VkBuffer<'_, T> {
+    pub fn map(&mut self, device: &VkDevice) -> VkResult<()> {
+        self.mapped = {
+            let size = self.mem_reqs.size;
+            let tmp = unsafe {
+                std::slice::from_raw_parts_mut::<T>(
+                    device.map_memory(self.memory, 0, size, vk::MemoryMapFlags::empty())? as _,
+                    size as usize,
+                )
+            };
+            Some(tmp)
+        };
+        Ok(())
+    }
+}
+
+impl<'a, T> VkBuffer<'a, T> {
+    fn destroy(&mut self, device: &VkDevice) {
+        unsafe {
+            device.free_memory(self.memory, None);
+            device.destroy_buffer(self.buffer, None);
+        }
     }
 }
 
