@@ -1,13 +1,15 @@
+use crate::{
+    ash::version::{DeviceV1_0, InstanceV1_0},
+    ash::vk,
+    device::{RawDevice, VkDevice},
+    instance::{VkInstance, VkQueues},
+};
 use ash::prelude::VkResult;
 use ktx::{Ktx, KtxInfo};
-use pilka_ash::ash::{
-    version::{DeviceV1_0, InstanceV1_0},
-    vk, RawDevice, VkDevice, VkInstance, VkQueues,
-};
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::util::set_image_layout_all_commands;
+use crate::utils::set_image_layout_all_commands;
 
 pub struct VkTexture {
     device: Arc<RawDevice>,

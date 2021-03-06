@@ -21,5 +21,6 @@ maintenance = { status = "experimental" }
 ash = "0.31.0"
 ash-molten = "0.7.2"
 ash-window = "0.5.0"
+ktx = "0.3.1"
 raw-window-handle = "0.3.3"
 shaderc = "0.7.0"
