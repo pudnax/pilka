@@ -9,8 +9,6 @@ use ktx::{Ktx, KtxInfo};
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::utils::set_image_layout_all_commands;
-
 pub struct VkTexture {
     device: Arc<RawDevice>,
     image: vk::Image,
@@ -151,13 +149,14 @@ impl VkTexture {
             .layer_count(1)
             .build();
 
-        set_image_layout_all_commands(
-            device,
+        device.set_image_layout_with_subresource(
             copy_cmd,
             image,
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             subresource_range,
+            vk::PipelineStageFlags::ALL_COMMANDS,
+            vk::PipelineStageFlags::ALL_COMMANDS,
         );
 
         unsafe {
@@ -170,13 +169,14 @@ impl VkTexture {
             )
         };
 
-        set_image_layout_all_commands(
-            device,
+        device.set_image_layout_with_subresource(
             copy_cmd,
             image,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             image_layout,
             subresource_range,
+            vk::PipelineStageFlags::ALL_COMMANDS,
+            vk::PipelineStageFlags::ALL_COMMANDS,
         );
 
         device.flush_cmd_buffer(&copy_cmd, &copy_queue, command_pool, true)?;
@@ -314,13 +314,14 @@ impl VkTexture {
             .base_array_layer(0)
             .layer_count(1)
             .build();
-        set_image_layout_all_commands(
-            device,
+        device.set_image_layout_with_subresource(
             layout_cmd,
             image,
             vk::ImageLayout::UNDEFINED,
             image_layout,
             subresource_range,
+            vk::PipelineStageFlags::ALL_COMMANDS,
+            vk::PipelineStageFlags::ALL_COMMANDS,
         );
 
         device.flush_cmd_buffer(
