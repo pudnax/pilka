@@ -169,31 +169,14 @@ impl<'a> PilkaRender<'a> {
 
             unsafe { device.begin_command_buffer(command_buffer, &command_buffer_begin_info) }?;
 
-            let barrier = vk::ImageMemoryBarrier::builder()
-                .image(swapchain.images[i])
-                .src_access_mask(vk::AccessFlags::empty())
-                .dst_access_mask(vk::AccessFlags::MEMORY_WRITE)
-                .old_layout(vk::ImageLayout::UNDEFINED)
-                .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .build();
-            unsafe {
-                device.cmd_pipeline_barrier(
-                    command_buffer,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[barrier],
-                )
-            };
+            device.set_image_layout(
+                command_buffer,
+                swapchain.images[i],
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::PRESENT_SRC_KHR,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::TRANSFER,
+            );
 
             unsafe { device.end_command_buffer(command_buffer) }?;
             let command_buffers = vec![command_buffer];
@@ -323,31 +306,14 @@ impl<'a> PilkaRender<'a> {
 
             unsafe { device.begin_command_buffer(command_buffer, &command_buffer_begin_info) }?;
 
-            let barrier = vk::ImageMemoryBarrier::builder()
-                .image(previous_frame.image.image)
-                .src_access_mask(vk::AccessFlags::empty())
-                .dst_access_mask(vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE)
-                .old_layout(vk::ImageLayout::UNDEFINED)
-                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .build();
-            unsafe {
-                device.cmd_pipeline_barrier(
-                    command_buffer,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[barrier],
-                )
-            };
+            device.set_image_layout(
+                command_buffer,
+                previous_frame.image.image,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::TRANSFER,
+            );
 
             unsafe { device.end_command_buffer(command_buffer) }?;
             let command_buffers = vec![command_buffer];
@@ -497,31 +463,14 @@ impl<'a> PilkaRender<'a> {
                     .begin_command_buffer(command_buffer, &command_buffer_begin_info)
             }?;
 
-            let barrier = vk::ImageMemoryBarrier::builder()
-                .image(self.swapchain.images[i])
-                .src_access_mask(vk::AccessFlags::empty())
-                .dst_access_mask(vk::AccessFlags::MEMORY_WRITE)
-                .old_layout(vk::ImageLayout::UNDEFINED)
-                .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .build();
-            unsafe {
-                self.device.cmd_pipeline_barrier(
-                    command_buffer,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[barrier],
-                )
-            };
+            self.device.set_image_layout(
+                command_buffer,
+                self.swapchain.images[i],
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::PRESENT_SRC_KHR,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::TRANSFER,
+            );
 
             unsafe { self.device.end_command_buffer(command_buffer) }?;
             let command_buffers = vec![command_buffer];
@@ -556,31 +505,14 @@ impl<'a> PilkaRender<'a> {
                     .begin_command_buffer(command_buffer, &command_buffer_begin_info)
             }?;
 
-            let barrier = vk::ImageMemoryBarrier::builder()
-                .image(self.previous_frame.image.image)
-                .src_access_mask(vk::AccessFlags::empty())
-                .dst_access_mask(vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE)
-                .old_layout(vk::ImageLayout::UNDEFINED)
-                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .build();
-            unsafe {
-                self.device.cmd_pipeline_barrier(
-                    command_buffer,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[barrier],
-                )
-            };
+            self.device.set_image_layout(
+                command_buffer,
+                self.previous_frame.image.image,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::TRANSFER,
+            );
 
             unsafe { self.device.end_command_buffer(command_buffer) }?;
             let command_buffers = vec![command_buffer];
@@ -916,124 +848,51 @@ impl<'a> PilkaRender<'a> {
                 height: self.extent.height,
                 depth: 1,
             };
-            let zero_offset = vk::Offset3D::default();
-            let copy_area = vk::ImageCopy::builder()
-                .src_subresource(vk::ImageSubresourceLayers {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    mip_level: 0,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .src_offset(zero_offset)
-                .dst_subresource(vk::ImageSubresourceLayers {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    mip_level: 0,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .dst_offset(zero_offset)
-                .extent(extent)
-                .build();
 
-            let mut present_barrier = vk::ImageMemoryBarrier::builder()
-                .image(self.swapchain.images[present_index as usize])
-                .src_access_mask(vk::AccessFlags::MEMORY_WRITE)
-                .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
-                .old_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-                .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .build();
-
-            let mut dst_memory_barrier = vk::ImageMemoryBarrier::builder()
-                .image(self.previous_frame.image.image)
-                .src_access_mask(vk::AccessFlags::empty())
-                .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .build();
+            let device = &self.device;
+            let present_image = self.swapchain.images[present_index as usize];
+            let prev_frame = self.previous_frame.image.image;
 
             let dst_stage = vk::PipelineStageFlags::TRANSFER;
             let src_stage = vk::PipelineStageFlags::TRANSFER;
 
-            unsafe {
-                self.device.cmd_pipeline_barrier(
-                    copybuffer,
-                    vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                    dst_stage,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[present_barrier],
-                );
+            device.set_image_layout(
+                copybuffer,
+                present_image,
+                vk::ImageLayout::PRESENT_SRC_KHR,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                src_stage,
+                dst_stage,
+            );
 
-                self.device.cmd_pipeline_barrier(
-                    copybuffer,
-                    src_stage,
-                    dst_stage,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[dst_memory_barrier],
-                );
-            }
+            device.set_image_layout(
+                copybuffer,
+                prev_frame,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                src_stage,
+                dst_stage,
+            );
 
-            unsafe {
-                self.device.cmd_copy_image(
-                    copybuffer,
-                    self.swapchain.images[present_index as usize],
-                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                    self.previous_frame.image.image,
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &[copy_area],
-                )
-            };
+            device.copy_image(copybuffer, present_image, prev_frame, extent);
 
-            dst_memory_barrier.old_layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
-            dst_memory_barrier.new_layout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-            dst_memory_barrier.src_access_mask = vk::AccessFlags::TRANSFER_WRITE;
-            dst_memory_barrier.dst_access_mask = vk::AccessFlags::empty();
+            device.set_image_layout(
+                copybuffer,
+                present_image,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                vk::ImageLayout::PRESENT_SRC_KHR,
+                src_stage,
+                dst_stage,
+            );
 
-            unsafe {
-                self.device.cmd_pipeline_barrier(
-                    copybuffer,
-                    src_stage,
-                    dst_stage,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[dst_memory_barrier],
-                )
-            };
-
-            present_barrier.old_layout = vk::ImageLayout::TRANSFER_SRC_OPTIMAL;
-            present_barrier.new_layout = vk::ImageLayout::PRESENT_SRC_KHR;
-            present_barrier.src_access_mask = vk::AccessFlags::TRANSFER_READ;
-            present_barrier.dst_access_mask = vk::AccessFlags::empty();
-
-            unsafe {
-                self.device.cmd_pipeline_barrier(
-                    copybuffer,
-                    src_stage,
-                    dst_stage,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[present_barrier],
-                )
-            };
+            device.set_image_layout(
+                copybuffer,
+                prev_frame,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                src_stage,
+                dst_stage,
+            );
 
             unsafe { self.device.end_command_buffer(copybuffer) }.unwrap();
             let submit_commbuffers = [copybuffer];

@@ -332,7 +332,10 @@ impl VkDevice {
             }
             ImageLayout::TRANSFER_SRC_OPTIMAL => AccessFlags::TRANSFER_READ,
             ImageLayout::TRANSFER_DST_OPTIMAL => AccessFlags::TRANSFER_WRITE,
-            ImageLayout::SHADER_READ_ONLY_OPTIMAL => AccessFlags::SHADER_READ,
+            // ImageLayout::SHADER_READ_ONLY_OPTIMAL => AccessFlags::SHADER_READ,
+            ImageLayout::SHADER_READ_ONLY_OPTIMAL => {
+                AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE
+            }
             _ => AccessFlags::empty(),
         };
 
@@ -345,11 +348,14 @@ impl VkDevice {
                 image_memory_barrier.dst_access_mask | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
             }
             ImageLayout::SHADER_READ_ONLY_OPTIMAL => {
-                if image_memory_barrier.src_access_mask.is_empty() {
-                    image_memory_barrier.src_access_mask =
-                        AccessFlags::HOST_WRITE | AccessFlags::TRANSFER_WRITE;
-                }
-                AccessFlags::SHADER_READ | AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE
+                // if image_memory_barrier.src_access_mask.is_empty()
+                //     && old_layout != ImageLayout::UNDEFINED
+                // {
+                //     image_memory_barrier.src_access_mask =
+                //         AccessFlags::HOST_WRITE | AccessFlags::TRANSFER_WRITE;
+                // }
+                // AccessFlags::SHADER_READ | AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE
+                AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE
             }
             ImageLayout::PRESENT_SRC_KHR => AccessFlags::MEMORY_WRITE,
             _ => AccessFlags::empty(),
