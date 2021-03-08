@@ -61,6 +61,7 @@ pub struct PilkaRender<'a> {
     pub shader_set: HashMap<PathBuf, usize>,
     pub compiler: shaderc::Compiler,
 
+    pub graphics_semaphore: vk::Semaphore,
     pub rendering_complete_semaphore: vk::Semaphore,
     pub present_complete_semaphore: vk::Semaphore,
     pub command_pool: VkCommandPool,
@@ -195,6 +196,7 @@ impl<'a> PilkaRender<'a> {
 
         let render_pass = device.create_vk_render_pass(swapchain.format())?;
 
+        let graphics_semaphore = device.create_semaphore()?;
         let present_complete_semaphore = device.create_semaphore()?;
         let rendering_complete_semaphore = device.create_semaphore()?;
 
@@ -416,6 +418,7 @@ impl<'a> PilkaRender<'a> {
             command_pool,
             present_complete_semaphore,
             rendering_complete_semaphore,
+            graphics_semaphore,
 
             shader_set: HashMap::new(),
             compiler,
@@ -859,7 +862,7 @@ impl<'a> PilkaRender<'a> {
                             &[self.present_complete_semaphore],
                         ]
                         .concat(),
-                        &[self.rendering_complete_semaphore],
+                        &[self.rendering_complete_semaphore, self.graphics_semaphore],
                         |device, draw_command_buffer| {
                             let image_barrier = [vk::ImageMemoryBarrier::builder()
                                 .image(prev_frame)
@@ -1032,7 +1035,7 @@ impl<'a> PilkaRender<'a> {
 
                 let command_buffers = [compute_cmd_buf];
                 let signal_semaphores = [pipeline.semaphore];
-                let wait_semaphores = [self.present_complete_semaphore];
+                let wait_semaphores = [self.graphics_semaphore];
                 let compute_submit_info = [vk::SubmitInfo::builder()
                     .command_buffers(&command_buffers)
                     .wait_dst_stage_mask(&[vk::PipelineStageFlags::COMPUTE_SHADER])
