@@ -70,15 +70,14 @@ fn main() -> Result<()> {
     }
 
     pilka.push_render_pipeline(
-        ash::ShaderInfo::new(
-            shader_dir.join("shader.vert"),
-            SHADER_ENTRY_POINT.to_string(),
-        )?,
-        ash::ShaderInfo::new(
-            shader_dir.join("shader.frag"),
-            SHADER_ENTRY_POINT.to_string(),
-        )?,
+        ash::ShaderInfo::new(shader_dir.join("shader.vert"), SHADER_ENTRY_POINT.into())?,
+        ash::ShaderInfo::new(shader_dir.join("shader.frag"), SHADER_ENTRY_POINT.into())?,
         &[shader_dir.join("prelude.glsl")],
+    )?;
+
+    pilka.push_compute(
+        ash::ShaderInfo::new(shader_dir.join("shader.comp"), SHADER_ENTRY_POINT.into())?,
+        &[],
     )?;
 
     let (ffmpeg_version, has_ffmpeg) = recorder::ffmpeg_version()?;
@@ -279,7 +278,7 @@ fn main() -> Result<()> {
             },
 
             Event::MainEventsCleared => {
-                pilka.render();
+                pilka.render().unwrap();
                 if video_recording {
                     let (frame, _) = pilka.capture_frame().unwrap();
                     video_tx.send(RecordEvent::Record(frame.to_vec())).unwrap()

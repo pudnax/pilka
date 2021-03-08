@@ -1,11 +1,10 @@
-use crate::{device::RawDevice, shader_module::ShaderInfo};
+use crate::{ash::VkQueues, device::RawDevice, shader_module::ShaderInfo};
 use ash::{prelude::VkResult, version::DeviceV1_0, vk};
 use std::sync::Arc;
 
-pub type VkPipeline = VkGeneralPipeline;
-
+#[derive(Debug)]
 pub enum Pipeline {
-    Graphics(VkPipeline),
+    Graphics(VkGraphicsPipeline),
     Compute(VkComputePipeline),
 }
 
@@ -129,7 +128,8 @@ impl PipelineDescriptor {
     }
 }
 
-pub struct VkGeneralPipeline {
+#[derive(Debug)]
+pub struct VkGraphicsPipeline {
     pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
     pub dynamic_state: Box<[vk::DynamicState]>,
@@ -139,7 +139,7 @@ pub struct VkGeneralPipeline {
     pub fs_info: ShaderInfo,
 }
 
-impl VkGeneralPipeline {
+impl VkGraphicsPipeline {
     #[allow(clippy::clippy::too_many_arguments)]
     pub fn new(
         pipeline_cache: vk::PipelineCache,
@@ -176,7 +176,7 @@ impl VkGeneralPipeline {
         .pop()
         .unwrap();
 
-        Ok(VkGeneralPipeline {
+        Ok(VkGraphicsPipeline {
             pipeline,
             pipeline_layout,
             dynamic_state: desc.dynamic_state,
@@ -188,7 +188,7 @@ impl VkGeneralPipeline {
     }
 }
 
-impl Drop for VkGeneralPipeline {
+impl Drop for VkGraphicsPipeline {
     fn drop(&mut self) {
         unsafe {
             for desc_set_layout in &self.descriptor_set_layouts {
@@ -204,10 +204,14 @@ impl Drop for VkGeneralPipeline {
     }
 }
 
+#[derive(Debug)]
 pub struct VkComputePipeline {
     pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
     pub descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
+    pub command_pool: vk::CommandPool,
+    pub command_buffer: vk::CommandBuffer,
+    pub semaphore: vk::Semaphore,
     pub cs_info: ShaderInfo,
     pub device: Arc<RawDevice>,
 }
@@ -220,6 +224,7 @@ impl VkComputePipeline {
         shader_stage: vk::PipelineShaderStageCreateInfo,
         cs_info: ShaderInfo,
         device: Arc<RawDevice>,
+        queues: &VkQueues,
     ) -> VkResult<Self> {
         let pipeline_info = vk::ComputePipelineCreateInfo::builder()
             .stage(shader_stage)
@@ -236,12 +241,37 @@ impl VkComputePipeline {
         .pop()
         .unwrap();
 
+        let command_poo_create_info = vk::CommandPoolCreateInfo::builder()
+            .queue_family_index(queues.compute_queue.index)
+            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+        let command_pool = unsafe { device.create_command_pool(&command_poo_create_info, None) }?;
+
+        let command_buffer_create_info = vk::CommandBufferAllocateInfo::builder()
+            .command_buffer_count(1)
+            .command_pool(command_pool)
+            .level(vk::CommandBufferLevel::PRIMARY);
+        let command_buffer =
+            unsafe { device.allocate_command_buffers(&command_buffer_create_info) }?[0];
+
+        let semaphore_info = vk::SemaphoreCreateInfo::default();
+        let semaphore = unsafe { device.create_semaphore(&semaphore_info, None) }?;
+
+        let signal_semaphores = [semaphore];
+        let submits = [vk::SubmitInfo::builder()
+            .signal_semaphores(&signal_semaphores)
+            .build()];
+        unsafe { device.queue_submit(queues.compute_queue.queue, &submits, vk::Fence::null()) }?;
+        unsafe { device.queue_wait_idle(queues.compute_queue.queue) }?;
+
         Ok(Self {
             pipeline,
             pipeline_layout,
             descriptor_set_layouts,
             device,
             cs_info,
+            command_pool,
+            command_buffer,
+            semaphore,
         })
     }
 }
@@ -249,6 +279,8 @@ impl VkComputePipeline {
 impl Drop for VkComputePipeline {
     fn drop(&mut self) {
         unsafe {
+            self.device.destroy_semaphore(self.semaphore, None);
+            self.device.destroy_command_pool(self.command_pool, None);
             for desc_set_layout in &self.descriptor_set_layouts {
                 self.device
                     .destroy_descriptor_set_layout(*desc_set_layout, None);

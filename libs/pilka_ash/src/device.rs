@@ -21,9 +21,14 @@ pub struct VkDevice {
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
 }
 
-// #[derive(Clone)]
 pub struct RawDevice {
     device: Device,
+}
+
+impl std::fmt::Debug for RawDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RawDevice btw")
+    }
 }
 
 impl RawDevice {
@@ -194,7 +199,7 @@ impl VkDevice {
             .get_present_modes(self)?
             .iter()
             .cloned()
-            .find(|&mode| mode == vk::PresentModeKHR::FIFO)
+            .find(|&mode| mode == vk::PresentModeKHR::IMMEDIATE)
             .unwrap_or(vk::PresentModeKHR::FIFO);
 
         let surface_format = {
@@ -455,6 +460,7 @@ impl VkDevice {
             )
         };
     }
+
     pub fn blit_image(
         &self,
         command_buffer: vk::CommandBuffer,

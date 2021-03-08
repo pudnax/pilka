@@ -1,5 +1,5 @@
 use crate::device::{RawDevice, VkDevice};
-use ash::{version::DeviceV1_0, vk};
+use ash::{prelude::VkResult, version::DeviceV1_0, vk};
 use std::sync::Arc;
 
 //
@@ -22,39 +22,23 @@ impl VkCommandPool {
         wait_semaphores: &[vk::Semaphore],
         signal_semaphores: &[vk::Semaphore],
         f: F,
-    ) {
+    ) -> VkResult<()> {
         let submit_fence = self.fences[self.active_command];
         let command_buffer = self.command_buffers[self.active_command];
 
-        unsafe {
-            device
-                .wait_for_fences(&[submit_fence], true, std::u64::MAX)
-                .expect("Wait for fences failed.")
-        };
-        unsafe {
-            device
-                .reset_fences(&[submit_fence])
-                .expect("Reset fences failed.")
-        };
+        unsafe { device.wait_for_fences(&[submit_fence], true, std::u64::MAX) }?;
+        unsafe { device.reset_fences(&[submit_fence]) }?;
 
         let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
-        unsafe {
-            device
-                .begin_command_buffer(command_buffer, &command_buffer_begin_info)
-                .expect("Begin cammandbuffer.")
-        };
+        unsafe { device.begin_command_buffer(command_buffer, &command_buffer_begin_info) }?;
 
         f(device, command_buffer);
 
-        unsafe {
-            device
-                .end_command_buffer(command_buffer)
-                .expect("End commandbuffer")
-        };
+        unsafe { device.end_command_buffer(command_buffer) }?;
 
-        let command_buffers = vec![command_buffer];
+        let command_buffers = [command_buffer];
 
         let submit_info = vk::SubmitInfo::builder()
             .wait_semaphores(wait_semaphores)
@@ -62,13 +46,11 @@ impl VkCommandPool {
             .command_buffers(&command_buffers)
             .signal_semaphores(signal_semaphores);
 
-        unsafe {
-            device
-                .queue_submit(submit_queue, &[submit_info.build()], submit_fence)
-                .expect("Queue submit failed.")
-        };
+        unsafe { device.queue_submit(submit_queue, &[submit_info.build()], submit_fence) }?;
 
         self.active_command = (self.active_command + 1) % self.fences.len();
+
+        Ok(())
     }
 }
 
