@@ -75,7 +75,7 @@ fn main() -> Result<()> {
         &[shader_dir.join("prelude.glsl")],
     )?;
 
-    pilka.push_compute(
+    pilka.push_compute_pipeline(
         ash::ShaderInfo::new(shader_dir.join("shader.comp"), SHADER_ENTRY_POINT.into())?,
         &[],
     )?;
