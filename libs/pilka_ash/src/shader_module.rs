@@ -42,7 +42,7 @@ pub fn create_shader_module(
 ) -> VkResult<vk::ShaderModule> {
     let shader_text = std::fs::read_to_string(&path.name).unwrap();
     let mut compile_options = shaderc::CompileOptions::new().unwrap();
-    compile_options.set_warnings_as_errors();
+    // compile_options.set_warnings_as_errors();
     compile_options.set_target_env(
         shaderc::TargetEnv::Vulkan,
         shaderc::EnvVersion::Vulkan1_2 as u32,
