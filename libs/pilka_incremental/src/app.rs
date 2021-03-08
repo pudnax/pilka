@@ -579,10 +579,26 @@ impl<'a> PilkaRender<'a> {
             unsafe { self.device.update_descriptor_sets(&desc_sets_write, &[]) };
         }
 
+        for descset in &self.descriptor_sets_compute {
+            let image_infos = [vk::DescriptorImageInfo {
+                image_layout: vk::ImageLayout::GENERAL,
+                image_view: self.previous_frame.image_view,
+                sampler: self.previous_frame.sampler,
+            }];
+            let desc_sets_write = [vk::WriteDescriptorSet::builder()
+                .dst_set(*descset)
+                .dst_binding(0)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                .image_info(&image_infos)
+                .build()];
+            unsafe { self.device.update_descriptor_sets(&desc_sets_write, &[]) };
+        }
+
         Ok(())
     }
 
-    pub fn push_compute(
+    pub fn push_compute_pipeline(
         &mut self,
         comp_info: ShaderInfo,
         dependencies: &[PathBuf],
@@ -845,7 +861,30 @@ impl<'a> PilkaRender<'a> {
                         .concat(),
                         &[self.rendering_complete_semaphore],
                         |device, draw_command_buffer| {
-                            // TODO: Barrier for texture and compute shader write
+                            let image_barrier = [vk::ImageMemoryBarrier::builder()
+                                .image(prev_frame)
+                                .old_layout(vk::ImageLayout::GENERAL)
+                                .new_layout(vk::ImageLayout::GENERAL)
+                                .subresource_range(vk::ImageSubresourceRange {
+                                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                                    base_mip_level: 0,
+                                    level_count: 1,
+                                    base_array_layer: 0,
+                                    layer_count: 1,
+                                })
+                                .src_access_mask(vk::AccessFlags::SHADER_WRITE)
+                                .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                                .build()];
+
+                            device.cmd_pipeline_barrier(
+                                draw_command_buffer,
+                                vk::PipelineStageFlags::COMPUTE_SHADER,
+                                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                                vk::DependencyFlags::empty(),
+                                &[],
+                                &[],
+                                &image_barrier,
+                            );
 
                             device.cmd_begin_render_pass(
                                 draw_command_buffer,
@@ -970,6 +1009,13 @@ impl<'a> PilkaRender<'a> {
                     compute_cmd_buf,
                     vk::PipelineBindPoint::COMPUTE,
                     pipeline.pipeline,
+                );
+                self.device.cmd_push_constants(
+                    compute_cmd_buf,
+                    pipeline.pipeline_layout,
+                    vk::ShaderStageFlags::COMPUTE,
+                    0,
+                    push_constant.as_slice(),
                 );
                 self.device.cmd_bind_descriptor_sets(
                     compute_cmd_buf,
@@ -1369,6 +1415,7 @@ struct VkTexture {
     pub image: VkImage,
     pub image_view: vk::ImageView,
     pub sampler: vk::Sampler,
+    usage_flags: vk::ImageUsageFlags,
     format: vk::Format,
 }
 
@@ -1404,6 +1451,7 @@ impl VkTexture {
             image,
             image_view,
             sampler,
+            usage_flags: image_create_info.usage,
             format: image_create_info.format,
         })
     }
@@ -1428,8 +1476,8 @@ impl VkTexture {
             .array_layers(1)
             .mip_levels(1)
             .samples(vk::SampleCountFlags::TYPE_1)
-            .tiling(vk::ImageTiling::LINEAR)
-            .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .usage(self.usage_flags)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED);
         let image_memory_flags = vk::MemoryPropertyFlags::DEVICE_LOCAL;
