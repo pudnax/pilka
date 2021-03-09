@@ -61,7 +61,6 @@ pub struct PilkaRender<'a> {
     pub shader_set: HashMap<PathBuf, usize>,
     pub compiler: shaderc::Compiler,
 
-    pub graphics_semaphore: vk::Semaphore,
     pub rendering_complete_semaphore: vk::Semaphore,
     pub present_complete_semaphore: vk::Semaphore,
     pub command_pool: VkCommandPool,
@@ -196,7 +195,6 @@ impl<'a> PilkaRender<'a> {
 
         let render_pass = device.create_vk_render_pass(swapchain.format())?;
 
-        let graphics_semaphore = device.create_semaphore()?;
         let present_complete_semaphore = device.create_semaphore()?;
         let rendering_complete_semaphore = device.create_semaphore()?;
 
@@ -418,7 +416,6 @@ impl<'a> PilkaRender<'a> {
             command_pool,
             present_complete_semaphore,
             rendering_complete_semaphore,
-            graphics_semaphore,
 
             shader_set: HashMap::new(),
             compiler,
@@ -1116,206 +1113,64 @@ impl<'a> PilkaRender<'a> {
         self.screenshot_ctx
             .realloc(&self.device, &self.device_properties, extent)?;
 
-        let source_image = self.swapchain.images[self.command_pool.active_command];
-
-        let mut present_barrier = vk::ImageMemoryBarrier::builder()
-            .image(source_image)
-            .src_access_mask(vk::AccessFlags::MEMORY_WRITE)
-            .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
-            .old_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .build();
-
-        let mut dst_memory_barrier = vk::ImageMemoryBarrier::builder()
-            .image(self.screenshot_ctx.image.image)
-            .src_access_mask(vk::AccessFlags::empty())
-            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .old_layout(vk::ImageLayout::UNDEFINED)
-            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .build();
-
-        // TODO: Do I really need general layout?
-        let mut general_berrier = vk::ImageMemoryBarrier::builder()
-            .image(self.screenshot_ctx.image.image)
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::MEMORY_READ)
-            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .new_layout(vk::ImageLayout::GENERAL)
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .build();
-
+        let present_image = self.swapchain.images[self.command_pool.active_command];
+        let copy_image = self.screenshot_ctx.image.image;
         let dst_stage = vk::PipelineStageFlags::TRANSFER;
         let src_stage = vk::PipelineStageFlags::TRANSFER;
 
-        unsafe {
-            self.device.cmd_pipeline_barrier(
-                copybuffer,
-                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                dst_stage,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[present_barrier],
-            );
-
-            self.device.cmd_pipeline_barrier(
-                copybuffer,
-                src_stage,
-                dst_stage,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[dst_memory_barrier],
-            );
-        }
-
-        let zero_offset = vk::Offset3D::default();
-        let copy_area = vk::ImageCopy::builder()
-            .src_subresource(vk::ImageSubresourceLayers {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .src_offset(zero_offset)
-            .dst_subresource(vk::ImageSubresourceLayers {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .dst_offset(zero_offset)
-            .extent(extent)
-            .build();
-
-        let offsets = [
-            vk::Offset3D { x: 0, y: 0, z: 0 },
-            vk::Offset3D {
-                x: extent.width as i32,
-                y: extent.height as i32,
-                z: extent.depth as i32,
-            },
-        ];
-        let blit_region = [vk::ImageBlit::builder()
-            .src_subresource(vk::ImageSubresourceLayers {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_array_layer: 0,
-                layer_count: 1,
-                mip_level: 0,
-            })
-            .dst_subresource(vk::ImageSubresourceLayers {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_array_layer: 0,
-                layer_count: 1,
-                mip_level: 0,
-            })
-            .src_offsets(offsets)
-            .dst_offsets(offsets)
-            .build()];
-
-        unsafe {
-            self.device.cmd_blit_image(
-                copybuffer,
-                source_image,
-                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                self.screenshot_ctx.image.image,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                blit_region.as_ref(),
-                vk::Filter::NEAREST,
+        let transport_barrier = |image, old_layout, new_layout| {
+            self.device.set_image_layout(
+                copybuffer, image, old_layout, new_layout, src_stage, dst_stage,
             )
         };
+
+        use vk::ImageLayout;
+        transport_barrier(
+            present_image,
+            ImageLayout::PRESENT_SRC_KHR,
+            ImageLayout::TRANSFER_SRC_OPTIMAL,
+        );
+        transport_barrier(
+            copy_image,
+            ImageLayout::UNDEFINED,
+            ImageLayout::TRANSFER_DST_OPTIMAL,
+        );
+
+        self.device
+            .blit_image(copybuffer, present_image, copy_image, extent, extent);
+
         if let Some(ref blit_image) = self.screenshot_ctx.blit_image {
-            dst_memory_barrier.image = blit_image.image;
-            unsafe {
-                self.device.cmd_pipeline_barrier(
-                    copybuffer,
-                    src_stage,
-                    dst_stage,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[dst_memory_barrier],
-                )
-            };
+            transport_barrier(
+                blit_image.image,
+                ImageLayout::UNDEFINED,
+                ImageLayout::TRANSFER_DST_OPTIMAL,
+            );
 
-            dst_memory_barrier.old_layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
-            dst_memory_barrier.new_layout = vk::ImageLayout::TRANSFER_SRC_OPTIMAL;
-            dst_memory_barrier.src_access_mask = vk::AccessFlags::TRANSFER_WRITE;
-            dst_memory_barrier.dst_access_mask = vk::AccessFlags::TRANSFER_READ;
-            dst_memory_barrier.image = self.screenshot_ctx.image.image;
-            unsafe {
-                self.device.cmd_pipeline_barrier(
-                    copybuffer,
-                    src_stage,
-                    dst_stage,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[dst_memory_barrier],
-                )
-            };
+            transport_barrier(
+                copy_image,
+                ImageLayout::TRANSFER_DST_OPTIMAL,
+                ImageLayout::TRANSFER_SRC_OPTIMAL,
+            );
 
-            unsafe {
-                self.device.cmd_copy_image(
-                    copybuffer,
-                    self.screenshot_ctx.image.image,
-                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                    blit_image.image,
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &[copy_area],
-                )
-            };
-            general_berrier.image = blit_image.image;
+            self.device
+                .copy_image(copybuffer, copy_image, blit_image.image, extent);
         }
 
-        unsafe {
-            self.device.cmd_pipeline_barrier(
-                copybuffer,
-                src_stage,
-                dst_stage,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[general_berrier],
-            )
-        };
+        transport_barrier(
+            if let Some(ref blit_image) = self.screenshot_ctx.blit_image {
+                blit_image.image
+            } else {
+                copy_image
+            },
+            ImageLayout::TRANSFER_DST_OPTIMAL,
+            ImageLayout::GENERAL,
+        );
 
-        present_barrier.old_layout = vk::ImageLayout::TRANSFER_SRC_OPTIMAL;
-        present_barrier.new_layout = vk::ImageLayout::PRESENT_SRC_KHR;
-        present_barrier.src_access_mask = vk::AccessFlags::TRANSFER_READ;
-        present_barrier.dst_access_mask = vk::AccessFlags::empty();
-
-        unsafe {
-            self.device.cmd_pipeline_barrier(
-                copybuffer,
-                src_stage,
-                dst_stage,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[present_barrier],
-            )
-        };
+        transport_barrier(
+            present_image,
+            ImageLayout::TRANSFER_SRC_OPTIMAL,
+            ImageLayout::PRESENT_SRC_KHR,
+        );
 
         unsafe { self.device.end_command_buffer(copybuffer) }?;
         let submit_commbuffers = [copybuffer];
@@ -1376,7 +1231,6 @@ impl<'a> Drop for PilkaRender<'a> {
             self.device
                 .destroy_pipeline_cache(self.pipeline_cache, None);
 
-            self.device.destroy_semaphore(self.graphics_semaphore, None);
             self.device
                 .destroy_semaphore(self.present_complete_semaphore, None);
             self.device
