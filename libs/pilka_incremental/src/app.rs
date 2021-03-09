@@ -862,7 +862,7 @@ impl<'a> PilkaRender<'a> {
                             &[self.present_complete_semaphore],
                         ]
                         .concat(),
-                        &[self.rendering_complete_semaphore, self.graphics_semaphore],
+                        &[self.rendering_complete_semaphore],
                         |device, draw_command_buffer| {
                             let image_barrier = [vk::ImageMemoryBarrier::builder()
                                 .image(prev_frame)
@@ -1034,8 +1034,8 @@ impl<'a> PilkaRender<'a> {
                 self.device.end_command_buffer(compute_cmd_buf)?;
 
                 let command_buffers = [compute_cmd_buf];
+                let wait_semaphores = [self.present_complete_semaphore];
                 let signal_semaphores = [pipeline.semaphore];
-                let wait_semaphores = [self.graphics_semaphore];
                 let compute_submit_info = [vk::SubmitInfo::builder()
                     .command_buffers(&command_buffers)
                     .wait_dst_stage_mask(&[vk::PipelineStageFlags::COMPUTE_SHADER])
@@ -1376,6 +1376,7 @@ impl<'a> Drop for PilkaRender<'a> {
             self.device
                 .destroy_pipeline_cache(self.pipeline_cache, None);
 
+            self.device.destroy_semaphore(self.graphics_semaphore, None);
             self.device
                 .destroy_semaphore(self.present_complete_semaphore, None);
             self.device
