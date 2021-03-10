@@ -88,8 +88,8 @@ impl VkDevice {
 
         VkDeviceProperties {
             memory,
-            properties,
             features,
+            properties,
         }
     }
 
