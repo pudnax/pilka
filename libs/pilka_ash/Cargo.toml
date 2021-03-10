@@ -18,9 +18,9 @@ maintenance = { status = "experimental" }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ash = "0.31.0"
-ash-molten = "0.7.2"
-ash-window = "0.5.0"
+ash = "0.32.0"
+ash-molten = "0.9.0"
+ash-window = "0.6.0"
 ktx = "0.3.1"
 raw-window-handle = "0.3.3"
 shaderc = "0.7.0"
