@@ -5,7 +5,7 @@ use crate::ash::{
     },
     prelude::VkResult,
     version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
-    vk,
+    vk::{self, Handle},
 };
 
 use raw_window_handle::HasRawWindowHandle;
@@ -45,7 +45,7 @@ impl VkInstance {
         validation_layers: &[&str],
         extention_names: &[&CStr],
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let entry = ash::Entry::new()?;
+        let entry = unsafe { ash::Entry::new() }?;
 
         #[cfg(target_os = "macos")]
         let entry = ash_molten::MoltenEntry::load()?;
@@ -290,6 +290,24 @@ impl VkInstance {
 
     pub fn create_swapchain_loader(&self, device: &VkDevice) -> Swapchain {
         Swapchain::new(&self.instance, device.device.as_ref().deref())
+    }
+
+    pub fn name_object(
+        &self,
+        device: &VkDevice,
+        object: impl Handle,
+        object_type: vk::ObjectType,
+        name: &str,
+    ) -> VkResult<()> {
+        let name = std::ffi::CString::new(name).unwrap();
+        let name_info = vk::DebugUtilsObjectNameInfoEXT::builder()
+            .object_type(object_type)
+            .object_name(name.as_c_str())
+            .object_handle(object.as_raw());
+        unsafe {
+            self._dbg_loader
+                .debug_utils_set_object_name(device.handle(), &name_info)
+        }
     }
 }
 

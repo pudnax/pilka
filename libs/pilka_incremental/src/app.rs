@@ -61,6 +61,7 @@ pub struct PilkaRender<'a> {
     pub shader_set: HashMap<PathBuf, usize>,
     pub compiler: shaderc::Compiler,
 
+    pub graphics_semaphore: vk::Semaphore,
     pub rendering_complete_semaphore: vk::Semaphore,
     pub present_complete_semaphore: vk::Semaphore,
     pub command_pool: VkCommandPool,
@@ -195,8 +196,16 @@ impl<'a> PilkaRender<'a> {
 
         let render_pass = device.create_vk_render_pass(swapchain.format())?;
 
+        let graphics_semaphore = device.create_semaphore()?;
         let present_complete_semaphore = device.create_semaphore()?;
         let rendering_complete_semaphore = device.create_semaphore()?;
+
+        let name_semaphore = |object: vk::Semaphore, name: &str| -> VkResult<()> {
+            instance.name_object(&device, object, vk::ObjectType::SEMAPHORE, name)
+        };
+        name_semaphore(graphics_semaphore, "Graphics Semaphore")?;
+        name_semaphore(present_complete_semaphore, "Present Compelete Semaphore")?;
+        name_semaphore(rendering_complete_semaphore, "Render Complete Semaphore")?;
 
         let framebuffers = swapchain.create_framebuffers(
             (surface_resolution.width, surface_resolution.height),
@@ -416,6 +425,7 @@ impl<'a> PilkaRender<'a> {
             command_pool,
             present_complete_semaphore,
             rendering_complete_semaphore,
+            graphics_semaphore,
 
             shader_set: HashMap::new(),
             compiler,
@@ -859,31 +869,15 @@ impl<'a> PilkaRender<'a> {
                             &[self.present_complete_semaphore],
                         ]
                         .concat(),
-                        &[self.rendering_complete_semaphore],
+                        &[self.rendering_complete_semaphore, self.graphics_semaphore],
                         |device, draw_command_buffer| {
-                            let image_barrier = [vk::ImageMemoryBarrier::builder()
-                                .image(prev_frame)
-                                .old_layout(vk::ImageLayout::GENERAL)
-                                .new_layout(vk::ImageLayout::GENERAL)
-                                .subresource_range(vk::ImageSubresourceRange {
-                                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                                    base_mip_level: 0,
-                                    level_count: 1,
-                                    base_array_layer: 0,
-                                    layer_count: 1,
-                                })
-                                .src_access_mask(vk::AccessFlags::SHADER_WRITE)
-                                .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                                .build()];
-
-                            device.cmd_pipeline_barrier(
+                            device.set_image_layout(
                                 draw_command_buffer,
+                                prev_frame,
+                                vk::ImageLayout::GENERAL,
+                                vk::ImageLayout::GENERAL,
                                 vk::PipelineStageFlags::COMPUTE_SHADER,
                                 vk::PipelineStageFlags::FRAGMENT_SHADER,
-                                vk::DependencyFlags::empty(),
-                                &[],
-                                &[],
-                                &image_barrier,
                             );
 
                             device.cmd_begin_render_pass(
@@ -918,55 +912,6 @@ impl<'a> PilkaRender<'a> {
                             // Or draw without the index buffer
                             device.cmd_draw(draw_command_buffer, 3, 1, 0, 0);
                             device.cmd_end_render_pass(draw_command_buffer);
-
-                            if frame_num % 2 == 0 {
-                                let dst_stage = vk::PipelineStageFlags::TRANSFER;
-                                let src_stage = vk::PipelineStageFlags::TRANSFER;
-
-                                device.set_image_layout(
-                                    draw_command_buffer,
-                                    present_image,
-                                    vk::ImageLayout::PRESENT_SRC_KHR,
-                                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                                    src_stage,
-                                    dst_stage,
-                                );
-
-                                device.set_image_layout(
-                                    draw_command_buffer,
-                                    prev_frame,
-                                    vk::ImageLayout::GENERAL,
-                                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                                    src_stage,
-                                    dst_stage,
-                                );
-
-                                device.blit_image(
-                                    draw_command_buffer,
-                                    present_image,
-                                    prev_frame,
-                                    extent,
-                                    extent,
-                                );
-
-                                device.set_image_layout(
-                                    draw_command_buffer,
-                                    present_image,
-                                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                                    vk::ImageLayout::PRESENT_SRC_KHR,
-                                    src_stage,
-                                    dst_stage,
-                                );
-
-                                device.set_image_layout(
-                                    draw_command_buffer,
-                                    prev_frame,
-                                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                                    vk::ImageLayout::GENERAL,
-                                    src_stage,
-                                    dst_stage,
-                                );
-                            }
                         },
                     )?;
                 }
@@ -998,27 +943,70 @@ impl<'a> PilkaRender<'a> {
         unsafe { self.device.queue_wait_idle(self.queues.compute_queue.queue) }?;
 
         if let Pipeline::Compute(ref pipeline) = self.pipelines[1] {
-            let compute_cmd_buf = pipeline.command_buffer;
+            let cmd_buf = pipeline.command_buffer;
             let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
             unsafe {
                 self.device
-                    .begin_command_buffer(compute_cmd_buf, &command_buffer_begin_info)?;
+                    .begin_command_buffer(cmd_buf, &command_buffer_begin_info)?;
+                if frame_num % 2 == 0 {
+                    let transport_barrier =
+                        |image, old_layout, new_layout, src_stage, dst_stage| {
+                            self.device.set_image_layout(
+                                cmd_buf, image, old_layout, new_layout, src_stage, dst_stage,
+                            )
+                        };
+
+                    transport_barrier(
+                        present_image,
+                        vk::ImageLayout::PRESENT_SRC_KHR,
+                        vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                        vk::PipelineStageFlags::ALL_GRAPHICS,
+                        vk::PipelineStageFlags::TRANSFER,
+                    );
+
+                    transport_barrier(
+                        prev_frame,
+                        vk::ImageLayout::GENERAL,
+                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        vk::PipelineStageFlags::TRANSFER,
+                        vk::PipelineStageFlags::TRANSFER,
+                    );
+
+                    self.device
+                        .blit_image(cmd_buf, present_image, prev_frame, extent, extent);
+
+                    transport_barrier(
+                        present_image,
+                        vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                        vk::ImageLayout::PRESENT_SRC_KHR,
+                        vk::PipelineStageFlags::TRANSFER,
+                        vk::PipelineStageFlags::ALL_GRAPHICS,
+                    );
+
+                    transport_barrier(
+                        prev_frame,
+                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        vk::ImageLayout::GENERAL,
+                        vk::PipelineStageFlags::TRANSFER,
+                        vk::PipelineStageFlags::TRANSFER,
+                    );
+                }
 
                 self.device.cmd_bind_pipeline(
-                    compute_cmd_buf,
+                    cmd_buf,
                     vk::PipelineBindPoint::COMPUTE,
                     pipeline.pipeline,
                 );
                 self.device.cmd_push_constants(
-                    compute_cmd_buf,
+                    cmd_buf,
                     pipeline.pipeline_layout,
                     vk::ShaderStageFlags::COMPUTE,
                     0,
                     push_constant.as_slice(),
                 );
                 self.device.cmd_bind_descriptor_sets(
-                    compute_cmd_buf,
+                    cmd_buf,
                     vk::PipelineBindPoint::COMPUTE,
                     pipeline.pipeline_layout,
                     0,
@@ -1027,11 +1015,11 @@ impl<'a> PilkaRender<'a> {
                 );
 
                 self.device
-                    .cmd_dispatch(compute_cmd_buf, extent.width / 16, extent.height / 16, 1);
-                self.device.end_command_buffer(compute_cmd_buf)?;
+                    .cmd_dispatch(cmd_buf, extent.width / 16, extent.height / 16, 1);
+                self.device.end_command_buffer(cmd_buf)?;
 
-                let command_buffers = [compute_cmd_buf];
-                let wait_semaphores = [self.present_complete_semaphore];
+                let command_buffers = [cmd_buf];
+                let wait_semaphores = [self.graphics_semaphore];
                 let signal_semaphores = [pipeline.semaphore];
                 let compute_submit_info = [vk::SubmitInfo::builder()
                     .command_buffers(&command_buffers)
@@ -1231,6 +1219,7 @@ impl<'a> Drop for PilkaRender<'a> {
             self.device
                 .destroy_pipeline_cache(self.pipeline_cache, None);
 
+            self.device.destroy_semaphore(self.graphics_semaphore, None);
             self.device
                 .destroy_semaphore(self.present_complete_semaphore, None);
             self.device
