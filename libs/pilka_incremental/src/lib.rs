@@ -1,5 +1,5 @@
-mod app;
+mod renderer;
 
-pub use app::*;
 pub use pilka_ash::*;
 pub use pilka_winit::*;
+pub use renderer::*;

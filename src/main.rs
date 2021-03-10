@@ -55,10 +55,7 @@ fn main() -> Result<()> {
 
     let window = winit::window::WindowBuilder::new()
         .with_title("Pilka")
-        .with_inner_size(winit::dpi::LogicalSize::new(
-            f64::from(1280),
-            f64::from(720),
-        ))
+        .with_inner_size(winit::dpi::LogicalSize::new(1280, 720))
         .build(&event_loop)?;
 
     let mut pilka = PilkaRender::new(&window).unwrap();
