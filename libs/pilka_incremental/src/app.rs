@@ -61,7 +61,6 @@ pub struct PilkaRender<'a> {
     pub shader_set: HashMap<PathBuf, usize>,
     pub compiler: shaderc::Compiler,
 
-    pub graphics_semaphore: vk::Semaphore,
     pub rendering_complete_semaphore: vk::Semaphore,
     pub present_complete_semaphore: vk::Semaphore,
     pub command_pool: VkCommandPool,
@@ -196,14 +195,12 @@ impl<'a> PilkaRender<'a> {
 
         let render_pass = device.create_vk_render_pass(swapchain.format())?;
 
-        let graphics_semaphore = device.create_semaphore()?;
         let present_complete_semaphore = device.create_semaphore()?;
         let rendering_complete_semaphore = device.create_semaphore()?;
 
         let name_semaphore = |object: vk::Semaphore, name: &str| -> VkResult<()> {
             instance.name_object(&device, object, vk::ObjectType::SEMAPHORE, name)
         };
-        name_semaphore(graphics_semaphore, "Graphics Semaphore")?;
         name_semaphore(present_complete_semaphore, "Present Compelete Semaphore")?;
         name_semaphore(rendering_complete_semaphore, "Render Complete Semaphore")?;
 
@@ -425,7 +422,6 @@ impl<'a> PilkaRender<'a> {
             command_pool,
             present_complete_semaphore,
             rendering_complete_semaphore,
-            graphics_semaphore,
 
             shader_set: HashMap::new(),
             compiler,
@@ -870,6 +866,7 @@ impl<'a> PilkaRender<'a> {
                         ]
                         .concat(),
                         // &[self.present_complete_semaphore],
+                        // &[self.rendering_complete_semaphore, self.graphics_semaphore],
                         &[self.rendering_complete_semaphore],
                         |device, draw_command_buffer| {
                             device.set_image_layout(
@@ -1220,7 +1217,6 @@ impl<'a> Drop for PilkaRender<'a> {
             self.device
                 .destroy_pipeline_cache(self.pipeline_cache, None);
 
-            self.device.destroy_semaphore(self.graphics_semaphore, None);
             self.device
                 .destroy_semaphore(self.present_complete_semaphore, None);
             self.device
