@@ -35,6 +35,10 @@ impl RawDevice {
     pub fn new(device: Device) -> Self {
         Self { device }
     }
+
+    pub fn handle(&self) -> vk::Device {
+        self.device.handle()
+    }
 }
 
 impl std::ops::Deref for RawDevice {
