@@ -869,7 +869,8 @@ impl<'a> PilkaRender<'a> {
                             &[self.present_complete_semaphore],
                         ]
                         .concat(),
-                        &[self.rendering_complete_semaphore, self.graphics_semaphore],
+                        // &[self.present_complete_semaphore],
+                        &[self.rendering_complete_semaphore],
                         |device, draw_command_buffer| {
                             device.set_image_layout(
                                 draw_command_buffer,
@@ -1019,7 +1020,7 @@ impl<'a> PilkaRender<'a> {
                 self.device.end_command_buffer(cmd_buf)?;
 
                 let command_buffers = [cmd_buf];
-                let wait_semaphores = [self.graphics_semaphore];
+                let wait_semaphores = [self.present_complete_semaphore];
                 let signal_semaphores = [pipeline.semaphore];
                 let compute_submit_info = [vk::SubmitInfo::builder()
                     .command_buffers(&command_buffers)
