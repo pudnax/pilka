@@ -9,7 +9,7 @@ layout(std430, push_constant) uniform PushConstant {
 } pc;
 
 // 16?
-layout (local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
+layout (local_size_x = 17, local_size_y = 17, local_size_z = 1) in;
 
 layout (binding = 0, rgba8) uniform image2D previous_frame;
 layout (binding = 1, rgba8) uniform image2D generic_texture;
@@ -47,4 +47,5 @@ void main() {
 	vec4 res = vec4(vec3(conv(kernel, imageData.avg, 0.1, 0.0)), 1.0);
 
 	imageStore(generic_texture, ivec2(gl_GlobalInvocationID.xy), res);
+	imageStore(dummy_texture, ivec2(gl_GlobalInvocationID.xy), vec4(pc.mouse, 0.2, 1.0));
 }
