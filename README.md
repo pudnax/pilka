@@ -95,7 +95,7 @@ when it's mature enough.
 
 [ash](https://crates.io/crates/ash) is a Vulkan bindings. I choose `ash` because I see `pilka` as a
 learning project and want to touch the maximum untouched Vulkan. For the
-same reason I didn't use `vulkano`, `erupt`, `vulkanism`, `vkvk` etc.
+same reason I didn't use `vulkano`, `erupt`, `vulkanism`, `vkvk` and `wgpu`.
 
 **Ffmpeg** is used to record and save to video. For my concerns it's
 temporary solution after which I switch to [rav1e](https://github.com/xiph/rav1e) on it's release.
