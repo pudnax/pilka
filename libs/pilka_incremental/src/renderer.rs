@@ -93,6 +93,7 @@ fn compute_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetL
 /// Rust documentation states for FIFO drop order for struct fields.
 /// Or in the other words it's the same order that they're declared.
 pub struct PilkaRender<'a> {
+    pub paused: bool,
     pub frame_num: usize,
 
     descriptor_pool: vk::DescriptorPool,
@@ -144,6 +145,7 @@ pub struct PushConstant {
     pub wh: [f32; 2],
     pub mouse: [f32; 2],
     pub spectrum: f32,
+    pub mouse_pressed: vk::Bool32,
 }
 
 impl PushConstant {
@@ -299,6 +301,7 @@ impl<'a> PilkaRender<'a> {
             mouse: [0.; 2],
             time: 0.,
             spectrum: 0.,
+            mouse_pressed: false as _,
         };
 
         let pipeline_cache_create_info = vk::PipelineCacheCreateInfo::builder();
@@ -503,6 +506,7 @@ impl<'a> PilkaRender<'a> {
         }
 
         Ok(Self {
+            paused: false,
             frame_num: 0,
 
             instance,
@@ -580,7 +584,6 @@ impl<'a> PilkaRender<'a> {
         let descriptor_sets = &self.descriptor_sets;
         let present_image = self.swapchain.images[present_index as usize];
         let prev_frame = self.previous_frame.image.image;
-        let frame_num = self.frame_num;
         let extent = vk::Extent3D {
             width: self.extent.width,
             height: self.extent.height,
@@ -610,7 +613,7 @@ impl<'a> PilkaRender<'a> {
                 self.device
                     .begin_command_buffer(cmd_buf, &command_buffer_begin_info)?;
 
-                if frame_num % 2 == 0 {
+                if self.paused {
                     let transport_barrier =
                         |image, old_layout, new_layout, src_stage, dst_stage| {
                             self.device.set_image_layout(
@@ -652,38 +655,38 @@ impl<'a> PilkaRender<'a> {
                         vk::PipelineStageFlags::TRANSFER,
                         vk::PipelineStageFlags::COMPUTE_SHADER,
                     );
+
+                    self.device.cmd_bind_pipeline(
+                        cmd_buf,
+                        vk::PipelineBindPoint::COMPUTE,
+                        pipeline.pipeline,
+                    );
+                    self.device.cmd_push_constants(
+                        cmd_buf,
+                        pipeline.pipeline_layout,
+                        vk::ShaderStageFlags::COMPUTE,
+                        0,
+                        push_constant.as_slice(),
+                    );
+                    self.device.cmd_bind_descriptor_sets(
+                        cmd_buf,
+                        vk::PipelineBindPoint::COMPUTE,
+                        pipeline.pipeline_layout,
+                        0,
+                        &self.descriptor_sets_compute,
+                        &[],
+                    );
+
+                    const ALIGN: u32 = 16;
+                    let w_padding = (ALIGN - extent.width % ALIGN) % ALIGN;
+                    let h_padding = (ALIGN - extent.height % ALIGN) % ALIGN;
+                    self.device.cmd_dispatch(
+                        cmd_buf,
+                        (extent.width + w_padding) / ALIGN,
+                        (extent.height + h_padding) / ALIGN,
+                        1,
+                    );
                 }
-
-                self.device.cmd_bind_pipeline(
-                    cmd_buf,
-                    vk::PipelineBindPoint::COMPUTE,
-                    pipeline.pipeline,
-                );
-                self.device.cmd_push_constants(
-                    cmd_buf,
-                    pipeline.pipeline_layout,
-                    vk::ShaderStageFlags::COMPUTE,
-                    0,
-                    push_constant.as_slice(),
-                );
-                self.device.cmd_bind_descriptor_sets(
-                    cmd_buf,
-                    vk::PipelineBindPoint::COMPUTE,
-                    pipeline.pipeline_layout,
-                    0,
-                    &self.descriptor_sets_compute,
-                    &[],
-                );
-
-                const ALIGN: u32 = 16;
-                let w_padding = (ALIGN - extent.width % ALIGN) % ALIGN;
-                let h_padding = (ALIGN - extent.height % ALIGN) % ALIGN;
-                self.device.cmd_dispatch(
-                    cmd_buf,
-                    (extent.width + w_padding) / ALIGN,
-                    (extent.height + h_padding) / ALIGN,
-                    1,
-                );
                 self.device.end_command_buffer(cmd_buf)?;
 
                 let command_buffers = [cmd_buf];
