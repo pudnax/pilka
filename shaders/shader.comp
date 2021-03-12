@@ -1,4 +1,4 @@
-#version 450
+#version 460
 
 layout(std430, push_constant) uniform PushConstant {
 	vec3 pos;
@@ -6,6 +6,7 @@ layout(std430, push_constant) uniform PushConstant {
 	vec2 resolution;
 	vec2 mouse;
 	float spectrum;
+	bool mouse_pressed;
 } pc;
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;

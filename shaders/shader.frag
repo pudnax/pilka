@@ -21,6 +21,7 @@ layout(std430, push_constant) uniform PushConstant {
 	vec2 resolution;
 	vec2 mouse;
 	float spectrum;
+	bool mouse_pressed;
 } pc;
 
 float worldSDF(in vec3 pos) {

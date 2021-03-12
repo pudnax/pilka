@@ -134,6 +134,8 @@ fn main() -> Result<()> {
                     }
                 }
 
+                pilka.paused = !pause;
+
                 pilka.push_constant.time = if pause {
                     backup_time.as_secs_f32()
                 } else {
@@ -271,6 +273,14 @@ fn main() -> Result<()> {
                         pilka.push_constant.mouse = [x, y];
                     }
                 }
+                WindowEvent::MouseInput {
+                    button: winit::event::MouseButton::Left,
+                    state,
+                    ..
+                } => match state {
+                    ElementState::Pressed => pilka.push_constant.mouse_pressed = true as _,
+                    ElementState::Released => pilka.push_constant.mouse_pressed = false as _,
+                },
                 _ => {}
             },
 
