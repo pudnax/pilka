@@ -256,12 +256,12 @@ impl VkComputePipeline {
         let semaphore_info = vk::SemaphoreCreateInfo::default();
         let semaphore = unsafe { device.create_semaphore(&semaphore_info, None) }?;
 
-        let signal_semaphores = [semaphore];
-        let submits = [vk::SubmitInfo::builder()
-            .signal_semaphores(&signal_semaphores)
-            .build()];
-        unsafe { device.queue_submit(queues.compute_queue.queue, &submits, vk::Fence::null()) }?;
-        unsafe { device.queue_wait_idle(queues.compute_queue.queue) }?;
+        // let signal_semaphores = [semaphore];
+        // let submits = [vk::SubmitInfo::builder()
+        //     .signal_semaphores(&signal_semaphores)
+        //     .build()];
+        // unsafe { device.queue_submit(queues.compute_queue.queue, &submits, vk::Fence::null()) }?;
+        // unsafe { device.queue_wait_idle(queues.compute_queue.queue) }?;
 
         Ok(Self {
             pipeline,
