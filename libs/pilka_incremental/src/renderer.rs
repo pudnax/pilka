@@ -28,6 +28,18 @@ fn graphics_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSet
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .build(),
+        vk::DescriptorSetLayoutBinding::builder()
+            .binding(3)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .build(),
+        vk::DescriptorSetLayoutBinding::builder()
+            .binding(4)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .build(),
     ];
     let descriptor_set_layout_info =
         vk::DescriptorSetLayoutCreateInfo::builder().bindings(&descriptor_set_layout_binding_descs);
@@ -56,6 +68,18 @@ fn compute_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetL
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::COMPUTE)
             .build(),
+        vk::DescriptorSetLayoutBinding::builder()
+            .binding(3)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::COMPUTE)
+            .build(),
+        vk::DescriptorSetLayoutBinding::builder()
+            .binding(4)
+            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::COMPUTE)
+            .build(),
     ];
     let descriptor_set_layout_info =
         vk::DescriptorSetLayoutCreateInfo::builder().bindings(&descriptor_set_layout_binding_descs);
@@ -80,6 +104,8 @@ pub struct PilkaRender<'a> {
     previous_frame: VkTexture,
     generic_texture: VkTexture,
     dummy_texture: VkTexture,
+    float_texture1: VkTexture,
+    float_texture2: VkTexture,
 
     pub screenshot_ctx: ScreenshotCtx<'a>,
     pub push_constant: PushConstant,
@@ -180,6 +206,12 @@ impl<'a> PilkaRender<'a> {
 
         let (device, device_properties, queues) =
             instance.create_device_and_queues(Some(&surface))?;
+
+        let name_queue =
+            |queue, name| instance.name_object(&device, queue, vk::ObjectType::QUEUE, name);
+        name_queue(queues.graphics_queue.queue, "Graphics Queue")?;
+        name_queue(queues.transfer_queue.queue, "Transfer Queue")?;
+        name_queue(queues.compute_queue.queue, "Compute Queue")?;
 
         let surface_resolution = surface.resolution(&device)?;
 
@@ -295,14 +327,14 @@ impl<'a> PilkaRender<'a> {
             need2steps,
         )?;
 
-        let screen_sized_texture = || -> VkResult<VkTexture> {
+        let screen_sized_texture = |format| -> VkResult<VkTexture> {
             let extent = vk::Extent3D {
                 width: extent.width,
                 height: extent.height,
                 depth: 1,
             };
             let image_create_info = vk::ImageCreateInfo::builder()
-                .format(vk::Format::R8G8B8A8_UNORM)
+                .format(format)
                 .image_type(vk::ImageType::TYPE_2D)
                 .extent(extent)
                 .array_layers(1)
@@ -335,9 +367,11 @@ impl<'a> PilkaRender<'a> {
                 &sample_create_info,
             )
         };
-        let previous_frame = screen_sized_texture()?;
-        let generic_texture = screen_sized_texture()?;
-        let dummy_texture = screen_sized_texture()?;
+        let previous_frame = screen_sized_texture(vk::Format::R8G8B8A8_UNORM)?;
+        let generic_texture = screen_sized_texture(vk::Format::R8G8B8A8_UNORM)?;
+        let dummy_texture = screen_sized_texture(vk::Format::R8G8B8A8_UNORM)?;
+        let float_texture1 = screen_sized_texture(vk::Format::R32_SFLOAT)?;
+        let float_texture2 = screen_sized_texture(vk::Format::R32_SFLOAT)?;
         let name_image = |object, name: &str| -> VkResult<()> {
             instance.name_object(&device, object, vk::ObjectType::IMAGE, name)
         };
@@ -345,8 +379,16 @@ impl<'a> PilkaRender<'a> {
         name_image(previous_frame.image.image, "Previous Frame Texture")?;
         name_image(generic_texture.image.image, "Generic Texture")?;
         name_image(dummy_texture.image.image, "Dummy Texture")?;
-
+        name_image(float_texture1.image.image, "Float Texture 1")?;
+        name_image(float_texture2.image.image, "Float Texture 2")?;
         {
+            let images = [
+                previous_frame.image.image,
+                generic_texture.image.image,
+                dummy_texture.image.image,
+                float_texture1.image.image,
+                float_texture2.image.image,
+            ];
             let submit_fence = command_pool.fences[0];
             let command_buffer = command_pool.command_buffers[0];
 
@@ -358,24 +400,14 @@ impl<'a> PilkaRender<'a> {
 
             unsafe { device.begin_command_buffer(command_buffer, &command_buffer_begin_info) }?;
 
-            device.set_image_layout_all_commands(
-                command_buffer,
-                previous_frame.image.image,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::GENERAL,
-            );
-            device.set_image_layout_all_commands(
-                command_buffer,
-                generic_texture.image.image,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::GENERAL,
-            );
-            device.set_image_layout_all_commands(
-                command_buffer,
-                dummy_texture.image.image,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::GENERAL,
-            );
+            for &image in &images {
+                device.set_image_layout_all_commands(
+                    command_buffer,
+                    image,
+                    vk::ImageLayout::UNDEFINED,
+                    vk::ImageLayout::GENERAL,
+                );
+            }
 
             unsafe { device.end_command_buffer(command_buffer) }?;
             let command_buffers = vec![command_buffer];
@@ -393,11 +425,11 @@ impl<'a> PilkaRender<'a> {
         let pool_sizes = [
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 6,
+                descriptor_count: 10,
             },
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::STORAGE_IMAGE,
-                descriptor_count: 6,
+                descriptor_count: 10,
             },
         ];
         let descriptor_pool_info = vk::DescriptorPoolCreateInfo::builder()
@@ -405,6 +437,34 @@ impl<'a> PilkaRender<'a> {
             .pool_sizes(&pool_sizes);
         let descriptor_pool =
             unsafe { device.create_descriptor_pool(&descriptor_pool_info, None) }?;
+
+        let image_infos = [
+            vk::DescriptorImageInfo {
+                image_layout: vk::ImageLayout::GENERAL,
+                image_view: previous_frame.image_view,
+                sampler: previous_frame.sampler,
+            },
+            vk::DescriptorImageInfo {
+                image_layout: vk::ImageLayout::GENERAL,
+                image_view: generic_texture.image_view,
+                sampler: generic_texture.sampler,
+            },
+            vk::DescriptorImageInfo {
+                image_layout: vk::ImageLayout::GENERAL,
+                image_view: dummy_texture.image_view,
+                sampler: dummy_texture.sampler,
+            },
+            vk::DescriptorImageInfo {
+                image_layout: vk::ImageLayout::GENERAL,
+                image_view: float_texture1.image_view,
+                sampler: float_texture1.sampler,
+            },
+            vk::DescriptorImageInfo {
+                image_layout: vk::ImageLayout::GENERAL,
+                image_view: float_texture2.image_view,
+                sampler: float_texture2.sampler,
+            },
+        ];
 
         let descriptor_set_layouts_graphics = graphics_desc_set_leyout(&device)?;
         let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
@@ -414,23 +474,6 @@ impl<'a> PilkaRender<'a> {
             unsafe { device.allocate_descriptor_sets(&descriptor_set_allocate_info) }?;
 
         for (i, descset) in descriptor_sets.iter().enumerate() {
-            let image_infos = [
-                vk::DescriptorImageInfo {
-                    image_layout: vk::ImageLayout::GENERAL,
-                    image_view: previous_frame.image_view,
-                    sampler: previous_frame.sampler,
-                },
-                vk::DescriptorImageInfo {
-                    image_layout: vk::ImageLayout::GENERAL,
-                    image_view: generic_texture.image_view,
-                    sampler: generic_texture.sampler,
-                },
-                vk::DescriptorImageInfo {
-                    image_layout: vk::ImageLayout::GENERAL,
-                    image_view: dummy_texture.image_view,
-                    sampler: dummy_texture.sampler,
-                },
-            ];
             let desc_sets_write = [vk::WriteDescriptorSet::builder()
                 .dst_set(*descset)
                 .dst_binding(i as _)
@@ -449,23 +492,6 @@ impl<'a> PilkaRender<'a> {
             unsafe { device.allocate_descriptor_sets(&descriptor_set_allocate_info) }?;
 
         for (i, descset) in descriptor_sets_compute.iter().enumerate() {
-            let image_infos = [
-                vk::DescriptorImageInfo {
-                    image_layout: vk::ImageLayout::GENERAL,
-                    image_view: previous_frame.image_view,
-                    sampler: previous_frame.sampler,
-                },
-                vk::DescriptorImageInfo {
-                    image_layout: vk::ImageLayout::GENERAL,
-                    image_view: generic_texture.image_view,
-                    sampler: generic_texture.sampler,
-                },
-                vk::DescriptorImageInfo {
-                    image_layout: vk::ImageLayout::GENERAL,
-                    image_view: dummy_texture.image_view,
-                    sampler: dummy_texture.sampler,
-                },
-            ];
             let desc_sets_write = [vk::WriteDescriptorSet::builder()
                 .dst_set(*descset)
                 .dst_binding(i as _)
@@ -507,6 +533,8 @@ impl<'a> PilkaRender<'a> {
             push_constant,
             screenshot_ctx,
 
+            float_texture1,
+            float_texture2,
             previous_frame,
             generic_texture,
             dummy_texture,
@@ -517,399 +545,6 @@ impl<'a> PilkaRender<'a> {
             descriptor_set_layouts: descriptor_set_layouts_graphics,
             descriptor_set_layouts_compute,
         })
-    }
-
-    // TODO(#17): Don't use `device_wait_idle` for resizing
-    //
-    // Probably Very bad! Consider waiting for approciate command buffers and fences
-    // (i have no much choice of them) or restrict the amount of resizing events.
-    pub fn resize(&mut self) -> VkResult<()> {
-        unsafe { self.device.device_wait_idle() }?;
-
-        self.extent = self.surface.resolution(&self.device)?;
-        let vk::Extent2D { width, height } = self.extent;
-
-        self.viewports.copy_from_slice(&[vk::Viewport {
-            x: 0.,
-            y: height as f32,
-            width: width as f32,
-            height: -(height as f32),
-            min_depth: 0.0,
-            max_depth: 1.0,
-        }]);
-        self.scissors = Box::new([vk::Rect2D {
-            offset: vk::Offset2D { x: 0, y: 0 },
-            extent: vk::Extent2D { width, height },
-        }]);
-
-        self.swapchain
-            .recreate_swapchain((width, height), &self.device)?;
-
-        for &framebuffer in &self.framebuffers {
-            unsafe { self.device.destroy_framebuffer(framebuffer, None) };
-        }
-        for (framebuffer, present_image) in self
-            .framebuffers
-            .iter_mut()
-            .zip(&self.swapchain.image_views)
-        {
-            let new_framebuffer = VkSwapchain::create_framebuffer(
-                &[*present_image],
-                (width, height),
-                &self.render_pass,
-                &self.device,
-            )?;
-
-            *framebuffer = new_framebuffer;
-        }
-
-        for i in 0..self.swapchain.images.len() {
-            let submit_fence = self.command_pool.fences[i];
-            let command_buffer = self.command_pool.command_buffers[i];
-
-            unsafe {
-                self.device
-                    .wait_for_fences(&[submit_fence], true, std::u64::MAX)
-            }?;
-            unsafe { self.device.reset_fences(&[submit_fence]) }?;
-
-            let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
-                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
-            unsafe {
-                self.device
-                    .begin_command_buffer(command_buffer, &command_buffer_begin_info)
-            }?;
-
-            self.device.set_image_layout(
-                command_buffer,
-                self.swapchain.images[i],
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::PRESENT_SRC_KHR,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::TRANSFER,
-            );
-
-            unsafe { self.device.end_command_buffer(command_buffer) }?;
-            let command_buffers = vec![command_buffer];
-            let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
-
-            unsafe {
-                self.device.queue_submit(
-                    self.queues.graphics_queue.queue,
-                    &[submit_info.build()],
-                    submit_fence,
-                )
-            }?;
-        }
-
-        self.previous_frame
-            .resize(&self.device, &self.device_properties.memory, width, height)?;
-        self.generic_texture
-            .resize(&self.device, &self.device_properties.memory, width, height)?;
-        self.dummy_texture
-            .resize(&self.device, &self.device_properties.memory, width, height)?;
-        let name_image = |object, name: &str| -> VkResult<()> {
-            self.instance
-                .name_object(&self.device, object, vk::ObjectType::IMAGE, name)
-        };
-
-        name_image(self.previous_frame.image.image, "Previous Frame Texture")?;
-        name_image(self.generic_texture.image.image, "Generic Texture")?;
-        name_image(self.dummy_texture.image.image, "Dummy Texture")?;
-        {
-            let active_image = self.command_pool.active_command;
-            let submit_fence = self.command_pool.fences[active_image];
-            let command_buffer = self.command_pool.command_buffers[active_image];
-
-            unsafe {
-                self.device
-                    .wait_for_fences(&[submit_fence], true, std::u64::MAX)
-            }?;
-            unsafe { self.device.reset_fences(&[submit_fence]) }?;
-
-            let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
-                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
-            unsafe {
-                self.device
-                    .begin_command_buffer(command_buffer, &command_buffer_begin_info)
-            }?;
-
-            self.device.set_image_layout_all_commands(
-                command_buffer,
-                self.previous_frame.image.image,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::GENERAL,
-            );
-            self.device.set_image_layout_all_commands(
-                command_buffer,
-                self.generic_texture.image.image,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::GENERAL,
-            );
-            self.device.set_image_layout_all_commands(
-                command_buffer,
-                self.dummy_texture.image.image,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::GENERAL,
-            );
-
-            unsafe { self.device.end_command_buffer(command_buffer) }?;
-            let command_buffers = vec![command_buffer];
-            let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
-
-            unsafe {
-                self.device.queue_submit(
-                    self.queues.graphics_queue.queue,
-                    &[submit_info.build()],
-                    submit_fence,
-                )
-            }?;
-        }
-
-        for (i, descset) in self.descriptor_sets.iter().enumerate() {
-            let image_infos = [
-                vk::DescriptorImageInfo {
-                    image_layout: vk::ImageLayout::GENERAL,
-                    image_view: self.previous_frame.image_view,
-                    sampler: self.previous_frame.sampler,
-                },
-                vk::DescriptorImageInfo {
-                    image_layout: vk::ImageLayout::GENERAL,
-                    image_view: self.generic_texture.image_view,
-                    sampler: self.generic_texture.sampler,
-                },
-                vk::DescriptorImageInfo {
-                    image_layout: vk::ImageLayout::GENERAL,
-                    image_view: self.dummy_texture.image_view,
-                    sampler: self.dummy_texture.sampler,
-                },
-            ];
-            let desc_sets_write = [vk::WriteDescriptorSet::builder()
-                .dst_set(*descset)
-                .dst_binding(i as _)
-                .dst_array_element(0)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .image_info(&image_infos)
-                .build()];
-            unsafe { self.device.update_descriptor_sets(&desc_sets_write, &[]) };
-        }
-
-        for (i, descset) in self.descriptor_sets_compute.iter().enumerate() {
-            let image_infos = [
-                vk::DescriptorImageInfo {
-                    image_layout: vk::ImageLayout::GENERAL,
-                    image_view: self.previous_frame.image_view,
-                    sampler: self.previous_frame.sampler,
-                },
-                vk::DescriptorImageInfo {
-                    image_layout: vk::ImageLayout::GENERAL,
-                    image_view: self.generic_texture.image_view,
-                    sampler: self.generic_texture.sampler,
-                },
-                vk::DescriptorImageInfo {
-                    image_layout: vk::ImageLayout::GENERAL,
-                    image_view: self.dummy_texture.image_view,
-                    sampler: self.dummy_texture.sampler,
-                },
-            ];
-            let desc_sets_write = [vk::WriteDescriptorSet::builder()
-                .dst_set(*descset)
-                .dst_binding(i as _)
-                .dst_array_element(0)
-                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-                .image_info(&image_infos)
-                .build()];
-            unsafe { self.device.update_descriptor_sets(&desc_sets_write, &[]) };
-        }
-
-        Ok(())
-    }
-
-    pub fn push_compute_pipeline(
-        &mut self,
-        comp_info: ShaderInfo,
-        dependencies: &[PathBuf],
-    ) -> VkResult<()> {
-        let pipeline_number = self.pipelines.len();
-        self.shader_set
-            .insert(comp_info.name.canonicalize().unwrap(), pipeline_number);
-        for deps in dependencies {
-            self.shader_set
-                .insert(deps.canonicalize().unwrap(), pipeline_number);
-        }
-
-        let new_pipeline = self.make_pipeline_from_shaders(&ShaderSet::Compute(comp_info))?;
-        self.pipelines.push(new_pipeline);
-
-        Ok(())
-    }
-
-    pub fn push_render_pipeline(
-        &mut self,
-        vert_info: ShaderInfo,
-        frag_info: ShaderInfo,
-        dependencies: &[PathBuf],
-    ) -> VkResult<()> {
-        let pipeline_number = self.pipelines.len();
-        self.shader_set
-            .insert(vert_info.name.canonicalize().unwrap(), pipeline_number);
-        self.shader_set
-            .insert(frag_info.name.canonicalize().unwrap(), pipeline_number);
-        for deps in dependencies {
-            self.shader_set
-                .insert(deps.canonicalize().unwrap(), pipeline_number);
-        }
-
-        let new_pipeline = self.make_pipeline_from_shaders(&ShaderSet::Graphics {
-            vert: vert_info,
-            frag: frag_info,
-        })?;
-        self.pipelines.push(new_pipeline);
-
-        Ok(())
-    }
-
-    pub fn make_pipeline_from_shaders(&mut self, shader_set: &ShaderSet) -> VkResult<Pipeline> {
-        match shader_set {
-            ShaderSet::Graphics {
-                vert: vert_info,
-                frag: frag_info,
-            } => {
-                let vert_module = create_shader_module(
-                    &vert_info,
-                    shaderc::ShaderKind::Vertex,
-                    &mut self.compiler,
-                    &self.device,
-                )?;
-                let frag_module = match create_shader_module(
-                    &frag_info,
-                    shaderc::ShaderKind::Fragment,
-                    &mut self.compiler,
-                    &self.device,
-                ) {
-                    Ok(module) => module,
-                    Err(e) => {
-                        unsafe { self.device.destroy_shader_module(vert_module, None) };
-                        return Err(e);
-                    }
-                };
-                let shader_set = Box::new([
-                    vk::PipelineShaderStageCreateInfo {
-                        module: vert_module,
-                        p_name: vert_info.entry_point.as_ptr(),
-                        stage: vk::ShaderStageFlags::VERTEX,
-                        ..Default::default()
-                    },
-                    vk::PipelineShaderStageCreateInfo {
-                        module: frag_module,
-                        p_name: frag_info.entry_point.as_ptr(),
-                        stage: vk::ShaderStageFlags::FRAGMENT,
-                        ..Default::default()
-                    },
-                ]);
-
-                let new_pipeline = self.new_graphics_pipeline(
-                    self.pipeline_cache,
-                    shader_set,
-                    &vert_info,
-                    &frag_info,
-                )?;
-
-                unsafe {
-                    self.device.destroy_shader_module(vert_module, None);
-                    self.device.destroy_shader_module(frag_module, None);
-                }
-
-                Ok(Pipeline::Graphics(new_pipeline))
-            }
-            ShaderSet::Compute(comp_info) => {
-                let comp_module = create_shader_module(
-                    comp_info,
-                    shaderc::ShaderKind::Compute,
-                    &mut self.compiler,
-                    &self.device,
-                )?;
-
-                let shader_stage = vk::PipelineShaderStageCreateInfo {
-                    module: comp_module,
-                    p_name: comp_info.entry_point.as_ptr(),
-                    stage: vk::ShaderStageFlags::COMPUTE,
-                    ..Default::default()
-                };
-                let new_pipeline = self.new_compute_pipeline(shader_stage, &comp_info)?;
-
-                unsafe {
-                    self.device.destroy_shader_module(comp_module, None);
-                }
-
-                Ok(Pipeline::Compute(new_pipeline))
-            }
-        }
-    }
-
-    pub fn new_graphics_pipeline(
-        &self,
-        pipeline_cache: vk::PipelineCache,
-        shader_set: Box<[vk::PipelineShaderStageCreateInfo]>,
-        vs_info: &ShaderInfo,
-        fs_info: &ShaderInfo,
-    ) -> VkResult<VkGraphicsPipeline> {
-        let device = self.device.device.clone();
-        let (pipeline_layout, descriptor_set_layout) = self.create_graphics_pipeline_layout()?;
-
-        let desc = PipelineDescriptor::new(shader_set);
-
-        VkGraphicsPipeline::new(
-            pipeline_cache,
-            pipeline_layout,
-            descriptor_set_layout,
-            desc,
-            &self.render_pass,
-            vs_info.clone(),
-            fs_info.clone(),
-            device,
-        )
-    }
-
-    pub fn new_compute_pipeline(
-        &self,
-        shader_set: vk::PipelineShaderStageCreateInfo,
-        cs_info: &ShaderInfo,
-    ) -> VkResult<VkComputePipeline> {
-        let device = self.device.device.clone();
-        let (pipeline_layout, descriptor_set_layout) = self.create_compute_pipeline_layout()?;
-
-        VkComputePipeline::new(
-            pipeline_layout,
-            descriptor_set_layout,
-            shader_set,
-            cs_info.clone(),
-            device,
-            &self.queues,
-        )
-    }
-
-    pub fn rebuild_pipeline(&mut self, index: usize) -> VkResult<()> {
-        let shader_set = {
-            let current_pipeline = &self.pipelines[index];
-            match current_pipeline {
-                Pipeline::Graphics(pipeline) => ShaderSet::Graphics {
-                    vert: pipeline.vs_info.clone(),
-                    frag: pipeline.fs_info.clone(),
-                },
-                Pipeline::Compute(pipeline) => ShaderSet::Compute(pipeline.cs_info.clone()),
-            }
-        };
-        let new_pipeline = match self.make_pipeline_from_shaders(&shader_set) {
-            Ok(res) => res,
-            Err(pilka_ash::ash::vk::Result::ERROR_UNKNOWN) => return Ok(()),
-            Err(e) => return Err(e),
-        };
-        self.pipelines[index] = new_pipeline;
-
-        Ok(())
     }
 
     pub fn render(&mut self) -> VkResult<()> {
@@ -1040,8 +675,15 @@ impl<'a> PilkaRender<'a> {
                     &[],
                 );
 
-                self.device
-                    .cmd_dispatch(cmd_buf, extent.width / 16, extent.height / 16, 1);
+                const ALIGN: u32 = 16;
+                let w_padding = (ALIGN - extent.width % ALIGN) % ALIGN;
+                let h_padding = (ALIGN - extent.height % ALIGN) % ALIGN;
+                self.device.cmd_dispatch(
+                    cmd_buf,
+                    (extent.width + w_padding) / ALIGN,
+                    (extent.height + h_padding) / ALIGN,
+                    1,
+                );
                 self.device.end_command_buffer(cmd_buf)?;
 
                 let command_buffers = [cmd_buf];
@@ -1157,6 +799,402 @@ impl<'a> PilkaRender<'a> {
         }
 
         self.frame_num += 1;
+
+        Ok(())
+    }
+
+    // TODO(#17): Don't use `device_wait_idle` for resizing
+    //
+    // Probably Very bad! Consider waiting for approciate command buffers and fences
+    // (i have no much choice of them) or restrict the amount of resizing events.
+    pub fn resize(&mut self) -> VkResult<()> {
+        unsafe { self.device.device_wait_idle() }?;
+
+        self.extent = self.surface.resolution(&self.device)?;
+        let vk::Extent2D { width, height } = self.extent;
+
+        self.viewports.copy_from_slice(&[vk::Viewport {
+            x: 0.,
+            y: height as f32,
+            width: width as f32,
+            height: -(height as f32),
+            min_depth: 0.0,
+            max_depth: 1.0,
+        }]);
+        self.scissors = Box::new([vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent: vk::Extent2D { width, height },
+        }]);
+
+        self.swapchain
+            .recreate_swapchain((width, height), &self.device)?;
+
+        for &framebuffer in &self.framebuffers {
+            unsafe { self.device.destroy_framebuffer(framebuffer, None) };
+        }
+        for (framebuffer, present_image) in self
+            .framebuffers
+            .iter_mut()
+            .zip(&self.swapchain.image_views)
+        {
+            let new_framebuffer = VkSwapchain::create_framebuffer(
+                &[*present_image],
+                (width, height),
+                &self.render_pass,
+                &self.device,
+            )?;
+
+            *framebuffer = new_framebuffer;
+        }
+
+        for i in 0..self.swapchain.images.len() {
+            let submit_fence = self.command_pool.fences[i];
+            let command_buffer = self.command_pool.command_buffers[i];
+
+            unsafe {
+                self.device
+                    .wait_for_fences(&[submit_fence], true, std::u64::MAX)
+            }?;
+            unsafe { self.device.reset_fences(&[submit_fence]) }?;
+
+            let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+            unsafe {
+                self.device
+                    .begin_command_buffer(command_buffer, &command_buffer_begin_info)
+            }?;
+
+            self.device.set_image_layout(
+                command_buffer,
+                self.swapchain.images[i],
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::PRESENT_SRC_KHR,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::TRANSFER,
+            );
+
+            unsafe { self.device.end_command_buffer(command_buffer) }?;
+            let command_buffers = vec![command_buffer];
+            let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
+
+            unsafe {
+                self.device.queue_submit(
+                    self.queues.graphics_queue.queue,
+                    &[submit_info.build()],
+                    submit_fence,
+                )
+            }?;
+        }
+
+        self.previous_frame
+            .resize(&self.device, &self.device_properties.memory, width, height)?;
+        self.generic_texture
+            .resize(&self.device, &self.device_properties.memory, width, height)?;
+        self.dummy_texture
+            .resize(&self.device, &self.device_properties.memory, width, height)?;
+        self.float_texture1
+            .resize(&self.device, &self.device_properties.memory, width, height)?;
+        self.float_texture2
+            .resize(&self.device, &self.device_properties.memory, width, height)?;
+        let name_image = |object, name: &str| -> VkResult<()> {
+            self.instance
+                .name_object(&self.device, object, vk::ObjectType::IMAGE, name)
+        };
+
+        name_image(self.previous_frame.image.image, "Previous Frame Texture")?;
+        name_image(self.generic_texture.image.image, "Generic Texture")?;
+        name_image(self.dummy_texture.image.image, "Dummy Texture")?;
+        name_image(self.float_texture1.image.image, "Float Texture 1")?;
+        name_image(self.float_texture2.image.image, "Float Texture 2")?;
+        {
+            let images = [
+                self.previous_frame.image.image,
+                self.generic_texture.image.image,
+                self.dummy_texture.image.image,
+                self.float_texture1.image.image,
+                self.float_texture2.image.image,
+            ];
+            let active_image = self.command_pool.active_command;
+            let submit_fence = self.command_pool.fences[active_image];
+            let command_buffer = self.command_pool.command_buffers[active_image];
+
+            unsafe {
+                self.device
+                    .wait_for_fences(&[submit_fence], true, std::u64::MAX)
+            }?;
+            unsafe { self.device.reset_fences(&[submit_fence]) }?;
+
+            let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+            unsafe {
+                self.device
+                    .begin_command_buffer(command_buffer, &command_buffer_begin_info)
+            }?;
+
+            for &image in &images {
+                self.device.set_image_layout_all_commands(
+                    command_buffer,
+                    image,
+                    vk::ImageLayout::UNDEFINED,
+                    vk::ImageLayout::GENERAL,
+                );
+            }
+
+            unsafe { self.device.end_command_buffer(command_buffer) }?;
+            let command_buffers = vec![command_buffer];
+            let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
+
+            unsafe {
+                self.device.queue_submit(
+                    self.queues.graphics_queue.queue,
+                    &[submit_info.build()],
+                    submit_fence,
+                )
+            }?;
+        }
+
+        let image_infos = [
+            vk::DescriptorImageInfo {
+                image_layout: vk::ImageLayout::GENERAL,
+                image_view: self.previous_frame.image_view,
+                sampler: self.previous_frame.sampler,
+            },
+            vk::DescriptorImageInfo {
+                image_layout: vk::ImageLayout::GENERAL,
+                image_view: self.generic_texture.image_view,
+                sampler: self.generic_texture.sampler,
+            },
+            vk::DescriptorImageInfo {
+                image_layout: vk::ImageLayout::GENERAL,
+                image_view: self.dummy_texture.image_view,
+                sampler: self.dummy_texture.sampler,
+            },
+            vk::DescriptorImageInfo {
+                image_layout: vk::ImageLayout::GENERAL,
+                image_view: self.float_texture1.image_view,
+                sampler: self.float_texture1.sampler,
+            },
+            vk::DescriptorImageInfo {
+                image_layout: vk::ImageLayout::GENERAL,
+                image_view: self.float_texture2.image_view,
+                sampler: self.float_texture2.sampler,
+            },
+        ];
+
+        for (i, descset) in self.descriptor_sets.iter().enumerate() {
+            let desc_sets_write = [vk::WriteDescriptorSet::builder()
+                .dst_set(*descset)
+                .dst_binding(i as _)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(&image_infos)
+                .build()];
+            unsafe { self.device.update_descriptor_sets(&desc_sets_write, &[]) };
+        }
+
+        for (i, descset) in self.descriptor_sets_compute.iter().enumerate() {
+            let desc_sets_write = [vk::WriteDescriptorSet::builder()
+                .dst_set(*descset)
+                .dst_binding(i as _)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                .image_info(&image_infos)
+                .build()];
+            unsafe { self.device.update_descriptor_sets(&desc_sets_write, &[]) };
+        }
+
+        Ok(())
+    }
+
+    pub fn push_compute_pipeline(
+        &mut self,
+        comp_info: ShaderInfo,
+        dependencies: &[PathBuf],
+    ) -> VkResult<()> {
+        let pipeline_number = self.pipelines.len();
+        self.shader_set
+            .insert(comp_info.name.canonicalize().unwrap(), pipeline_number);
+        for deps in dependencies {
+            self.shader_set
+                .insert(deps.canonicalize().unwrap(), pipeline_number);
+        }
+
+        let new_pipeline = self.make_pipeline_from_shaders(&ShaderSet::Compute(comp_info))?;
+        self.pipelines.push(new_pipeline);
+
+        Ok(())
+    }
+
+    pub fn push_render_pipeline(
+        &mut self,
+        vert_info: ShaderInfo,
+        frag_info: ShaderInfo,
+        dependencies: &[PathBuf],
+    ) -> VkResult<()> {
+        let pipeline_number = self.pipelines.len();
+        self.shader_set
+            .insert(vert_info.name.canonicalize().unwrap(), pipeline_number);
+        self.shader_set
+            .insert(frag_info.name.canonicalize().unwrap(), pipeline_number);
+        for deps in dependencies {
+            self.shader_set
+                .insert(deps.canonicalize().unwrap(), pipeline_number);
+        }
+
+        let new_pipeline = self.make_pipeline_from_shaders(&ShaderSet::Graphics {
+            vert: vert_info,
+            frag: frag_info,
+        })?;
+        self.pipelines.push(new_pipeline);
+
+        Ok(())
+    }
+
+    pub fn make_pipeline_from_shaders(&mut self, shader_set: &ShaderSet) -> VkResult<Pipeline> {
+        match shader_set {
+            ShaderSet::Graphics {
+                vert: vert_info,
+                frag: frag_info,
+            } => {
+                let vert_module = create_shader_module(
+                    &vert_info,
+                    shaderc::ShaderKind::Vertex,
+                    &mut self.compiler,
+                    &self.device,
+                )?;
+                let frag_module = match create_shader_module(
+                    &frag_info,
+                    shaderc::ShaderKind::Fragment,
+                    &mut self.compiler,
+                    &self.device,
+                ) {
+                    Ok(module) => module,
+                    Err(e) => {
+                        unsafe { self.device.destroy_shader_module(vert_module, None) };
+                        return Err(e);
+                    }
+                };
+                let shader_set = Box::new([
+                    vk::PipelineShaderStageCreateInfo {
+                        module: vert_module,
+                        p_name: vert_info.entry_point.as_ptr(),
+                        stage: vk::ShaderStageFlags::VERTEX,
+                        ..Default::default()
+                    },
+                    vk::PipelineShaderStageCreateInfo {
+                        module: frag_module,
+                        p_name: frag_info.entry_point.as_ptr(),
+                        stage: vk::ShaderStageFlags::FRAGMENT,
+                        ..Default::default()
+                    },
+                ]);
+
+                let new_pipeline = self.new_graphics_pipeline(
+                    self.pipeline_cache,
+                    shader_set,
+                    &vert_info,
+                    &frag_info,
+                )?;
+
+                unsafe {
+                    self.device.destroy_shader_module(vert_module, None);
+                    self.device.destroy_shader_module(frag_module, None);
+                }
+
+                Ok(Pipeline::Graphics(new_pipeline))
+            }
+            ShaderSet::Compute(comp_info) => {
+                let comp_module = create_shader_module(
+                    comp_info,
+                    shaderc::ShaderKind::Compute,
+                    &mut self.compiler,
+                    &self.device,
+                )?;
+
+                let shader_stage = vk::PipelineShaderStageCreateInfo {
+                    module: comp_module,
+                    p_name: comp_info.entry_point.as_ptr(),
+                    stage: vk::ShaderStageFlags::COMPUTE,
+                    ..Default::default()
+                };
+                let new_pipeline = self.new_compute_pipeline(shader_stage, &comp_info)?;
+                self.instance.name_object(
+                    &self.device,
+                    new_pipeline.semaphore,
+                    vk::ObjectType::SEMAPHORE,
+                    "Compute Semaphore",
+                )?;
+
+                unsafe {
+                    self.device.destroy_shader_module(comp_module, None);
+                }
+
+                Ok(Pipeline::Compute(new_pipeline))
+            }
+        }
+    }
+
+    pub fn new_graphics_pipeline(
+        &self,
+        pipeline_cache: vk::PipelineCache,
+        shader_set: Box<[vk::PipelineShaderStageCreateInfo]>,
+        vs_info: &ShaderInfo,
+        fs_info: &ShaderInfo,
+    ) -> VkResult<VkGraphicsPipeline> {
+        let device = self.device.device.clone();
+        let (pipeline_layout, descriptor_set_layout) = self.create_graphics_pipeline_layout()?;
+
+        let desc = PipelineDescriptor::new(shader_set);
+
+        VkGraphicsPipeline::new(
+            pipeline_cache,
+            pipeline_layout,
+            descriptor_set_layout,
+            desc,
+            &self.render_pass,
+            vs_info.clone(),
+            fs_info.clone(),
+            device,
+        )
+    }
+
+    pub fn new_compute_pipeline(
+        &self,
+        shader_set: vk::PipelineShaderStageCreateInfo,
+        cs_info: &ShaderInfo,
+    ) -> VkResult<VkComputePipeline> {
+        let device = self.device.device.clone();
+        let (pipeline_layout, descriptor_set_layout) = self.create_compute_pipeline_layout()?;
+
+        VkComputePipeline::new(
+            pipeline_layout,
+            descriptor_set_layout,
+            shader_set,
+            cs_info.clone(),
+            device,
+            &self.queues,
+        )
+    }
+
+    pub fn rebuild_pipeline(&mut self, index: usize) -> VkResult<()> {
+        let shader_set = {
+            let current_pipeline = &self.pipelines[index];
+            match current_pipeline {
+                Pipeline::Graphics(pipeline) => ShaderSet::Graphics {
+                    vert: pipeline.vs_info.clone(),
+                    frag: pipeline.fs_info.clone(),
+                },
+                Pipeline::Compute(pipeline) => ShaderSet::Compute(pipeline.cs_info.clone()),
+            }
+        };
+        let new_pipeline = match self.make_pipeline_from_shaders(&shader_set) {
+            Ok(res) => res,
+            Err(pilka_ash::ash::vk::Result::ERROR_UNKNOWN) => return Ok(()),
+            Err(e) => return Err(e),
+        };
+        self.pipelines[index] = new_pipeline;
 
         Ok(())
     }
@@ -1336,6 +1374,8 @@ impl<'a> Drop for PilkaRender<'a> {
             self.device
                 .destroy_descriptor_pool(self.descriptor_pool, None);
 
+            self.float_texture2.destroy(&self.device);
+            self.float_texture1.destroy(&self.device);
             self.previous_frame.destroy(&self.device);
             self.generic_texture.destroy(&self.device);
             self.dummy_texture.destroy(&self.device);
@@ -1356,6 +1396,7 @@ impl<'a> Drop for PilkaRender<'a> {
     }
 }
 
+#[derive(Debug)]
 struct VkImage {
     image: vk::Image,
     memory: vk::DeviceMemory,
@@ -1382,6 +1423,7 @@ impl VkImage {
     }
 }
 
+#[derive(Debug)]
 struct VkTexture {
     pub image: VkImage,
     pub image_view: vk::ImageView,
