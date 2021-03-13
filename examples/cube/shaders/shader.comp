@@ -17,9 +17,29 @@ layout (binding = 2, rgba8) uniform image2D dummy_texture;
 layout (binding = 3, r32f) uniform image2D float_texture1;
 layout (binding = 4, r32f) uniform image2D float_texture2;
 
+#define PI acos(-1.)
+#define dt_off(speed, off) fract(pc.time * speed + off)
+#define dt(speed) dt_off(speed, 0)
+
+float hash(float n) {
+	return fract(sin(n) * 43758.5453);
+}
+
+float hash2(vec2 n) {
+	return hash(dot(n, vec2(12.9898, 4.1414)));
+}
+
 void main() {
     if (gl_GlobalInvocationID.x >= pc.resolution.x ||
         gl_GlobalInvocationID.y >= pc.resolution.y) {
         return;
     }
+
+	vec2 pos = gl_GlobalInvocationID.xy;
+	float time = pc.time;
+
+	float p = sin(pos.x * 50) + cos(pos.y / 5);
+	p *= sin(pos.y * 50) + cos(pos.x * 50 + PI * time);
+
+	imageStore(float_texture1, ivec2(gl_GlobalInvocationID.xy), vec4(p));
 }
