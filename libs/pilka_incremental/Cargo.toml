@@ -8,7 +8,7 @@ description = "Glue crate which combine everything"
 repository = "https://github.com/pudnax/pilka/"
 readme = "README.md"
 keywords = ["graphics", "glsl", "shaders", "creative", "vulkan"]
-exclude = [".gitignore", ".github", "screenshots", "records", "shader_dump"]
+exclude = [".gitignore", ".github", "screenshots", "recordings", "shader_dump"]
 categories = ["command-line-utilities", "graphics", "rendering"]
 
 [badges]

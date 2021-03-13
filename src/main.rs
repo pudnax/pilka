@@ -34,8 +34,8 @@ use winit::{
 };
 
 const SCREENSHOTS_FOLDER: &str = "screenshots";
-const SHADER_FOLDER: &str = "shader_dump";
-const VIDEO_FOLDER: &str = "records";
+const SHADER_DUMP_FOLDER: &str = "shader_dump";
+const VIDEO_FOLDER: &str = "recordings";
 
 fn main() -> Result<()> {
     // Initialize error hook.
@@ -237,7 +237,7 @@ fn main() -> Result<()> {
                         }
 
                         if VirtualKeyCode::F10 == keycode {
-                            save_shaders(&pilka);
+                            save_shaders(&pilka).unwrap();
                         }
 
                         if VirtualKeyCode::F11 == keycode {
@@ -314,43 +314,49 @@ fn print_help() {
     println!("- `Arrows`: Change `Pos`\n");
 }
 
-fn save_screenshot(frame: &'static [u8], width: u32, height: u32) -> std::thread::JoinHandle<()> {
+fn save_screenshot(
+    frame: &'static [u8],
+    width: u32,
+    height: u32,
+) -> std::thread::JoinHandle<Result<()>> {
     std::thread::spawn(move || {
         let now = Instant::now();
         let screenshots_folder = Path::new(SCREENSHOTS_FOLDER);
-        create_folder(screenshots_folder).unwrap();
+        create_folder(screenshots_folder)?;
         let path = screenshots_folder.join(format!(
             "screenshot-{}.jpg",
             chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
         ));
-        let file = File::create(path).unwrap();
+        let file = File::create(path)?;
         let w = BufWriter::new(file);
         let mut encoder = png::Encoder::new(w, width, height);
         encoder.set_color(png::ColorType::RGBA);
         encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header().unwrap();
-        writer.write_image_data(frame).unwrap();
+        let mut writer = encoder.write_header()?;
+        writer.write_image_data(frame)?;
         eprintln!("Encode image: {:#?}", now.elapsed());
+        Ok(())
     })
 }
 
-fn save_shaders(pilka: &PilkaRender) {
-    let dump_folder = std::path::Path::new(SHADER_FOLDER);
-    create_folder(dump_folder).unwrap();
+fn save_shaders(pilka: &PilkaRender) -> Result<()> {
+    let dump_folder = std::path::Path::new(SHADER_DUMP_FOLDER);
+    create_folder(dump_folder)?;
     let dump_folder =
         dump_folder.join(chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string());
-    create_folder(&dump_folder).unwrap();
+    create_folder(&dump_folder)?;
+    let dump_folder = dump_folder.join(SHADER_PATH);
+    create_folder(&dump_folder)?;
 
     for path in pilka.shader_set.keys() {
-        let to = dump_folder.join(
-            path.strip_prefix(Path::new(SHADER_PATH).canonicalize().unwrap())
-                .unwrap(),
-        );
+        let to = dump_folder.join(path.strip_prefix(Path::new(SHADER_PATH).canonicalize()?)?);
         if !to.exists() {
-            std::fs::create_dir_all(&to.parent().unwrap().canonicalize().unwrap()).unwrap();
-            std::fs::File::create(&to).unwrap();
+            std::fs::create_dir_all(&to.parent().unwrap().canonicalize()?)?;
+            std::fs::File::create(&to)?;
         }
-        std::fs::copy(path, &to).unwrap();
+        std::fs::copy(path, &to)?;
         eprintln!("Saved: {}", &to.display());
     }
+
+    Ok(())
 }

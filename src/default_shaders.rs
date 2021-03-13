@@ -31,6 +31,10 @@ layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 out_color;
 
 layout(set = 0, binding = 0) uniform sampler2D previous_frame;
+layout(set = 0, binding = 1) uniform sampler2D generic_texture;
+layout(set = 0, binding = 2) uniform sampler2D dummy_texture;
+layout(set = 0, binding = 3) uniform sampler2D float_texture1;
+layout(set = 0, binding = 4) uniform sampler2D float_texture2;
 #define T(t) (texture(t, vec2(uv.x, -uv.y)))
 #define T_off(t,off) (texture(t, vec2(uv.x + off.x, -(uv.y + off.y))))
 
@@ -40,6 +44,7 @@ layout(std430, push_constant) uniform PushConstant {
 	vec2 resolution;
 	vec2 mouse;
 	float spectrum;
+	bool mouse_pressed;
 } pc;
 
 float worldSDF(in vec3 pos) {
@@ -78,6 +83,8 @@ layout(std430, push_constant) uniform PushConstant {
 	float time;
 	vec2 resolution;
 	vec2 mouse;
+	float spectrum;
+	bool mouse_pressed;
 } pc;
 
 void main() {
