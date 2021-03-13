@@ -1437,7 +1437,7 @@ checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
 
 [[package]]
 name = "pilka"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "color-eyre",
@@ -1451,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "pilka_ash"
-version = "0.2.4"
+version = "0.3.1"
 dependencies = [
  "ash",
  "ash-molten",
@@ -1463,14 +1463,14 @@ dependencies = [
 
 [[package]]
 name = "pilka_dyn"
-version = "0.2.3"
+version = "0.3.1"
 dependencies = [
  "pilka_incremental",
 ]
 
 [[package]]
 name = "pilka_incremental"
-version = "0.2.4"
+version = "0.3.1"
 dependencies = [
  "pilka_ash",
  "pilka_winit",
@@ -1478,7 +1478,7 @@ dependencies = [
 
 [[package]]
 name = "pilka_lib"
-version = "0.2.4"
+version = "0.3.1"
 dependencies = [
  "pilka_dyn",
  "pilka_incremental",
@@ -1486,7 +1486,7 @@ dependencies = [
 
 [[package]]
 name = "pilka_winit"
-version = "0.2.3"
+version = "0.3.1"
 dependencies = [
  "winit",
 ]
