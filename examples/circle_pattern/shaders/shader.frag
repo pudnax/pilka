@@ -33,24 +33,13 @@ float worldSDF(in vec3 pos) {
 }
 
 void main() {
+	float tex = texture(float_texture1, uv).r;
     vec2 uu = (uv + -0.5) * 2.0 / vec2(pc.resolution.y / pc.resolution.x, 1);
 
-    vec3 O = vec3(0.0, 0.0, 3.0) + pc.pos;
-    vec3 D = normalize(vec3(uu, -2.));
+	float circ = distance(uv, vec2(0.5));
+	circ = step(circ, 0.4);
 
-    vec2 path = ray_march(O, D);
-    vec3 normal = wnormal(O);
-    vec3 at = O + path.x * D;
+	float col = min(tex, circ);
 
-    float r = 2.0;
-    vec2 l = r * vec2(cos(pc.time), sin(pc.time));
-    vec3 l_pos = vec3(l.x, 3.0, l.y + 2.0);
-
-    vec3 l_col = vec3(1.0, 1.0, 0.7);
-    vec3 diffuse = vec3(0.5, 0.5, 0.5);
-    vec3 dlight = enlight(at, wnormal(at), diffuse, l_col, l_pos);
-
-    vec3 col = dlight * 10.;
-
-    out_color = vec4(pow(col, vec3(1 / 1.12)), 1.0);
+    out_color = vec4(vec3(col), 1.0);
 }
