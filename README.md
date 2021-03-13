@@ -1,16 +1,15 @@
 # pilka 🔩
 
-
-Pilka is a cross-platform live-coding tool for creating shader* demos,
+Pilka is a cross-platform live-coding tool for creating shader\* demos,
 similar to [Bonzomatic](https://github.com/Gargaj/Bonzomatic) or [KodeLife](https://hexler.net/products/kodelife). Supports hot-reloading, which means
 resources is checked and updated in the background.
 
 Available features:
 
-- [X] Hot-reload
-- [X] Saving shaders
-- [X] Taking screenshot
-- [X] Record video
+- [x] Hot-reload
+- [x] Saving shaders
+- [x] Taking screenshot
+- [x] Record video
 
 ![preview](boring_tunnel.png)
 
@@ -24,30 +23,31 @@ shaders after each save.
 
 ## Controls
 
-- `F1`:   Print help
-- `F1`:   Toggle play/pause
-- `F2`:   Pause and step back one frame
-- `F3`:   Pause and step forward one frame
-- `F4`:   Restart playback at frame 0 (`Time` and `Pos` = 0)
-- `F5`:   Print parameters
-- `F10`:  Save shaders
-- `F11`:  Take Screenshot
-- `F12`:  Start/Stop record video
-- `ESC`:  Exit the application
-- `Arrows`: Change `Pos`
+- <kbd>F1</kbd>: Print help
+- <kbd>F1</kbd>: Toggle play/pause
+- <kbd>F2</kbd>: Pause and step back one frame
+- <kbd>F3</kbd>: Pause and step forward one frame
+- <kbd>F4</kbd>: Restart playback at frame 0 (`Time` and `Pos` = 0)
+- <kbd>F5</kbd>: Print parameters
+- <kbd>F1</kbd>: Save shaders
+- <kbd>F1</kbd>: Take Screenshot
+- <kbd>F1</kbd>: Start/Stop record video
+- <kbd>ES</kbd>: Exit the application
+- <kbd>Arrows</kbd>: Change `Pos`
 
 ## Parameters
 
 (per-draw-update)
 
-| name       | type    | range   |
-|------------|---------|---------|
-| position   | vec3    | (-∞, ∞) |
-| time       | float   | [0, ∞)  |
-| resolution | vec2    | [0, a]  |
-| mouse      | vec2    | [-1, 1] |
-| spectrum   | float   | [-1, 1] |
-| prev_frame | texture |         |
+| name          | type    | range   |
+| ------------- | ------- | ------- |
+| position      | vec3    | (-∞, ∞) |
+| time          | float   | [0, ∞)  |
+| resolution    | vec2    | [0, a]  |
+| mouse         | vec2    | [-1, 1] |
+| spectrum      | float   | [-1, 1] |
+| mouse_pressed | bool    |         |
+| prev_frame    | texture |         |
 
 ## Requirements
 
