@@ -16,12 +16,12 @@ pub fn create_default_shaders<P: AsRef<Path>>(name: P) -> std::io::Result<()> {
     create_file("prelude.glsl", PRELUDE)?;
     create_file("shader.frag", FRAG_SHADER)?;
     create_file("shader.vert", VERT_SHADER)?;
+    create_file("shader.comp", COMP_SHADER)?;
 
     Ok(())
 }
 
-const FRAG_SHADER: &str = "
-#version 460
+const FRAG_SHADER: &str = "#version 460
 
 // In the beginning, colours never existed. There's nothing that can be done before you...
 
@@ -67,11 +67,9 @@ void main() {
 
     vec3 col = dlight * 10.;
     out_color = vec4(col, 1.0);
-}
-";
+}";
 
-const VERT_SHADER: &str = "
-#version 460
+const VERT_SHADER: &str = "#version 460
 
 layout(location = 0) out vec2 out_uv;
 
@@ -86,11 +84,35 @@ void main() {
   out_uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
   gl_Position = vec4(out_uv * 2.0f + -1.0f, 0.0, 1.0);
   out_uv = (out_uv + -0.5) * 2.0 / vec2(pc.resolution.y / pc.resolution.x, 1);
-}
-";
+}";
 
-const PRELUDE: &str = "
-#define PI 3.14159265359
+const COMP_SHADER: &str = "#version 460
+
+layout(std430, push_constant) uniform PushConstant {
+	vec3 pos;
+	float time;
+	vec2 resolution;
+	vec2 mouse;
+	float spectrum;
+	bool mouse_pressed;
+} pc;
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout (binding = 0, rgba8) uniform image2D previous_frame;
+layout (binding = 1, rgba8) uniform image2D generic_texture;
+layout (binding = 2, rgba8) uniform image2D dummy_texture;
+layout (binding = 3, r32f) uniform image2D float_texture1;
+layout (binding = 4, r32f) uniform image2D float_texture2;
+
+void main() {
+    if (gl_GlobalInvocationID.x >= pc.resolution.x ||
+        gl_GlobalInvocationID.y >= pc.resolution.y) {
+        return;
+    }
+}";
+
+const PRELUDE: &str = "#define PI 3.14159265359
 #define TWOPI 6.28318530718
 
 const vec3 EPS = vec3(0., 0.01, 0.001);
@@ -184,5 +206,4 @@ vec3 wnormal(in vec3 p) {
   return normalize(vec3(worldSDF(p + EPS.yxx) - worldSDF(p - EPS.yxx),
                         worldSDF(p + EPS.xyx) - worldSDF(p - EPS.xyx),
                         worldSDF(p + EPS.xxy) - worldSDF(p - EPS.xxy)));
-}
-";
+}";
