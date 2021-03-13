@@ -1,6 +1,6 @@
 [package]
 name = "pilka_dyn"
-version = "0.2.3"
+version = "0.3.1"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2018"
 license = "GPL-2.0-or-later"
@@ -21,4 +21,4 @@ crate-type = ["dylib", "rlib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pilka_incremental = { version = "0.2.3", path = "./../pilka_incremental" }
+pilka_incremental = { version = "0.3.1", path = "./../pilka_incremental" }
