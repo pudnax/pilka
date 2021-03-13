@@ -55,8 +55,10 @@ float worldSDF(in vec3 pos) {
 }
 
 void main() {
+    vec2 uv = (uv + -0.5) * 2.0 / vec2(pc.resolution.y / pc.resolution.x, 1);
+
 	vec3 O = vec3(0.0, 0.0, 3.0);
-	vec3 D = normalize(vec3(uv, -2.));
+	vec3 D = normalize(vec3(uu, -2.));
 
 	vec2 path = ray_march(O, D);
 	vec3 normal = wnormal(O);
@@ -90,7 +92,6 @@ layout(std430, push_constant) uniform PushConstant {
 void main() {
     out_uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
     gl_Position = vec4(out_uv * 2.0f + -1.0f, 0.0, 1.0);
-    out_uv = (out_uv + -0.5) * 2.0 / vec2(pc.resolution.y / pc.resolution.x, 1);
 }";
 
 const COMP_SHADER: &str = "#version 460
