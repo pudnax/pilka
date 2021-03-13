@@ -242,8 +242,8 @@ impl VkComputePipeline {
         .unwrap();
 
         let command_poo_create_info = vk::CommandPoolCreateInfo::builder()
-            .queue_family_index(queues.compute_queue.index)
-            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+            .queue_family_index(queues.compute_queue.index);
         let command_pool = unsafe { device.create_command_pool(&command_poo_create_info, None) }?;
 
         let command_buffer_create_info = vk::CommandBufferAllocateInfo::builder()

@@ -404,11 +404,13 @@ impl<'a> PilkaRender<'a> {
             unsafe { device.begin_command_buffer(command_buffer, &command_buffer_begin_info) }?;
 
             for &image in &images {
-                device.set_image_layout_all_commands(
+                device.set_image_layout(
                     command_buffer,
                     image,
                     vk::ImageLayout::UNDEFINED,
                     vk::ImageLayout::GENERAL,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::TRANSFER,
                 );
             }
 
@@ -606,6 +608,10 @@ impl<'a> PilkaRender<'a> {
 
         if let Pipeline::Compute(ref pipeline) = self.pipelines[1] {
             let cmd_buf = pipeline.command_buffer;
+            unsafe {
+                self.device
+                    .reset_command_buffer(cmd_buf, vk::CommandBufferResetFlags::RELEASE_RESOURCES)
+            }?;
             let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
@@ -937,11 +943,13 @@ impl<'a> PilkaRender<'a> {
             }?;
 
             for &image in &images {
-                self.device.set_image_layout_all_commands(
+                self.device.set_image_layout(
                     command_buffer,
                     image,
                     vk::ImageLayout::UNDEFINED,
                     vk::ImageLayout::GENERAL,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::TRANSFER,
                 );
             }
 
