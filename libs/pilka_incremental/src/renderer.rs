@@ -1258,6 +1258,10 @@ impl<'a> PilkaRender<'a> {
 
     pub fn capture_frame(&mut self) -> VkResult<Frame> {
         let copybuffer = self.screenshot_ctx.commbuf;
+        unsafe {
+            self.device
+                .reset_command_buffer(copybuffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES)
+        }?;
         let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         unsafe { self.device.begin_command_buffer(copybuffer, &cmd_begininfo) }?;
