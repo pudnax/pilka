@@ -1,4 +1,5 @@
 use pilka_ash::ash::{
+    pilka_util::return_aligned,
     prelude::VkResult,
     version::{DeviceV1_0, InstanceV1_0},
     ShaderInfo, ShaderSet, *,
@@ -684,12 +685,10 @@ impl<'a> PilkaRender<'a> {
                     );
 
                     const ALIGN: u32 = 16;
-                    let w_padding = (ALIGN - extent.width % ALIGN) % ALIGN;
-                    let h_padding = (ALIGN - extent.height % ALIGN) % ALIGN;
                     self.device.cmd_dispatch(
                         cmd_buf,
-                        (extent.width + w_padding) / ALIGN,
-                        (extent.height + h_padding) / ALIGN,
+                        return_aligned(extent.width, ALIGN) / ALIGN,
+                        return_aligned(extent.height, ALIGN) / ALIGN,
                         1,
                     );
                 }

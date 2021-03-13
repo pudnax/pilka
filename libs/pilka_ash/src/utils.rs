@@ -1,5 +1,9 @@
 use ash::vk;
 
+pub fn return_aligned(len: u32, padding: u32) -> u32 {
+    len + (padding - len % padding) % padding
+}
+
 pub fn find_memory_type_index(
     memory_req: &vk::MemoryRequirements,
     memory_prop: &vk::PhysicalDeviceMemoryProperties,
