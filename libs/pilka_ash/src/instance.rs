@@ -103,7 +103,7 @@ impl VkInstance {
             .engine_version(vk::make_version(1, 1, 0))
             .api_version(version);
 
-        //  let mut additional_instance_features = vk::ValidationFeaturesEXT::builder()
+        // let mut additional_instance_features = vk::ValidationFeaturesEXT::builder()
         //     .enabled_validation_features(&[vk::ValidationFeatureEnableEXT::BEST_PRACTICES]);
 
         let instance_info = vk::InstanceCreateInfo::builder()

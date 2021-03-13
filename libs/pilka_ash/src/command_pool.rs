@@ -29,6 +29,13 @@ impl VkCommandPool {
         unsafe { device.wait_for_fences(&[submit_fence], true, std::u64::MAX) }?;
         unsafe { device.reset_fences(&[submit_fence]) }?;
 
+        unsafe {
+            device.reset_command_buffer(
+                command_buffer,
+                vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+            )
+        }?;
+
         let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
