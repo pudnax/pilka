@@ -113,7 +113,7 @@ temporary solution after which I switch to [rav1e](https://github.com/xiph/rav1e
 All the examples are in the `examples` folder and to run them,
 compile project and run `pilka` inside of approciate example folder.
 
-| cube                                                            | modius strip                                             |
+| cube                                                            | mobius strip                                             |
 | --------------------------------------------------------------- | -------------------------------------------------------- |
 | ![cube](./examples/cube/cube.gif)                               | ![mobius strip](./examples/mobius_strip/mobius.jpg)      |
 | cellular automata                                               | circle pattern                                           |
