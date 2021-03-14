@@ -107,11 +107,11 @@ pub fn new_ffmpeg_command(width: u32, height: u32, filename: &str) -> Result<Chi
 
 pub fn record_thread(rx: mpsc::Receiver<RecordEvent>) {
     let mut process = None;
-    create_folder(VIDEO_FOLDER).unwrap();
 
     while let Ok(event) = rx.recv() {
         match event {
             RecordEvent::Start(width, height) => {
+                create_folder(VIDEO_FOLDER).unwrap();
                 let dir_path = Path::new(VIDEO_FOLDER);
                 let filename = dir_path.join(format!(
                     "record-{}.mp4",
