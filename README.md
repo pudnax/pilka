@@ -12,6 +12,7 @@ Available features:
 - [x] Saving shaders
 - [x] Taking screenshot
 - [x] Record video
+- [x] Compute pipeline for post processing
 
 ![preview](boring_tunnel.png)
 
