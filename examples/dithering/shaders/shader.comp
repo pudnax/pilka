@@ -1,0 +1,32 @@
+#version 460
+
+layout(std430, push_constant) uniform PushConstant {
+	vec3 pos;
+	float time;
+	vec2 resolution;
+	vec2 mouse;
+	float spectrum;
+	bool mouse_pressed;
+} pc;
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout (binding = 0, rgba8) uniform image2D previous_frame;
+layout (binding = 1, rgba8) uniform image2D generic_texture;
+layout (binding = 2, rgba8) uniform image2D dummy_texture;
+layout (binding = 3, r32f) uniform image2D float_texture1;
+layout (binding = 4, r32f) uniform image2D float_texture2;
+
+void main() {
+    if (gl_GlobalInvocationID.x >= pc.resolution.x ||
+        gl_GlobalInvocationID.y >= pc.resolution.y) {
+        return;
+    }
+
+    vec2 pos = gl_GlobalInvocationID.xy;
+	float time = pc.time;
+
+	float col = cos(pos.x / 1.3) * sin(pos.y / 1.1 + time);
+
+	imageStore(float_texture1, ivec2(pos), vec4(col));
+}
