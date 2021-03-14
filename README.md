@@ -26,15 +26,15 @@ shaders after each save.
 ## Controls
 
 - <kbd>F1</kbd>: Print help
-- <kbd>F1</kbd>: Toggle play/pause
-- <kbd>F2</kbd>: Pause and step back one frame
-- <kbd>F3</kbd>: Pause and step forward one frame
-- <kbd>F4</kbd>: Restart playback at frame 0 (`Time` and `Pos` = 0)
-- <kbd>F5</kbd>: Print parameters
-- <kbd>F1</kbd>: Save shaders
-- <kbd>F1</kbd>: Take Screenshot
-- <kbd>F1</kbd>: Start/Stop record video
-- <kbd>ES</kbd>: Exit the application
+- <kbd>F2</kbd>: Toggle play/pause
+- <kbd>F3</kbd>: Pause and step back one frame
+- <kbd>F4</kbd>: Pause and step forward one frame
+- <kbd>F5</kbd>: Restart playback at frame 0 (`Time` and `Pos` = 0)
+- <kbd>F6</kbd>: Print parameters
+- <kbd>F10</kbd>: Save shaders
+- <kbd>F11</kbd>: Take Screenshot
+- <kbd>F12</kbd>: Start/Stop record video
+- <kbd>ESC</kbd>: Exit the application
 - <kbd>Arrows</kbd>: Change `Pos`
 
 ## Parameters
