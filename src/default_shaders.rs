@@ -27,7 +27,7 @@ const FRAG_SHADER: &str = "#version 460
 
 #include <prelude.glsl>
 
-layout(location = 0) in vec2 uv;
+layout(location = 0) in vec2 in_uv;
 layout(location = 0) out vec4 out_color;
 
 layout(set = 0, binding = 0) uniform sampler2D previous_frame;
@@ -35,8 +35,8 @@ layout(set = 0, binding = 1) uniform sampler2D generic_texture;
 layout(set = 0, binding = 2) uniform sampler2D dummy_texture;
 layout(set = 0, binding = 3) uniform sampler2D float_texture1;
 layout(set = 0, binding = 4) uniform sampler2D float_texture2;
-#define T(t) (texture(t, vec2(uv.x, -uv.y)))
-#define T_off(t,off) (texture(t, vec2(uv.x + off.x, -(uv.y + off.y))))
+#define T(t) (texture(t, vec2(in_uv.x, -in_uv.y)))
+#define T_off(t,off) (texture(t, vec2(in_uv.x + off.x, -(in_uv.y + off.y))))
 
 layout(std430, push_constant) uniform PushConstant {
 	vec3 pos;
@@ -55,10 +55,10 @@ float worldSDF(in vec3 pos) {
 }
 
 void main() {
-    vec2 uu = (uv + -0.5) * 2.0 / vec2(pc.resolution.y / pc.resolution.x, 1);
+    vec2 uv = (in_uv + -0.5) * 2.0 / vec2(pc.resolution.y / pc.resolution.x, 1);
 
 	vec3 O = vec3(0.0, 0.0, 3.0);
-	vec3 D = normalize(vec3(uu, -2.));
+	vec3 D = normalize(vec3(uv, -2.));
 
 	vec2 path = ray_march(O, D);
 	vec3 normal = wnormal(O);
