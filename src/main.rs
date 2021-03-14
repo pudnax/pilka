@@ -324,7 +324,7 @@ fn save_screenshot(
         let screenshots_folder = Path::new(SCREENSHOTS_FOLDER);
         create_folder(screenshots_folder)?;
         let path = screenshots_folder.join(format!(
-            "screenshot-{}.jpg",
+            "screenshot-{}.png",
             chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
         ));
         let file = File::create(path)?;
