@@ -1573,14 +1573,11 @@ impl<'a> ScreenshotCtx<'a> {
             .command_buffer_count(1);
         let commbuf = unsafe { device.allocate_command_buffers(&commandbuf_allocate_info) }?[0];
         let fence = device.create_fence(false)?;
-        // FIXME! extend
-        println!("Init: src extent: {:?}", &extent);
         let extent = vk::Extent3D {
             width: extent.width,
             height: return_aligned(extent.height, 2),
             depth: 1,
         };
-        println!("Init: dst extent: {:?}", &extent);
 
         let dst_format = match src_format {
             vk::Format::B8G8R8A8_SRGB => vk::Format::R8G8B8A8_SRGB,
