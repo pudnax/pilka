@@ -55,7 +55,7 @@ float worldSDF(in vec3 pos) {
 }
 
 void main() {
-    vec2 uv = (uv + -0.5) * 2.0 / vec2(pc.resolution.y / pc.resolution.x, 1);
+    vec2 uu = (uv + -0.5) * 2.0 / vec2(pc.resolution.y / pc.resolution.x, 1);
 
 	vec3 O = vec3(0.0, 0.0, 3.0);
 	vec3 D = normalize(vec3(uu, -2.));
