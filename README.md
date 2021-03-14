@@ -1,5 +1,7 @@
 # pilka 🔩
 
+[![Crates.io](https://img.shields.io/crates/v/pilka.svg)](https://crates.io/crates/pilka)
+
 Pilka is a cross-platform live-coding tool for creating shader\* demos,
 similar to [Bonzomatic](https://github.com/Gargaj/Bonzomatic) or [KodeLife](https://hexler.net/products/kodelife). Supports hot-reloading, which means
 resources is checked and updated in the background.

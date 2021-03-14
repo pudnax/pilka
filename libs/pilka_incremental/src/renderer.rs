@@ -1297,8 +1297,13 @@ impl<'a> PilkaRender<'a> {
             ImageLayout::TRANSFER_DST_OPTIMAL,
         );
 
-        self.device
-            .blit_image(copybuffer, present_image, copy_image, extent, extent);
+        self.device.blit_image(
+            copybuffer,
+            present_image,
+            copy_image,
+            extent,
+            self.screenshot_ctx.extent,
+        );
 
         if let Some(ref blit_image) = self.screenshot_ctx.blit_image {
             transport_barrier(
@@ -1313,8 +1318,12 @@ impl<'a> PilkaRender<'a> {
                 ImageLayout::TRANSFER_SRC_OPTIMAL,
             );
 
-            self.device
-                .copy_image(copybuffer, copy_image, blit_image.image, extent);
+            self.device.copy_image(
+                copybuffer,
+                copy_image,
+                blit_image.image,
+                self.screenshot_ctx.extent,
+            );
         }
 
         transport_barrier(
@@ -1564,11 +1573,14 @@ impl<'a> ScreenshotCtx<'a> {
             .command_buffer_count(1);
         let commbuf = unsafe { device.allocate_command_buffers(&commandbuf_allocate_info) }?[0];
         let fence = device.create_fence(false)?;
+        // FIXME! extend
+        println!("Init: src extent: {:?}", &extent);
         let extent = vk::Extent3D {
             width: extent.width,
-            height: extent.height,
+            height: return_aligned(extent.height, 2),
             depth: 1,
         };
+        println!("Init: dst extent: {:?}", &extent);
 
         let dst_format = match src_format {
             vk::Format::B8G8R8A8_SRGB => vk::Format::R8G8B8A8_SRGB,
@@ -1664,9 +1676,12 @@ impl<'a> ScreenshotCtx<'a> {
         &mut self,
         device: &VkDevice,
         device_properties: &VkDeviceProperties,
-        extent: vk::Extent3D,
+        mut extent: vk::Extent3D,
     ) -> VkResult<()> {
         if self.extent != extent {
+            extent.height = return_aligned(extent.height, 2);
+            self.extent = extent;
+
             unsafe { device.destroy_image(self.image.image, None) };
 
             let mut image_create_info = vk::ImageCreateInfo::builder()
