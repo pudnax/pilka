@@ -113,10 +113,8 @@ temporary solution after which I switch to [rav1e](https://github.com/xiph/rav1e
 All the examples are in the `examples` folder and to run them,
 compile project and run `pilka` inside of approciate example folder.
 
-| cube                              |    cellular automata                                            | line segment |
-|-----------------------------------|-----------------------------------------------------------------|--------------|
-| ![cube](./examples/cube/cube.gif) | ![automata](./examples/cellular_automata/cellular-automata.gif) | ![line](./examples/line_segment/line-segment.gif) |
-| mobius strip | circle pattern | menger sponge |
-| ![mobius strip](./examples/mobius_strip/mobius.jpg) | ![pattern](./examples/circle_pattern/circle-pattern.gif) | ![spoonge](./examples/menger_sponge/sponge.jpg) |
-| dithering | | |
-| ![spoonge](./examples/dithering/dithering.gif)
+| cube                                                | cellular automata                                               | line segment                                      |
+|-----------------------------------------------------|-----------------------------------------------------------------|---------------------------------------------------|
+| ![cube](./examples/cube/cube.gif)                   | ![automata](./examples/cellular_automata/cellular-automata.gif) | ![line](./examples/line_segment/line-segment.gif) |
+| dithering                                           | circle pattern                                                  | menger sponge                                     |
+| ![dithering](./examples/dithering/dithering.gif)    | ![pattern](./examples/circle_pattern/circle-pattern.gif)        | ![spoonge](./examples/menger_sponge/sponge.jpg)   |
