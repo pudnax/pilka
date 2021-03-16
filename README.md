@@ -21,8 +21,7 @@ Available features:
 In current state `pilka` tries to seek `shaders` folder with the files
 `shader.vert` and `shader.frag`, on fail `pilka` will generate
 default setup for you. Then open shader in your favourite code editor (VS,
-emacs, vim, ed etc.) and `pilka` would fetch changes recompiling
-shaders after each save.
+emacs, vim, ed etc.) and `pilka` would fetch changes after each save.
 
 ## Controls
 
