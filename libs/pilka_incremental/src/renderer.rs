@@ -95,7 +95,6 @@ fn compute_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetL
 /// Or in the other words it's the same order that they're declared.
 pub struct PilkaRender<'a> {
     pub paused: bool,
-    pub frame_num: usize,
 
     descriptor_pool: vk::DescriptorPool,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
@@ -147,6 +146,7 @@ pub struct PushConstant {
     pub mouse: [f32; 2],
     pub spectrum: f32,
     pub mouse_pressed: vk::Bool32,
+    pub frame: u32,
 }
 
 impl PushConstant {
@@ -303,6 +303,7 @@ impl<'a> PilkaRender<'a> {
             time: 0.,
             spectrum: 0.,
             mouse_pressed: false as _,
+            frame: 0,
         };
 
         let pipeline_cache_create_info = vk::PipelineCacheCreateInfo::builder();
@@ -510,7 +511,6 @@ impl<'a> PilkaRender<'a> {
 
         Ok(Self {
             paused: false,
-            frame_num: 0,
 
             instance,
             device,
@@ -806,7 +806,7 @@ impl<'a> PilkaRender<'a> {
             Err(e) => panic!("Unexpected error on presenting image: {}", e),
         }
 
-        self.frame_num += 1;
+        self.push_constant.frame += 1;
 
         Ok(())
     }
