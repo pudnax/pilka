@@ -9,7 +9,7 @@ pub struct AudioConfig {
     pub host_id: HostId,
 }
 
-pub fn create_audio_stream() -> Result<(Stream, Receiver<f32>, AudioConfig)> {
+pub fn create_audio_stream() -> Result<(Stream, Receiver<[f32; 1024 * 2]>, AudioConfig)> {
     let host = cpal::default_host();
 
     let device = host
@@ -26,22 +26,33 @@ pub fn create_audio_stream() -> Result<(Stream, Receiver<f32>, AudioConfig)> {
 
     let (audio_tx, audio_rx) = std::sync::mpsc::channel();
 
-    fn write_input_data<T>(input: &[T], tx: &Sender<f32>)
+    fn write_input_data<T>(input: &[T], tx: &Sender<[f32; 1024 * 2]>)
     where
         T: cpal::Sample,
     {
         let sample = input
             .iter()
-            .map(|s| cpal::Sample::from(s))
-            .map(|s: T| s.to_f32())
+            .map(|s| s.to_f32())
+            .inspect(|x| print!("{:.03}, ", x))
             .sum::<f32>()
             / input.len() as f32;
 
-        tx.send(sample.max(-1.0).min(1.0)).ok();
+        let mut s = [0f32; 1024 * 2];
+        for (si, ii) in s.iter_mut().zip(input.iter()) {
+            *si = ii.to_f32();
+        }
+
+        println!("{} : {}", input.len(), sample);
+        // tx.send(sample.max(-1.0).min(1.0)).ok();
+
+        tx.send(s);
     }
     let stream = device.build_input_stream(
         &config.into(),
-        move |data, _: &_| write_input_data::<f32>(data, &audio_tx),
+        move |data, cx: &_| {
+            write_input_data::<f32>(data, &audio_tx);
+            dbg!(cx);
+        },
         err_fn,
     )?;
 
