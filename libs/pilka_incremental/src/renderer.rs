@@ -50,19 +50,19 @@ fn graphics_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSet
         unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }?
     };
 
-    // let fft_descriptor_set_layout = {
-    //     let descriptor_set_layout_binding_descs = [vk::DescriptorSetLayoutBinding::builder()
-    //         .binding(0)
-    //         .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-    //         .descriptor_count(1)
-    //         .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-    //         .build()];
-    //     let descriptor_set_layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
-    //         .bindings(&descriptor_set_layout_binding_descs);
-    //     unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }?
-    // };
+    let fft_descriptor_set_layout = {
+        let descriptor_set_layout_binding_descs = [vk::DescriptorSetLayoutBinding::builder()
+            .binding(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .build()];
+        let descriptor_set_layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
+            .bindings(&descriptor_set_layout_binding_descs);
+        unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }?
+    };
 
-    Ok(vec![descriptor_set_layout])
+    Ok(vec![descriptor_set_layout, fft_descriptor_set_layout])
 }
 
 fn compute_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetLayout>> {
@@ -104,19 +104,19 @@ fn compute_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetL
         unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }?
     };
 
-    // let fft_descriptor_set_layout = {
-    //     let descriptor_set_layout_binding_descs = [vk::DescriptorSetLayoutBinding::builder()
-    //         .binding(0)
-    //         .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-    //         .descriptor_count(1)
-    //         .stage_flags(vk::ShaderStageFlags::COMPUTE)
-    //         .build()];
-    //     let descriptor_set_layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
-    //         .bindings(&descriptor_set_layout_binding_descs);
-    //     unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }?
-    // };
+    let fft_descriptor_set_layout = {
+        let descriptor_set_layout_binding_descs = [vk::DescriptorSetLayoutBinding::builder()
+            .binding(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::COMPUTE)
+            .build()];
+        let descriptor_set_layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
+            .bindings(&descriptor_set_layout_binding_descs);
+        unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }?
+    };
 
-    Ok(vec![descriptor_set_layout])
+    Ok(vec![descriptor_set_layout, fft_descriptor_set_layout])
 }
 
 /// The main struct that holds all render primitives
@@ -132,7 +132,8 @@ pub struct PilkaRender<'a> {
     descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
     descriptor_set_layouts_compute: Vec<vk::DescriptorSetLayout>,
 
-    // fft_texture: FftTexture<'a>,
+    fft_texture: FftTexture<'a>,
+
     previous_frame: VkTexture,
     generic_texture: VkTexture,
     dummy_texture: VkTexture,
@@ -353,6 +354,7 @@ impl<'a> PilkaRender<'a> {
             need2steps,
         )?;
 
+        let fft_texture = FftTexture::new(&device, &device_properties, &command_pool_transfer)?;
         let screen_sized_texture = |format| -> VkResult<VkTexture> {
             let extent = vk::Extent3D {
                 width: extent.width,
@@ -407,9 +409,11 @@ impl<'a> PilkaRender<'a> {
         name_image(dummy_texture.image.image, "Dummy Texture")?;
         name_image(float_texture1.image.image, "Float Texture 1")?;
         name_image(float_texture2.image.image, "Float Texture 2")?;
+        name_image(fft_texture.texture.image.image, "FFT Texture")?;
         {
             let images = [
                 previous_frame.image.image,
+                fft_texture.texture.image.image
                 // self.generic_texture.image.image,
                 // self.dummy_texture.image.image,
                 // self.float_texture1.image.image,
@@ -435,50 +439,56 @@ impl<'a> PilkaRender<'a> {
                 },
             )?;
         }
-        let fft_texture = FftTexture::new(&device, &device_properties)?;
 
         let pool_sizes = [
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 10,
+                descriptor_count: 24,
             },
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::STORAGE_IMAGE,
-                descriptor_count: 10,
+                descriptor_count: 16,
             },
         ];
         let descriptor_pool_info = vk::DescriptorPoolCreateInfo::builder()
-            .max_sets(2)
+            .max_sets(4)
             .pool_sizes(&pool_sizes);
         let descriptor_pool =
             unsafe { device.create_descriptor_pool(&descriptor_pool_info, None) }?;
 
-        let image_infos = [
-            vk::DescriptorImageInfo {
+        let image_infos: &[&[vk::DescriptorImageInfo]] = &[
+            &[
+                vk::DescriptorImageInfo {
+                    image_layout: vk::ImageLayout::GENERAL,
+                    image_view: previous_frame.image_view,
+                    sampler: previous_frame.sampler,
+                },
+                vk::DescriptorImageInfo {
+                    image_layout: vk::ImageLayout::GENERAL,
+                    image_view: generic_texture.image_view,
+                    sampler: generic_texture.sampler,
+                },
+                vk::DescriptorImageInfo {
+                    image_layout: vk::ImageLayout::GENERAL,
+                    image_view: dummy_texture.image_view,
+                    sampler: dummy_texture.sampler,
+                },
+                vk::DescriptorImageInfo {
+                    image_layout: vk::ImageLayout::GENERAL,
+                    image_view: float_texture1.image_view,
+                    sampler: float_texture1.sampler,
+                },
+                vk::DescriptorImageInfo {
+                    image_layout: vk::ImageLayout::GENERAL,
+                    image_view: float_texture2.image_view,
+                    sampler: float_texture2.sampler,
+                },
+            ],
+            &[vk::DescriptorImageInfo {
                 image_layout: vk::ImageLayout::GENERAL,
-                image_view: previous_frame.image_view,
-                sampler: previous_frame.sampler,
-            },
-            vk::DescriptorImageInfo {
-                image_layout: vk::ImageLayout::GENERAL,
-                image_view: generic_texture.image_view,
-                sampler: generic_texture.sampler,
-            },
-            vk::DescriptorImageInfo {
-                image_layout: vk::ImageLayout::GENERAL,
-                image_view: dummy_texture.image_view,
-                sampler: dummy_texture.sampler,
-            },
-            vk::DescriptorImageInfo {
-                image_layout: vk::ImageLayout::GENERAL,
-                image_view: float_texture1.image_view,
-                sampler: float_texture1.sampler,
-            },
-            vk::DescriptorImageInfo {
-                image_layout: vk::ImageLayout::GENERAL,
-                image_view: float_texture2.image_view,
-                sampler: float_texture2.sampler,
-            },
+                image_view: fft_texture.texture.image_view,
+                sampler: fft_texture.texture.sampler,
+            }],
         ];
 
         let descriptor_set_layouts_graphics = graphics_desc_set_leyout(&device)?;
@@ -488,13 +498,14 @@ impl<'a> PilkaRender<'a> {
         let descriptor_sets =
             unsafe { device.allocate_descriptor_sets(&descriptor_set_allocate_info) }?;
 
-        for (i, descset) in descriptor_sets.iter().enumerate() {
+        for (_, (descset, image_info)) in descriptor_sets.iter().zip(image_infos.iter()).enumerate()
+        {
             let desc_sets_write = [vk::WriteDescriptorSet::builder()
                 .dst_set(*descset)
-                .dst_binding(i as _)
+                .dst_binding(0)
                 .dst_array_element(0)
                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .image_info(&image_infos)
+                .image_info(image_info)
                 .build()];
             unsafe { device.update_descriptor_sets(&desc_sets_write, &[]) };
         }
@@ -506,13 +517,20 @@ impl<'a> PilkaRender<'a> {
         let descriptor_sets_compute =
             unsafe { device.allocate_descriptor_sets(&descriptor_set_allocate_info) }?;
 
-        for (i, descset) in descriptor_sets_compute.iter().enumerate() {
+        for (i, (descset, image_info)) in descriptor_sets_compute
+            .iter()
+            .zip(image_infos.iter())
+            .enumerate()
+        {
+            #[rustfmt::skip]
+            let desc_type = if i == 0 { vk::DescriptorType::STORAGE_IMAGE
+                                } else { vk::DescriptorType::COMBINED_IMAGE_SAMPLER };
             let desc_sets_write = [vk::WriteDescriptorSet::builder()
                 .dst_set(*descset)
-                .dst_binding(i as _)
+                .dst_binding(0)
                 .dst_array_element(0)
-                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-                .image_info(&image_infos)
+                .descriptor_type(desc_type)
+                .image_info(image_info)
                 .build()];
             unsafe { device.update_descriptor_sets(&desc_sets_write, &[]) };
         }
@@ -555,7 +573,8 @@ impl<'a> PilkaRender<'a> {
             generic_texture,
             dummy_texture,
 
-            // fft_texture,
+            fft_texture,
+
             descriptor_pool,
             descriptor_sets,
             descriptor_sets_compute,
@@ -962,7 +981,7 @@ impl<'a> PilkaRender<'a> {
             },
         ];
 
-        for (i, descset) in self.descriptor_sets.iter().enumerate() {
+        for (i, descset) in self.descriptor_sets.iter().enumerate().take(1) {
             let desc_sets_write = [vk::WriteDescriptorSet::builder()
                 .dst_set(*descset)
                 .dst_binding(i as _)
@@ -973,7 +992,7 @@ impl<'a> PilkaRender<'a> {
             unsafe { self.device.update_descriptor_sets(&desc_sets_write, &[]) };
         }
 
-        for (i, descset) in self.descriptor_sets_compute.iter().enumerate() {
+        for (i, descset) in self.descriptor_sets_compute.iter().enumerate().take(1) {
             let desc_sets_write = [vk::WriteDescriptorSet::builder()
                 .dst_set(*descset)
                 .dst_binding(i as _)
@@ -1352,6 +1371,11 @@ impl<'a> PilkaRender<'a> {
 
         Ok((&self.screenshot_ctx.data[..(w * h * 4) as usize], (w, h)))
     }
+
+    pub fn update_fft_texture(&mut self, data: &[f32]) -> VkResult<()> {
+        self.fft_texture
+            .update(data, &self.device, self.queues.transfer_queue.queue)
+    }
 }
 
 impl<'a> Drop for PilkaRender<'a> {
@@ -1365,6 +1389,8 @@ impl<'a> Drop for PilkaRender<'a> {
             }
             self.device
                 .destroy_descriptor_pool(self.descriptor_pool, None);
+
+            self.fft_texture.destroy(&self.device);
 
             self.float_texture2.destroy(&self.device);
             self.float_texture1.destroy(&self.device);
@@ -1733,11 +1759,18 @@ impl<'a> ScreenshotCtx<'a> {
 struct FftTexture<'a> {
     texture: VkTexture,
     staging_buffer: vk::Buffer,
+    staging_buffer_memory: vk::DeviceMemory,
     mapped_memory: &'a mut [f32],
+    command_buffer: vk::CommandBuffer,
+    fence: vk::Fence,
 }
 
 impl<'a> FftTexture<'a> {
-    fn new(device: &VkDevice, device_properties: &VkDeviceProperties) -> VkResult<Self> {
+    fn new(
+        device: &VkDevice,
+        device_properties: &VkDeviceProperties,
+        command_pool: &VkCommandPool,
+    ) -> VkResult<Self> {
         let extent = vk::Extent3D {
             width: FFT_SIZE,
             height: 1,
@@ -1825,20 +1858,128 @@ impl<'a> FftTexture<'a> {
             )
         };
 
+        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+            .command_buffer_count(1)
+            .command_pool(command_pool.pool)
+            .level(vk::CommandBufferLevel::PRIMARY);
+
+        let command_buffer =
+            unsafe { device.allocate_command_buffers(&command_buffer_allocate_info) }?[0];
+
+        let fence = device.create_fence(true)?;
+
         Ok(Self {
             texture,
             staging_buffer,
+            staging_buffer_memory,
             mapped_memory,
+            command_buffer,
+            fence,
         })
     }
 
-    pub fn update(&mut self, data: &[f32]) {
+    pub fn update(
+        &mut self,
+        data: &[f32],
+        device: &VkDevice,
+        submit_queue: vk::Queue,
+    ) -> VkResult<()> {
+        let regions = [vk::BufferImageCopy {
+            image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+            image_extent: vk::Extent3D {
+                width: FFT_SIZE,
+                height: 1,
+                depth: 1,
+            },
+            buffer_offset: 0,
+            buffer_row_length: FFT_SIZE,
+            buffer_image_height: 1,
+            image_subresource: vk::ImageSubresourceLayers {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                layer_count: 1,
+                base_array_layer: 0,
+                mip_level: 0,
+            },
+        }];
+        let subresource_range = vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            base_mip_level: 0,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1,
+        };
+        let submit_fence = self.fence;
+        let command_buffer = self.command_buffer;
+
+        unsafe { device.wait_for_fences(&[submit_fence], true, std::u64::MAX) }?;
+        unsafe { device.reset_fences(&[submit_fence]) }?;
+
+        unsafe {
+            device.reset_command_buffer(
+                command_buffer,
+                vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+            )
+        }?;
+
+        let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+        unsafe { device.begin_command_buffer(command_buffer, &command_buffer_begin_info) }?;
+
+        let image = self.texture.image.image;
+        let barier = |old_layout, new_layout, sq, dq| {
+            device.set_image_layout_with_subresource(
+                command_buffer,
+                image,
+                old_layout,
+                new_layout,
+                subresource_range,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::TRANSFER,
+                Some(sq),
+                Some(dq),
+            )
+        };
+
+        barier(
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            1,
+            1,
+        );
         self.mapped_memory.copy_from_slice(data);
+        unsafe {
+            device.cmd_copy_buffer_to_image(
+                command_buffer,
+                self.staging_buffer,
+                image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &regions,
+            );
+        }
+        barier(
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::GENERAL,
+            1,
+            1,
+        );
+
+        unsafe { device.end_command_buffer(command_buffer) }?;
+
+        let command_buffers = [command_buffer];
+
+        let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
+
+        unsafe { device.queue_submit(submit_queue, &[submit_info.build()], submit_fence) }?;
+
+        Ok(())
     }
 
     fn destroy(&mut self, device: &VkDevice) {
         unsafe {
+            device.destroy_fence(self.fence, None);
             self.texture.destroy(device);
+            device.free_memory(self.staging_buffer_memory, None);
             device.destroy_buffer(self.staging_buffer, None);
         }
     }

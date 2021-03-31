@@ -159,6 +159,8 @@ impl VkTexture {
             subresource_range,
             vk::PipelineStageFlags::ALL_COMMANDS,
             vk::PipelineStageFlags::ALL_COMMANDS,
+            None,
+            None,
         );
 
         unsafe {
@@ -179,6 +181,8 @@ impl VkTexture {
             subresource_range,
             vk::PipelineStageFlags::ALL_COMMANDS,
             vk::PipelineStageFlags::ALL_COMMANDS,
+            None,
+            None,
         );
 
         device.flush_cmd_buffer(&copy_cmd, &copy_queue, command_pool, true)?;
@@ -324,6 +328,8 @@ impl VkTexture {
             subresource_range,
             vk::PipelineStageFlags::ALL_COMMANDS,
             vk::PipelineStageFlags::ALL_COMMANDS,
+            None,
+            None,
         );
 
         device.flush_cmd_buffer(
