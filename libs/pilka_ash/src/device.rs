@@ -203,7 +203,7 @@ impl VkDevice {
             .get_present_modes(self)?
             .iter()
             .cloned()
-            .find(|&mode| mode == vk::PresentModeKHR::FIFO)
+            .find(|&mode| mode == vk::PresentModeKHR::IMMEDIATE)
             .unwrap_or(vk::PresentModeKHR::FIFO);
 
         let surface_format = {
@@ -276,7 +276,7 @@ impl VkDevice {
         flags: vk::MemoryPropertyFlags,
     ) -> VkResult<vk::DeviceMemory> {
         let memory_type_index =
-            utils::find_memorytype_index(&allocation_reqs, &memory_properties, flags).unwrap();
+            utils::find_memory_type_index(&allocation_reqs, &memory_properties, flags).unwrap();
         let alloc_info = vk::MemoryAllocateInfo::builder()
             .allocation_size(allocation_reqs.size)
             .memory_type_index(memory_type_index);

@@ -77,7 +77,9 @@ impl VkTexture {
         let staging_buffer_memory = device.alloc_memory(
             &memory_properties,
             staging_buffer_mem_reqs,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk::MemoryPropertyFlags::HOST_VISIBLE
+                | vk::MemoryPropertyFlags::HOST_COHERENT
+                | vk::MemoryPropertyFlags::HOST_CACHED,
         )?;
         unsafe { device.bind_buffer_memory(staging_buffer, staging_buffer_memory, 0) }?;
 
