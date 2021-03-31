@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use rustfft::{num_complex::Complex32, Fft, FftPlanner};
 
-const FFT_SIZE: usize = 1024 * 2;
+pub const FFT_SIZE: usize = 1024 * 2;
 const AMPLIFICATION: f32 = 1.;
 
 pub struct AudioContext {

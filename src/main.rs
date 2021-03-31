@@ -142,9 +142,9 @@ fn main() -> Result<()> {
                 };
 
                 if !pause {
-                    // if let Ok(spectrum) = audio_rx.try_recv() {
-                    //     pilka.push_constant.spectrum = spectrum;
-                    // }
+                    let mut tmp_buf = [0f32; audio::FFT_SIZE];
+                    audio_context.get_fft(&mut tmp_buf);
+                    pilka.update_fft_texture(&tmp_buf).unwrap();
 
                     input.process_position(&mut pilka.push_constant);
                 }
