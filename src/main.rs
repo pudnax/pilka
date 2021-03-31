@@ -13,7 +13,6 @@ mod recorder;
 use pilka::create_folder;
 
 use ash::{version::DeviceV1_0, vk, SHADER_ENTRY_POINT, SHADER_PATH};
-use cpal::traits::StreamTrait;
 use eyre::*;
 use notify::{
     event::{EventKind, ModifyKind},
@@ -41,9 +40,9 @@ fn main() -> Result<()> {
     // Initialize error hook.
     color_eyre::install()?;
 
-    let (stream, audio_rx, audio_config) = audio::create_audio_stream()?;
+    let mut audio_context = audio::AudioContext::new()?;
 
-    stream.play()?;
+    audio_context.play()?;
 
     let mut input = input::Input::new();
     let mut pause = false;
@@ -83,10 +82,10 @@ fn main() -> Result<()> {
     println!("Device name: {}", pilka.get_device_name()?);
     println!("Device type: {:?}", pilka.get_device_type());
     println!("Vulkan version: {}", pilka.get_vulkan_version_name()?);
-    println!("Audio host: {:?}", audio_config.host_id);
+    println!("Audio host: {:?}", audio_context.host_id);
     println!(
         "Sample rate: {}, channels: {}",
-        audio_config.sample_rate, audio_config.num_channels
+        audio_context.sample_rate, audio_context.num_channels
     );
     println!("{}", ffmpeg_version);
     println!(
@@ -143,9 +142,9 @@ fn main() -> Result<()> {
                 };
 
                 if !pause {
-                    if let Ok(spectrum) = audio_rx.try_recv() {
-                        pilka.push_constant.spectrum = spectrum;
-                    }
+                    // if let Ok(spectrum) = audio_rx.try_recv() {
+                    //     pilka.push_constant.spectrum = spectrum;
+                    // }
 
                     input.process_position(&mut pilka.push_constant);
                 }
