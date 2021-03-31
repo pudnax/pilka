@@ -21,12 +21,15 @@ pub fn find_memory_type_index(
     })
 }
 
-fn find_memorytype_index_f<F: Fn(vk::MemoryPropertyFlags, vk::MemoryPropertyFlags) -> bool>(
+fn find_memorytype_index_f<F>(
     memory_req: &vk::MemoryRequirements,
     memory_prop: &vk::PhysicalDeviceMemoryProperties,
     flags: vk::MemoryPropertyFlags,
     f: F,
-) -> Option<u32> {
+) -> Option<u32>
+where
+    F: Fn(vk::MemoryPropertyFlags, vk::MemoryPropertyFlags) -> bool,
+{
     let mut memory_type_bits = memory_req.memory_type_bits;
     for (index, ref memory_type) in memory_prop.memory_types.iter().enumerate() {
         if memory_type_bits & 1 == 1 && f(memory_type.property_flags, flags) {
