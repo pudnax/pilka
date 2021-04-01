@@ -62,6 +62,7 @@ impl AudioContext {
         };
         Ok(config)
     }
+
     pub fn play(&mut self) -> Result<(), PlayStreamError> {
         self.stream.play()
     }
@@ -73,7 +74,7 @@ impl AudioContext {
 
         let scaling = 2. / (buf.len() as f32 * buf.len() as f32);
         out.iter_mut()
-            .zip(buf.iter().map(|s| s.norm() * scaling))
+            .zip(buf.iter().map(|s| s.re * scaling))
             .for_each(|(l, r)| *l = r);
     }
 }
@@ -82,11 +83,12 @@ fn write_input_data<T>(input: &[T], buff: &mut [Complex32])
 where
     T: cpal::Sample,
 {
-    let size = input.len().min(buff.len());
+    let buff_size = buff.len();
+    let diff = buff_size - input.len().min(buff_size);
 
-    buff.rotate_right(size);
+    buff.rotate_right(diff);
     buff.iter_mut()
-        .skip(size)
+        .skip(diff)
         .zip(input.iter().map(|s| s.to_f32()))
         .for_each(|(l, r)| *l = (r * AMPLIFICATION).into());
 }
