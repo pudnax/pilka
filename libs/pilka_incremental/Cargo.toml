@@ -1,6 +1,6 @@
 [package]
 name = "pilka_incremental"
-version = "0.4.2"
+version = "0.4.3"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2018"
 license = "GPL-2.0-or-later"
@@ -19,4 +19,4 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 pilka_winit = { version = "0.3.1", path = "./../pilka_winit" }
-pilka_ash = { version = "0.3.1", path = "./../pilka_ash" }
+pilka_ash = { version = "0.4.3", path = "./../pilka_ash" }
