@@ -1,6 +1,6 @@
 [package]
 name = "pilka_incremental"
-version = "0.3.3"
+version = "0.4.2"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2018"
 license = "GPL-2.0-or-later"

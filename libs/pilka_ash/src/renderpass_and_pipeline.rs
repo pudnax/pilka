@@ -35,6 +35,7 @@ impl Drop for VkRenderPass {
 
 pub struct PipelineDescriptor {
     pub color_blend_attachments: Box<[vk::PipelineColorBlendAttachmentState]>,
+    pub dynamic_state_info: vk::PipelineDynamicStateCreateInfo,
     pub dynamic_state: Box<[vk::DynamicState]>,
     pub shader_stages: Box<[vk::PipelineShaderStageCreateInfo]>,
     pub vertex_input: vk::PipelineVertexInputStateCreateInfo,
@@ -43,7 +44,6 @@ pub struct PipelineDescriptor {
     pub multisample: vk::PipelineMultisampleStateCreateInfo,
     pub depth_stencil: vk::PipelineDepthStencilStateCreateInfo,
     pub color_blend: vk::PipelineColorBlendStateCreateInfo,
-    pub dynamic_state_info: vk::PipelineDynamicStateCreateInfo,
 }
 
 impl PipelineDescriptor {
@@ -114,16 +114,16 @@ impl PipelineDescriptor {
             .build();
 
         Self {
+            color_blend_attachments,
+            dynamic_state_info,
+            dynamic_state,
             shader_stages,
             vertex_input,
             input_assembly,
             rasterization,
             multisample,
             depth_stencil,
-            color_blend_attachments,
             color_blend,
-            dynamic_state,
-            dynamic_state_info,
         }
     }
 }
@@ -267,11 +267,11 @@ impl VkComputePipeline {
             pipeline,
             pipeline_layout,
             descriptor_set_layouts,
-            device,
-            cs_info,
             command_pool,
             command_buffer,
             semaphore,
+            cs_info,
+            device,
         })
     }
 }
