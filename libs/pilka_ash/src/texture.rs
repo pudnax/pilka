@@ -77,7 +77,9 @@ impl VkTexture {
         let staging_buffer_memory = device.alloc_memory(
             &memory_properties,
             staging_buffer_mem_reqs,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk::MemoryPropertyFlags::HOST_VISIBLE
+                | vk::MemoryPropertyFlags::HOST_COHERENT
+                | vk::MemoryPropertyFlags::HOST_CACHED,
         )?;
         unsafe { device.bind_buffer_memory(staging_buffer, staging_buffer_memory, 0) }?;
 
@@ -157,6 +159,8 @@ impl VkTexture {
             subresource_range,
             vk::PipelineStageFlags::ALL_COMMANDS,
             vk::PipelineStageFlags::ALL_COMMANDS,
+            None,
+            None,
         );
 
         unsafe {
@@ -177,6 +181,8 @@ impl VkTexture {
             subresource_range,
             vk::PipelineStageFlags::ALL_COMMANDS,
             vk::PipelineStageFlags::ALL_COMMANDS,
+            None,
+            None,
         );
 
         device.flush_cmd_buffer(&copy_cmd, &copy_queue, command_pool, true)?;
@@ -322,6 +328,8 @@ impl VkTexture {
             subresource_range,
             vk::PipelineStageFlags::ALL_COMMANDS,
             vk::PipelineStageFlags::ALL_COMMANDS,
+            None,
+            None,
         );
 
         device.flush_cmd_buffer(

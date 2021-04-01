@@ -12,6 +12,7 @@ Available features:
 - [x] Saving shaders
 - [x] Taking screenshot
 - [x] Record video
+- [x] Compute pipeline for post processing
 
 ![preview](boring_tunnel.png)
 
@@ -20,8 +21,7 @@ Available features:
 In current state `pilka` tries to seek `shaders` folder with the files
 `shader.vert` and `shader.frag`, on fail `pilka` will generate
 default setup for you. Then open shader in your favourite code editor (VS,
-emacs, vim, ed etc.) and `pilka` would fetch changes recompiling
-shaders after each save.
+emacs, vim, ed etc.) and `pilka` would fetch changes after each save.
 
 ## Controls
 
@@ -111,3 +111,9 @@ temporary solution after which I switch to [rav1e](https://github.com/xiph/rav1e
 
 All the examples are in the `examples` folder and to run them,
 compile project and run `pilka` inside of approciate example folder.
+
+| cube                                                | cellular automata                                               | line segment                                      |
+|-----------------------------------------------------|-----------------------------------------------------------------|---------------------------------------------------|
+| ![cube](./examples/cube/cube.gif)                   | ![automata](./examples/cellular_automata/cellular-automata.gif) | ![line](./examples/line_segment/line-segment.gif) |
+| dithering                                           | circle pattern                                                  | menger sponge                                     |
+| ![dithering](./examples/dithering/dithering.gif)    | ![pattern](./examples/circle_pattern/circle-pattern.gif)        | ![spoonge](./examples/menger_sponge/sponge.jpg)   |

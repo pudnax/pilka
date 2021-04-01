@@ -33,18 +33,21 @@ layout(location = 0) out vec4 out_color;
 layout(set = 0, binding = 0) uniform sampler2D previous_frame;
 layout(set = 0, binding = 1) uniform sampler2D generic_texture;
 layout(set = 0, binding = 2) uniform sampler2D dummy_texture;
-layout(set = 0, binding = 3) uniform sampler2D float_texture1;
-layout(set = 0, binding = 4) uniform sampler2D float_texture2;
 #define T(t) (texture(t, vec2(in_uv.x, -in_uv.y)))
 #define T_off(t,off) (texture(t, vec2(in_uv.x + off.x, -(in_uv.y + off.y))))
+
+layout(set = 0, binding = 3) uniform sampler2D float_texture1;
+layout(set = 0, binding = 4) uniform sampler2D float_texture2;
+
+layout(set = 1, binding = 0) uniform sampler1D fft_texture;
 
 layout(std430, push_constant) uniform PushConstant {
 	vec3 pos;
 	float time;
 	vec2 resolution;
 	vec2 mouse;
-	float spectrum;
 	bool mouse_pressed;
+    uint frame;
 } pc;
 
 float worldSDF(in vec3 pos) {
@@ -85,8 +88,8 @@ layout(std430, push_constant) uniform PushConstant {
 	float time;
 	vec2 resolution;
 	vec2 mouse;
-	float spectrum;
 	bool mouse_pressed;
+    uint frame;
 } pc;
 
 void main() {
@@ -101,8 +104,8 @@ layout(std430, push_constant) uniform PushConstant {
 	float time;
 	vec2 resolution;
 	vec2 mouse;
-	float spectrum;
 	bool mouse_pressed;
+    uint frame;
 } pc;
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
@@ -110,8 +113,11 @@ layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 layout (binding = 0, rgba8) uniform image2D previous_frame;
 layout (binding = 1, rgba8) uniform image2D generic_texture;
 layout (binding = 2, rgba8) uniform image2D dummy_texture;
+
 layout (binding = 3, r32f) uniform image2D float_texture1;
 layout (binding = 4, r32f) uniform image2D float_texture2;
+
+layout(set = 1, binding = 0) uniform sampler1D fft_texture;
 
 void main() {
     if (gl_GlobalInvocationID.x >= pc.resolution.x ||

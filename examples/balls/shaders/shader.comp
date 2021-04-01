@@ -22,4 +22,13 @@ void main() {
         gl_GlobalInvocationID.y >= pc.resolution.y) {
         return;
     }
+
+	float time = pc.time;
+	vec2 p = gl_GlobalInvocationID.xy;
+	float col = sin(p.x / 13.2 - cos(time) * 5) * cos(p.y / 25.1 + time);
+	col = 0.;
+	col = smoothstep(col, col+5.9, 0.2 + p.x/p.y);
+	/* col +=  cos(p.x) + sin(p.y + time); */
+
+	imageStore(generic_texture, ivec2(p), vec4(col));
 }
