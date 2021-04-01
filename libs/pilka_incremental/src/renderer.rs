@@ -177,7 +177,6 @@ pub struct PushConstant {
     pub time: f32,
     pub wh: [f32; 2],
     pub mouse: [f32; 2],
-    pub spectrum: f32,
     pub mouse_pressed: vk::Bool32,
     pub frame: u32,
 }
@@ -192,8 +191,8 @@ impl std::fmt::Display for PushConstant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "position:\t{:?}\ntime:\t\t{}\nwidth, height:\t{:?}\nmouse:\t\t{:?}\nspectrum:\t{}\n",
-            self.pos, self.time, self.wh, self.mouse, self.spectrum
+            "position:\t{:?}\ntime:\t\t{}\nwidth, height:\t{:?}\nmouse:\t\t{:?}\nframe:\t{}\n",
+            self.pos, self.time, self.wh, self.mouse, self.frame
         )
     }
 }
@@ -323,7 +322,6 @@ impl<'a> PilkaRender<'a> {
             wh: surface.resolution_slice(&device)?,
             mouse: [0.; 2],
             time: 0.,
-            spectrum: 0.,
             mouse_pressed: false as _,
             frame: 0,
         };
