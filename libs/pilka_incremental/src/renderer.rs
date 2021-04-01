@@ -411,11 +411,11 @@ impl<'a> PilkaRender<'a> {
         {
             let images = [
                 previous_frame.image.image,
-                fft_texture.texture.image.image
-                // self.generic_texture.image.image,
-                // self.dummy_texture.image.image,
-                // self.float_texture1.image.image,
-                // self.float_texture2.image.image,
+                fft_texture.texture.image.image,
+                generic_texture.image.image,
+                dummy_texture.image.image,
+                float_texture1.image.image,
+                float_texture2.image.image,
             ];
             command_pool.record_submit_commandbuffer(
                 &device,
@@ -925,10 +925,10 @@ impl<'a> PilkaRender<'a> {
         {
             let images = [
                 self.previous_frame.image.image,
-                // self.generic_texture.image.image,
-                // self.dummy_texture.image.image,
-                // self.float_texture1.image.image,
-                // self.float_texture2.image.image,
+                self.generic_texture.image.image,
+                self.dummy_texture.image.image,
+                self.float_texture1.image.image,
+                self.float_texture2.image.image,
             ];
             self.command_pool.record_submit_commandbuffer(
                 &self.device,
