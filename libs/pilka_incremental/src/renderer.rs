@@ -5,7 +5,7 @@ use pilka_ash::ash::{
     ShaderInfo, ShaderSet, *,
 };
 use pilka_ash::ash_window;
-use std::{collections::HashMap, ffi::CStr, path::PathBuf};
+use std::{collections::HashMap, ffi::CStr, io::Write, path::PathBuf};
 
 type Frame<'a> = (&'a [u8], (u32, u32));
 
@@ -1186,7 +1186,18 @@ impl<'a> PilkaRender<'a> {
             }
         };
         let new_pipeline = match self.make_pipeline_from_shaders(&shader_set) {
-            Ok(res) => res,
+            Ok(res) => {
+                const ESC: &str = "\x1B[";
+                const RESET: &str = "\x1B[0m";
+                eprint!("\r{}42m{}K{}\r", ESC, ESC, RESET);
+                std::io::stdout().flush().unwrap();
+                std::thread::spawn(|| {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    eprint!("\r{}40m{}K{}\r", ESC, ESC, RESET);
+                    std::io::stdout().flush().unwrap();
+                });
+                res
+            }
             Err(pilka_ash::ash::vk::Result::ERROR_UNKNOWN) => return Ok(()),
             Err(e) => return Err(e),
         };
