@@ -15,6 +15,7 @@ pub struct AudioContext {
     stream: Stream,
     sample_buffer: Arc<Mutex<Vec<Complex32>>>,
     fft: Arc<dyn Fft<f32>>,
+    inner: Vec<Complex32>,
     scratch_area: Vec<Complex32>,
 }
 
@@ -34,6 +35,7 @@ impl AudioContext {
             eprintln!("an error occured on stream: {}", err);
         };
 
+        let inner = vec![Complex32::default(); FFT_SIZE];
         let buff = Arc::new(Mutex::new(vec![Complex32::default(); FFT_SIZE]));
         let mut planner = FftPlanner::<f32>::new();
         let fft = planner.plan_fft_forward(FFT_SIZE);
@@ -58,6 +60,7 @@ impl AudioContext {
             stream,
             sample_buffer: buff,
             fft,
+            inner,
             scratch_area,
         };
         Ok(config)
@@ -70,11 +73,11 @@ impl AudioContext {
     pub fn get_fft(&mut self, out: &mut [f32]) {
         let mut buf = self.sample_buffer.lock().unwrap();
         self.fft
-            .process_with_scratch(&mut buf, &mut self.scratch_area);
+            .process_outofplace_with_scratch(&mut buf, &mut self.inner, &mut self.scratch_area);
 
         let scaling = 2. / (buf.len() as f32 * buf.len() as f32);
         out.iter_mut()
-            .zip(buf.iter().map(|s| s.re * scaling))
+            .zip(self.inner.iter().map(|s| s.norm() * scaling))
             .for_each(|(l, r)| *l = r);
     }
 }
