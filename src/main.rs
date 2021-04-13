@@ -42,8 +42,6 @@ fn main() -> Result<()> {
 
     let mut audio_context = audio::AudioContext::new()?;
 
-    audio_context.play()?;
-
     let mut input = input::Input::new();
     let mut pause = false;
     let mut time = Instant::now();

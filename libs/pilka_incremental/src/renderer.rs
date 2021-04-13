@@ -1383,7 +1383,7 @@ impl<'a> PilkaRender<'a> {
 
     pub fn update_fft_texture(&mut self, data: &[f32]) -> VkResult<()> {
         self.fft_texture
-            .update(data, &self.device, self.queues.transfer_queue.queue)
+            .update(data, &self.device, &self.queues.transfer_queue)
     }
 }
 
@@ -1891,7 +1891,7 @@ impl<'a> FftTexture<'a> {
         &mut self,
         data: &[f32],
         device: &VkDevice,
-        submit_queue: vk::Queue,
+        submit_queue: &VkQueue,
     ) -> VkResult<()> {
         let regions = [vk::BufferImageCopy {
             image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
@@ -1936,7 +1936,7 @@ impl<'a> FftTexture<'a> {
         unsafe { device.begin_command_buffer(command_buffer, &command_buffer_begin_info) }?;
 
         let image = self.texture.image.image;
-        let barier = |old_layout, new_layout, sq, dq| {
+        let barrier = |old_layout, new_layout, sq, dq| {
             device.set_image_layout_with_subresource(
                 command_buffer,
                 image,
@@ -1950,11 +1950,11 @@ impl<'a> FftTexture<'a> {
             )
         };
 
-        barier(
+        barrier(
             vk::ImageLayout::GENERAL,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            1,
-            1,
+            submit_queue.index,
+            submit_queue.index,
         );
         self.mapped_memory.copy_from_slice(data);
         unsafe {
@@ -1966,11 +1966,11 @@ impl<'a> FftTexture<'a> {
                 &regions,
             );
         }
-        barier(
+        barrier(
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             vk::ImageLayout::GENERAL,
-            1,
-            1,
+            submit_queue.index,
+            submit_queue.index,
         );
 
         unsafe { device.end_command_buffer(command_buffer) }?;
@@ -1979,7 +1979,7 @@ impl<'a> FftTexture<'a> {
 
         let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
 
-        unsafe { device.queue_submit(submit_queue, &[submit_info.build()], submit_fence) }?;
+        unsafe { device.queue_submit(submit_queue.queue, &[submit_info.build()], submit_fence) }?;
 
         Ok(())
     }
