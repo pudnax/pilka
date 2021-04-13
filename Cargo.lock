@@ -1330,7 +1330,7 @@ checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
 
 [[package]]
 name = "pilka"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "chrono",
  "color-eyre",
@@ -1364,7 +1364,7 @@ dependencies = [
 
 [[package]]
 name = "pilka_incremental"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "pilka_ash",
  "pilka_winit",
