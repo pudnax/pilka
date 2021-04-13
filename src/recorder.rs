@@ -7,6 +7,9 @@ use std::{
     sync::mpsc,
 };
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 use crate::create_folder;
 use crate::VIDEO_FOLDER;
 
