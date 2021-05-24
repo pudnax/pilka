@@ -109,7 +109,7 @@ temporary solution after which I switch to [rav1e](https://github.com/xiph/rav1e
 
 ## Examples
 
-All the examples are in the `examples` folder and to run them,
+All examples are in the `examples` folder and to run them,
 compile project and run `pilka` inside of approciate example folder.
 
 | cube                                                | cellular automata                                               | line segment                                      |
