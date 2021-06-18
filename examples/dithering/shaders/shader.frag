@@ -44,7 +44,7 @@ float sdTorus(vec3 p, vec2 t) {
 }
 
 float worldSDF(in vec3 p) {
-	float t = pc.time / 5;
+    float t = pc.time / 5;
     p.xz*=Rot(t*5.);
     p.xy*=Rot(t*7.);
     float scale = 0.6 + .2*sin(t * 10.);
@@ -67,7 +67,7 @@ float worldSDF2(vec3 p, float t) {
     p.xy*=Rot(t*7.);
     float scale = 0.6 + .2*sin(t * 10.);
     p /= scale;
-	return max(-sc(p, 0.8), length(max(abs(p) - vec3(1.), 0.))) * scale;
+    return max(-sc(p, 0.8), length(max(abs(p) - vec3(1.), 0.))) * scale;
 }
 
 vec2 ray_march2(vec3 rayPos, vec3 rayDir, float t) {
@@ -93,7 +93,7 @@ void main() {
 	vec3 color = vec3(0);
 
     for (int i = 0; i < 3; i++) {
-		vec2 rm = ray_march2(O, D, t);
+	vec2 rm = ray_march2(O, D, t);
         float d = rm[0];
         vec3 light = vec3(10,0,0);
         vec3 p = O + D * d;
@@ -108,10 +108,10 @@ void main() {
                     texture(float_texture1, (in_uv + 4.*float(i))/2.).x,
                     color[i]
                 );
-        } else {
-			float tex = texture(float_texture1, (in_uv + 8.*float(1))/32.).x * 0.03;
-			color = max(color, vec3(tex));
-		}
+            } else {
+		float tex = texture(float_texture1, (in_uv + 8.*float(1))/32.).x * 0.03;
+		color = max(color, vec3(tex));
+            }
         t += .011;
     }
 
