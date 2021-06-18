@@ -783,8 +783,8 @@ impl<'a> PilkaRender<'a> {
                                 vk::PipelineBindPoint::GRAPHICS,
                                 pipeline.pipeline,
                             );
-                            device.cmd_set_viewport(draw_command_buffer, 0, &viewports);
-                            device.cmd_set_scissor(draw_command_buffer, 0, &scissors);
+                            device.cmd_set_viewport(draw_command_buffer, 0, viewports);
+                            device.cmd_set_scissor(draw_command_buffer, 0, scissors);
                             device.cmd_bind_descriptor_sets(
                                 draw_command_buffer,
                                 vk::PipelineBindPoint::GRAPHICS,
@@ -1055,13 +1055,13 @@ impl<'a> PilkaRender<'a> {
                 frag: frag_info,
             } => {
                 let vert_module = create_shader_module(
-                    &vert_info,
+                    vert_info,
                     shaderc::ShaderKind::Vertex,
                     &mut self.compiler,
                     &self.device,
                 )?;
                 let frag_module = match create_shader_module(
-                    &frag_info,
+                    frag_info,
                     shaderc::ShaderKind::Fragment,
                     &mut self.compiler,
                     &self.device,
@@ -1090,8 +1090,8 @@ impl<'a> PilkaRender<'a> {
                 let new_pipeline = self.new_graphics_pipeline(
                     self.pipeline_cache,
                     shader_set,
-                    &vert_info,
-                    &frag_info,
+                    vert_info,
+                    frag_info,
                 )?;
 
                 unsafe {
@@ -1115,7 +1115,7 @@ impl<'a> PilkaRender<'a> {
                     stage: vk::ShaderStageFlags::COMPUTE,
                     ..Default::default()
                 };
-                let new_pipeline = self.new_compute_pipeline(shader_stage, &comp_info)?;
+                let new_pipeline = self.new_compute_pipeline(shader_stage, comp_info)?;
                 self.instance.name_object(
                     &self.device,
                     new_pipeline.semaphore,
@@ -1437,7 +1437,7 @@ impl VkImage {
         image_create_info: &vk::ImageCreateInfo,
         image_memory_flags: vk::MemoryPropertyFlags,
     ) -> VkResult<Self> {
-        let image = unsafe { device.create_image(&image_create_info, None) }?;
+        let image = unsafe { device.create_image(image_create_info, None) }?;
         let memory_reqs = unsafe { device.get_image_memory_requirements(image) };
 
         let memory = device.alloc_memory(memory_properties, memory_reqs, image_memory_flags)?;
@@ -1469,8 +1469,8 @@ impl VkTexture {
     ) -> VkResult<Self> {
         let image = VkImage::new(
             device,
-            &memory_properties,
-            &image_create_info,
+            memory_properties,
+            image_create_info,
             image_memory_flags,
         )?;
         let image_view_info = vk::ImageViewCreateInfo::builder()
@@ -1503,7 +1503,7 @@ impl VkTexture {
         width: u32,
         height: u32,
     ) -> VkResult<()> {
-        self.destroy(&device);
+        self.destroy(device);
         let extent = vk::Extent3D {
             width,
             height,
@@ -1532,8 +1532,8 @@ impl VkTexture {
             .max_anisotropy(0.);
 
         *self = Self::new(
-            &device,
-            &memory_properties,
+            device,
+            memory_properties,
             &image_create_info,
             image_memory_flags,
             &sampler_create_info,
@@ -1611,7 +1611,7 @@ impl<'a> ScreenshotCtx<'a> {
         let blit_image = if need2steps {
             let image = VkImage::new(
                 device,
-                &memory_properties,
+                memory_properties,
                 &image_create_info,
                 image_memory_flags,
             )?;
@@ -1626,7 +1626,7 @@ impl<'a> ScreenshotCtx<'a> {
 
         let image = VkImage::new(
             device,
-            &memory_properties,
+            memory_properties,
             &image_create_info,
             image_memory_flags,
         )?;
