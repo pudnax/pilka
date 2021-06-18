@@ -23,7 +23,7 @@ use std::{
     fs::File,
     io::BufWriter,
     path::{Path, PathBuf},
-    time::Instant,
+    time::{Duration, Instant},
 };
 use winit::{
     dpi::PhysicalPosition,
@@ -46,7 +46,7 @@ fn main() -> Result<()> {
     let mut pause = false;
     let mut time = Instant::now();
     let mut backup_time = time.elapsed();
-    let dt = 1. / 60.;
+    let dt = Duration::from_secs_f32(1. / 60.);
 
     let event_loop = winit::event_loop::EventLoop::new();
 
@@ -209,9 +209,7 @@ fn main() -> Result<()> {
                                 backup_time = time.elapsed();
                                 pause = true;
                             }
-                            backup_time = backup_time
-                                .checked_sub(std::time::Duration::from_secs_f32(dt))
-                                .unwrap_or_else(Default::default);
+                            backup_time = backup_time.saturating_sub(dt);
                         }
 
                         if VirtualKeyCode::F4 == keycode {
@@ -219,7 +217,7 @@ fn main() -> Result<()> {
                                 backup_time = time.elapsed();
                                 pause = true;
                             }
-                            backup_time += std::time::Duration::from_secs_f32(dt);
+                            backup_time += dt;
                         }
 
                         if VirtualKeyCode::F5 == keycode {

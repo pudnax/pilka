@@ -49,6 +49,7 @@ impl std::ops::Deref for RawDevice {
     }
 }
 
+#[derive(Debug)]
 pub struct VkDeviceProperties {
     pub memory: vk::PhysicalDeviceMemoryProperties,
     pub features: vk::PhysicalDeviceFeatures,
@@ -276,7 +277,7 @@ impl VkDevice {
         flags: vk::MemoryPropertyFlags,
     ) -> VkResult<vk::DeviceMemory> {
         let memory_type_index =
-            utils::find_memory_type_index(&allocation_reqs, &memory_properties, flags).unwrap();
+            utils::find_memory_type_index(&allocation_reqs, memory_properties, flags).unwrap();
         let alloc_info = vk::MemoryAllocateInfo::builder()
             .allocation_size(allocation_reqs.size)
             .memory_type_index(memory_type_index);
@@ -312,7 +313,7 @@ impl VkDevice {
         Ok(())
     }
 
-    #[allow(clippy::clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn set_image_layout_with_subresource(
         &self,
         cmd_buffer: vk::CommandBuffer,

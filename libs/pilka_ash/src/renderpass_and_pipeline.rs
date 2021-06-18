@@ -140,7 +140,7 @@ pub struct VkGraphicsPipeline {
 }
 
 impl VkGraphicsPipeline {
-    #[allow(clippy::clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pipeline_cache: vk::PipelineCache,
         pipeline_layout: vk::PipelineLayout,
@@ -217,7 +217,6 @@ pub struct VkComputePipeline {
 }
 
 impl VkComputePipeline {
-    #[allow(clippy::clippy::too_many_arguments)]
     pub fn new(
         pipeline_layout: vk::PipelineLayout,
         descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,

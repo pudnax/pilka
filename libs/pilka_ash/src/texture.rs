@@ -24,7 +24,7 @@ pub struct VkTexture {
 }
 
 impl VkTexture {
-    #[allow(clippy::clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn from_ktx<P: AsRef<Path>>(
         filename: P,
         instance: &VkInstance,
@@ -185,7 +185,7 @@ impl VkTexture {
             None,
         );
 
-        device.flush_cmd_buffer(&copy_cmd, &copy_queue, command_pool, true)?;
+        device.flush_cmd_buffer(&copy_cmd, copy_queue, command_pool, true)?;
 
         unsafe {
             device.free_memory(staging_buffer_memory, None);
@@ -335,7 +335,7 @@ impl VkTexture {
         device.flush_cmd_buffer(
             &layout_cmd,
             &queues.graphics_queue.queue,
-            &command_pool,
+            command_pool,
             true,
         )?;
 

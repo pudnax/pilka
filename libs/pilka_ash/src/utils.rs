@@ -31,7 +31,7 @@ where
     F: Fn(vk::MemoryPropertyFlags, vk::MemoryPropertyFlags) -> bool,
 {
     let mut memory_type_bits = memory_req.memory_type_bits;
-    for (index, ref memory_type) in memory_prop.memory_types.iter().enumerate() {
+    for (index, memory_type) in memory_prop.memory_types.iter().enumerate() {
         if memory_type_bits & 1 == 1 && f(memory_type.property_flags, flags) {
             return Some(index as u32);
         }
