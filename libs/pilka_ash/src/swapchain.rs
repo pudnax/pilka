@@ -99,7 +99,7 @@ impl VkSwapchain {
             device.create_framebuffer(
                 &vk::FramebufferCreateInfo::builder()
                     .render_pass(render_pass.render_pass)
-                    .attachments(&framebuffer_attachments)
+                    .attachments(framebuffer_attachments)
                     .width(width)
                     .height(height)
                     .layers(1),

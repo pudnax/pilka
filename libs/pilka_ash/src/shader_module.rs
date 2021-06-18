@@ -110,7 +110,7 @@ pub fn create_shader_module(
         }
     };
     let shader_data = shader_data.as_binary_u8();
-    let shader_code = crate::utils::make_spirv(&shader_data);
+    let shader_code = crate::utils::make_spirv(shader_data);
     let shader_info = vk::ShaderModuleCreateInfo::builder().code(&shader_code);
 
     unsafe { device.create_shader_module(&shader_info, None) }
