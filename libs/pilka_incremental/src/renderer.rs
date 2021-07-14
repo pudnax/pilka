@@ -179,11 +179,14 @@ pub struct PushConstant {
     pub mouse: [f32; 2],
     pub mouse_pressed: vk::Bool32,
     pub frame: u32,
+    pub time_delta: f32,
 }
 
 impl PushConstant {
+    pub const TIME_DELTA_HIGH_LIMIT: f32 = 0.1;
+
     unsafe fn as_slice(&self) -> &[u8] {
-        std::slice::from_raw_parts((self as *const _) as *const _, std::mem::size_of::<Self>())
+        std::slice::from_raw_parts((self as *const Self).cast(), std::mem::size_of::<Self>())
     }
 }
 
@@ -191,8 +194,8 @@ impl std::fmt::Display for PushConstant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "position:\t{:?}\ntime:\t\t{}\nwidth, height:\t{:?}\nmouse:\t\t{:?}\nframe:\t\t{}\n",
-            self.pos, self.time, self.wh, self.mouse, self.frame
+            "position:\t{:?}\ntime:\t\t{}\ntime delta:\t{}\nwidth, height:\t{:?}\nmouse:\t\t{:?}\nframe:\t\t{}\n",
+            self.pos, self.time, self.time_delta, self.wh, self.mouse, self.frame
         )
     }
 }
@@ -322,6 +325,7 @@ impl<'a> PilkaRender<'a> {
             wh: surface.resolution_slice(&device)?,
             mouse: [0.; 2],
             time: 0.,
+            time_delta: 0.16,
             mouse_pressed: false as _,
             frame: 0,
         };

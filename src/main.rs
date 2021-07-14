@@ -20,6 +20,7 @@ use notify::{
 };
 use recorder::RecordEvent;
 use std::{
+    error::Error,
     fs::File,
     io::BufWriter,
     path::{Path, PathBuf},
@@ -36,7 +37,7 @@ const SCREENSHOTS_FOLDER: &str = "screenshots";
 const SHADER_DUMP_FOLDER: &str = "shader_dump";
 const VIDEO_FOLDER: &str = "recordings";
 
-fn main() -> Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     // Initialize error hook.
     color_eyre::install()?;
 
@@ -44,9 +45,10 @@ fn main() -> Result<()> {
 
     let mut input = input::Input::new();
     let mut pause = false;
-    let mut time = Instant::now();
-    let mut backup_time = time.elapsed();
-    let dt = Duration::from_secs_f32(1. / 60.);
+    let mut timeline = Instant::now();
+    let mut prev_time = timeline.elapsed();
+    let mut backup_time = timeline.elapsed();
+    let mut dt = Duration::from_secs_f32(1. / 60.);
 
     let event_loop = winit::event_loop::EventLoop::new();
 
@@ -55,7 +57,7 @@ fn main() -> Result<()> {
         .with_inner_size(winit::dpi::LogicalSize::new(1280, 720))
         .build(&event_loop)?;
 
-    let mut pilka = PilkaRender::new(&window).unwrap();
+    let mut pilka = PilkaRender::new(&window)?;
 
     let shader_dir = PathBuf::new().join(SHADER_PATH);
 
@@ -136,7 +138,7 @@ fn main() -> Result<()> {
                 pilka.push_constant.time = if pause {
                     backup_time.as_secs_f32()
                 } else {
-                    time.elapsed().as_secs_f32()
+                    timeline.elapsed().as_secs_f32()
                 };
 
                 if !pause {
@@ -145,6 +147,11 @@ fn main() -> Result<()> {
                     pilka.update_fft_texture(&tmp_buf).unwrap();
 
                     input.process_position(&mut pilka.push_constant);
+
+                    dt = timeline.elapsed().saturating_sub(prev_time);
+                    pilka.push_constant.time_delta = dt.as_secs_f32();
+
+                    prev_time = timeline.elapsed();
                 }
                 pilka.push_constant.wh = pilka.surface.resolution_slice(&pilka.device).unwrap();
             }
@@ -196,17 +203,17 @@ fn main() -> Result<()> {
 
                         if VirtualKeyCode::F2 == keycode {
                             if !pause {
-                                backup_time = time.elapsed();
+                                backup_time = timeline.elapsed();
                                 pause = true;
                             } else {
-                                time = Instant::now() - backup_time;
+                                timeline = Instant::now() - backup_time;
                                 pause = false;
                             }
                         }
 
                         if VirtualKeyCode::F3 == keycode {
                             if !pause {
-                                backup_time = time.elapsed();
+                                backup_time = timeline.elapsed();
                                 pause = true;
                             }
                             backup_time = backup_time.saturating_sub(dt);
@@ -214,7 +221,7 @@ fn main() -> Result<()> {
 
                         if VirtualKeyCode::F4 == keycode {
                             if !pause {
-                                backup_time = time.elapsed();
+                                backup_time = timeline.elapsed();
                                 pause = true;
                             }
                             backup_time += dt;
@@ -223,8 +230,8 @@ fn main() -> Result<()> {
                         if VirtualKeyCode::F5 == keycode {
                             pilka.push_constant.pos = [0.; 3];
                             pilka.push_constant.time = 0.;
-                            time = Instant::now();
-                            backup_time = time.elapsed();
+                            timeline = Instant::now();
+                            backup_time = timeline.elapsed();
                         }
 
                         if VirtualKeyCode::F6 == keycode {
