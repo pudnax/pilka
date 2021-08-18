@@ -34,7 +34,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
           sudo apt-get update
-          sudo apt-get install alsa
+          sudo apt-get install alsa libasound2-dev libasound2
     - name: Build
       run: cargo build --all-features --verbose
     - name: Run tests
