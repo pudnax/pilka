@@ -36,6 +36,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install alsa
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --all-features --verbose
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --all-features --verbose
