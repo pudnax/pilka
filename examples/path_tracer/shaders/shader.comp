@@ -425,36 +425,6 @@ void test_scene_trace(in vec3 ray_pos, in vec3 ray_dir, inout RayHitInfo hit_inf
 #endif
 }
 
-float caps(vec3 p, vec3 p1, vec3 p2, float s) {
-    vec3 pa = p - p1;
-    vec3 pb = p2 - p1;
-    float proj = dot(pa, pb) / dot(pb, pb);
-    proj = clamp(proj, 0., 1.);
-    return length(p1 + pb * proj - p) - s;
-}
-
-#define pcount 10
-vec3 points[pcount + 1];
-
-float atm = 0.0;
-vec3 diff = vec3(0.0);
-
-vec3 process_hit(vec3 ro, vec3 rd, inout RayHitInfo hit_info, float ior) {
-    vec3 r = ro + rd * hit_info.dist;
-    vec2 off = vec2(0.01, 0);
-    vec3 n = normalize(nrand3(0.005, hit_info.normal));
-    float side = 1. - float(hit_info.from_inside);
-    vec3 rn = refract(r, n, 1. - side * (0.3 + 0.1 * ior));
-    rn = refract(r, n, pow(ior, -side));
-    if (length(rn) > 0.5) {
-        side *= -1;
-    } else {
-        rn = reflect(r, n);
-    }
-    hit_info.dist = 0.1;
-    return rn;
-}
-
 void advance_ray(inout vec3 ray_pos, inout vec3 ray_dir, inout vec3 throughput, inout RayHitInfo hit_info,
         inout vec3 ret, inout uint rng_state) {
     if (hit_info.from_inside) {
@@ -513,8 +483,8 @@ void advance_ray(inout vec3 ray_pos, inout vec3 ray_dir, inout vec3 throughput, 
     ray_dir = mix(diffuse_ray_dir, specular_ray_dir, do_specular);
     ray_dir = mix(ray_dir, refraction_ray_dir, do_refraction);
 
-    ret += hit_info.material.emissive * throughput;
-    ret += diff * atm * throughput;
+    ret += hit_info.material.emissive;
+    ret *= throughput;
     /* ret += diff * atm * 0.1; */
 
     if (do_refraction == 0.0) {
@@ -524,64 +494,6 @@ void advance_ray(inout vec3 ray_pos, inout vec3 ray_dir, inout vec3 throughput, 
     throughput *= mix(hit_info.material.albedo, hit_info.material.specular_color, do_specular);
 
     throughput /= ray_probability;
-}
-
-void trace_laser() {
-    vec3 ro = vec3(-24., -8., 0.);
-    vec3 rd = normalize(vec3(1., 0., 0));
-
-    float ior = rand() - 0.5;
-    float id = ior * 2.;
-    diff = 1.3 - vec3(1. + id, 0.45 + abs(id), 1. - id);
-
-    RayHitInfo hit_info;
-    hit_info.material = get_zeroed_material();
-    hit_info.dist = SUPER_FAR;
-    hit_info.from_inside = false;
-
-    int cpath;
-    for (cpath = 0; cpath < pcount - 1; cpath++) {
-        points[cpath] = ro;
-        test_scene_trace(ro, rd, hit_info);
-
-        rd = process_hit(ro, rd, hit_info, ior);
-        ro += rd * hit_info.dist;
-    }
-    points[cpath + 1] = ro;
-}
-
-void test_scene_trace_with_laser(in vec3 ray_pos, in vec3 ray_dir, inout RayHitInfo hit_info) {
-    test_scene_trace(ray_pos, ray_dir, hit_info);
-
-    float jitter = mix(rand(), 1., 0.95);
-    vec3 p = ray_pos;
-    vec3 dir = ray_dir;
-    float d = hit_info.dist;
-    bool hit = false;
-    for (int i = 0; i < 30; ++i) {
-         // abs(map2(p));
-
-        {
-            for (int i = 0; i < pcount - 1; ++i) {
-                float d2 = caps(p, points[i], points[i + 1], 0.01);
-                atm += 0.013 / (0.05 + abs(d2)) * smoothstep(4., 0.3, d2);
-
-                d = min(d, d2);
-            }
-        }
-        if (d < 0.001) {
-            hit = true;
-            dir = process_hit(p, dir, hit_info, hit_info.material.ior);
-        }
-        if (d > 100.) break;
-        p += dir * d * jitter;
-    }
-
-    if (hit) {
-        /* hit_info.material = get_zeroed_material(); */
-        hit_info.dist = min(abs(hit_info.dist), d);
-    }
-
 }
 
 vec3 get_color_for_ray(in vec3 start_ray_pos, in vec3 start_ray_dir, inout uint rng_state) {
@@ -678,8 +590,6 @@ void main() {
     vec2 frag_coord = gl_GlobalInvocationID.xy;
     uint rng_state = uint(uint(frag_coord.x) * uint(1973) + uint(frag_coord.y) * uint(9277) +
                           pc.frame * uint(26699)) | uint(1);
-
-    trace_laser();
 
     vec2 jitter = vec2(random_float01(rng_state), random_float01(rng_state)) - 0.5;
 
