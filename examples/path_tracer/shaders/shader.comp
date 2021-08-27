@@ -1,0 +1,709 @@
+#version 460
+
+#include <prelude.glsl>
+
+layout(std430, push_constant) uniform PushConstant {
+	vec3 pos;
+	float time;
+	vec2 resolution;
+	vec2 mouse;
+	bool mouse_pressed;
+    uint frame;
+} pc;
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout (binding = 0, rgba8) uniform image2D previous_frame;
+layout (binding = 1, rgba8) uniform image2D generic_texture;
+layout (binding = 2, rgba8) uniform image2D dummy_texture;
+
+layout (binding = 3, r32f) uniform image2D float_texture1;
+layout (binding = 4, r32f) uniform image2D float_texture2;
+layout (binding = 5, rgba32f) uniform image2D float_texture_wide;
+
+layout(set = 1, binding = 0) uniform sampler1D fft_texture;
+
+const float SKYBOX_BRIGHTNESS_MULTIPLIER = 0.25;
+const float MINIMUM_RAY_HIT_TIME = 0.1;
+const float SUPER_FAR = 10000.;
+const float FOV_DEGREES = 90.;
+const float PI = 3.14159265359;
+const float TWO_PI = 2.0 * PI;
+const int NUM_BOUNCES = 8;
+const float RAY_NORMAL_NUDGE = 0.01;
+const int NUM_RENDERS_PER_FRAME = 2;
+
+const float MIN_CAMERA_ANGLE = 0.01;
+const float MAX_CAMERA_ANGLE = PI - 0.01;
+const vec3 CAMERA_AT = vec3(0.0, 0.0, 0.);
+const float CAMERA_DISTANCE = 20.0;
+
+#define SCENE 0
+
+uvec4 s0, s1;
+ivec2 pixel;
+
+void rng_initialize(vec2 p, uint frame) {
+    pixel = ivec2(p);
+
+    //white noise seed
+    s0 = uvec4(p, uint(frame), uint(p.x) + uint(p.y));
+
+    //blue noise seed
+    s1 = uvec4(frame, frame * 15843, frame * 31 + 4566, frame * 2345 + 58585);
+}
+
+// https://www.pcg-random.org/
+uvec4 pcg4d(inout uvec4 v) {
+    v = v * 1664525u + 1013904223u;
+    v.x += v.y*v.w; v.y += v.z*v.x; v.z += v.x*v.y; v.w += v.y*v.z;
+    v = v ^ (v >> 16u);
+    v.x += v.y*v.w; v.y += v.z*v.x; v.z += v.x*v.y; v.w += v.y*v.z;
+    return v;
+}
+float rand() { return float(pcg4d(s0).x) / float(0xffffffffu); }
+vec2 rand2() { return vec2(pcg4d(s0).xy) / float(0xffffffffu); }
+vec3 rand3() { return vec3(pcg4d(s0).xyz) / float(0xffffffffu); }
+vec4 rand4() { return vec4(pcg4d(s0)) / float(0xffffffffu); }
+
+vec2 nrand2(float sigma, vec2 mean) {
+    vec2 Z = rand2();
+    return mean + sigma * sqrt(-2.0 * log(Z.x)) *
+                      vec2(cos(TWO_PI * Z.y), sin(TWO_PI * Z.y));
+}
+
+vec3 nrand3(float sigma, vec3 mean) {
+    vec4 Z = rand4();
+    return mean +
+           sigma * sqrt(-2.0 * log(Z.xxy)) *
+               vec3(cos(TWO_PI * Z.z), sin(TWO_PI * Z.z), cos(TWO_PI * Z.w));
+}
+
+float random_float01(inout uint state) {
+    return rand();
+}
+
+vec3 random_unit_vector(inout uint state) {
+    float z = random_float01(state) * 2.0f - 1.0f;
+    float a = random_float01(state) * TWO_PI;
+    float r = sqrt(1.0f - z * z);
+    float x = r * cos(a);
+    float y = r * sin(a);
+    return vec3(x, y, z);
+}
+
+struct Material {
+    vec3 albedo;
+    vec3 emissive;
+    vec3 specular_color;
+    float specular_chance;
+    float specular_roughness;
+    float ior;
+    vec3 refraction_color;
+    float refraction_chance;
+    float refraction_roughness;
+};
+
+Material get_zeroed_material() {
+    Material ret;
+    ret.albedo = vec3(0.0f, 0.0f, 0.0f);
+    ret.emissive = vec3(0.0f, 0.0f, 0.0f);
+    ret.specular_chance = 0.0f;
+    ret.specular_roughness = 0.0f;
+    ret.specular_color = vec3(0.0f, 0.0f, 0.0f);
+    ret.ior = 1.0f;
+    ret.refraction_chance = 0.0f;
+    ret.refraction_roughness = 0.0f;
+    ret.refraction_color = vec3(0.0f, 0.0f, 0.0f);
+    return ret;
+}
+
+struct RayHitInfo {
+    bool from_inside;
+    float dist;
+    vec3 normal;
+    Material material;
+};
+
+float scalar_triple(vec3 u, vec3 v, vec3 w) {
+    return dot(cross(u, v), w);
+}
+
+bool test_quad_trace(in vec3 ray_pos, in vec3 ray_dir,
+                     inout RayHitInfo info,
+                     in vec3 a, in vec3 b, in vec3 c, in vec3 d) {
+    vec3 normal = normalize(cross(c - a, c - b));
+    if (dot(normal, ray_dir) > 0.0) {
+        normal *= -1.;
+
+        vec3 temp = d;
+        d = a;
+        a = temp;
+
+        temp = b;
+        b = c;
+        c = temp;
+    }
+
+    vec3 p = ray_pos;
+    vec3 q = ray_pos + ray_dir;
+    vec3 pq = q - p;
+    vec3 pa = a - p;
+    vec3 pb = b - p;
+    vec3 pc = c - p;
+
+    vec3 m = cross(pc, pq);
+    float v = dot(pa, m);
+    vec3 intersect_pos = vec3(0.);
+    if (v >= 0.0) {
+        float u = -dot(pb, m);
+        if (u < 0.0)
+            return false;
+        float w = scalar_triple(pq, pb, pa);
+        if (w < 0.0)
+            return false;
+        float denom = 1.0 / (u + v + w);
+        u *= denom; v *= denom; w *= denom;
+        intersect_pos = u * a + v * b + w * c;
+    } else {
+        vec3 pd = d - p;
+        float u = dot(pd, m);
+        if (u < 0.0)
+            return false;
+        float w = scalar_triple(pq, pa, pd);
+        if (w < 0.0)
+            return false;
+        v = -v;
+        float denom = 1.0 / (u + v + w);
+        u *= denom; v *= denom; w *= denom;
+        intersect_pos = u * a + v * d + w * c;
+    }
+
+    float dist = 0.0;
+    if (abs(ray_dir.x) > 0.1) {
+        dist = (intersect_pos.x - ray_pos.x) / ray_dir.x;
+    } else if (abs(ray_dir.y) > 0.1) {
+        dist = (intersect_pos.y - ray_pos.y) / ray_dir.y;
+    } else {
+        dist = (intersect_pos.z - ray_pos.z) / ray_dir.z;
+    }
+
+    if (dist > MINIMUM_RAY_HIT_TIME && dist < info.dist) {
+        info.from_inside = false;
+        info.dist = dist;
+        info.normal = normal;
+        return true;
+    }
+    return false;
+}
+
+bool test_sphere_trace(in vec3 ray_pos, in vec3 ray_dir, inout RayHitInfo info, in vec4 sphere) {
+    vec3 m = ray_pos - sphere.xyz;
+    float b = dot(m, ray_dir);
+    float c = dot(m, m) - sphere.w * sphere.w;
+
+    if (c > 0. && b > 0.0) {
+        return false;
+    }
+
+    float discr = b * b - c;
+    if (discr < 0.0) {
+        return false;
+    }
+
+    bool from_inside = false;
+    float dist = -b - sqrt(discr);
+    if (dist < 0.0) {
+        from_inside = true;
+        dist = -b + sqrt(discr);
+    }
+
+    if (dist > MINIMUM_RAY_HIT_TIME && dist < info.dist) {
+        info.from_inside = from_inside;
+        info.dist = dist;
+        info.normal =
+            normalize((ray_pos + ray_dir * dist) - sphere.xyz) * (from_inside ? -1.0 : 1.0);
+        return true;
+    }
+    return false;
+}
+
+void test_scene_trace(in vec3 ray_pos, in vec3 ray_dir, inout RayHitInfo hit_info) {
+    // floor
+    {
+        vec3 A = vec3(-25.0f, -12.5f, 5.0f);
+        vec3 B = vec3(25.0f, -12.5f, 5.0f);
+        vec3 C = vec3(25.0f, -12.5f, -5.0f);
+        vec3 D = vec3(-25.0f, -12.5f, -5.0f);
+        if (test_quad_trace(ray_pos, ray_dir, hit_info, A, B, C, D)) {
+            hit_info.material = get_zeroed_material();
+            hit_info.material.albedo = vec3(0.7f, 0.7f, 0.7f);
+        }
+    }
+
+    // striped background
+    {
+        vec3 A = vec3(-25.0f, -1.5f, 5.0f);
+        vec3 B = vec3(25.0f, -1.5f, 5.0f);
+        vec3 C = vec3(25.0f, -10.5f, 5.0f);
+        vec3 D = vec3(-25.0f, -10.5f, 5.0f);
+        if (test_quad_trace(ray_pos, ray_dir, hit_info, A, B, C, D)) {
+            hit_info.material = get_zeroed_material();
+
+            vec3 hitPos = ray_pos + ray_dir * hit_info.dist;
+
+            float shade = floor(mod(hitPos.x, 1.0f) * 2.0f);
+            hit_info.material.albedo = vec3(shade, shade, shade);
+        }
+    }
+
+    // cieling piece above light
+    {
+        vec3 A = vec3(-7.5f, 12.5f, 5.0f);
+        vec3 B = vec3(7.5f, 12.5f, 5.0f);
+        vec3 C = vec3(7.5f, 12.5f, -5.0f);
+        vec3 D = vec3(-7.5f, 12.5f, -5.0f);
+        if (test_quad_trace(ray_pos, ray_dir, hit_info, A, B, C, D)) {
+            hit_info.material = get_zeroed_material();
+            hit_info.material.albedo = vec3(0.7f, 0.7f, 0.7f);
+        }
+    }
+
+    // light
+    {
+        vec3 A = vec3(-5.0f, 12.4f, 2.5f);
+        vec3 B = vec3(5.0f, 12.4f, 2.5f);
+        vec3 C = vec3(5.0f, 12.4f, -2.5f);
+        vec3 D = vec3(-5.0f, 12.4f, -2.5f);
+        if (test_quad_trace(ray_pos, ray_dir, hit_info, A, B, C, D)) {
+            hit_info.material = get_zeroed_material();
+            hit_info.material.emissive = vec3(1.0f, 0.9f, 0.7f) * 20.0f;
+        }
+    }
+
+#if SCENE == 0
+
+    const int NUM_SPHERES = 7;
+    for (int sphere_index = 0; sphere_index < NUM_SPHERES; ++sphere_index) {
+        if (test_sphere_trace(ray_pos, ray_dir, hit_info,
+                              vec4(-18.0f + 6.0f * float(sphere_index), -8.0f, 00.0f, 2.8f))) {
+            float r = float(sphere_index) / float(NUM_SPHERES - 1) * 0.5f;
+
+            hit_info.material = get_zeroed_material();
+            hit_info.material.albedo = vec3(0.9f, 0.25f, 0.25f);
+            hit_info.material.emissive = vec3(0.0f, 0.0f, 0.0f);
+            hit_info.material.specular_chance = 0.02f;
+            hit_info.material.specular_roughness = r;
+            hit_info.material.specular_color = vec3(1.0f, 1.0f, 1.0f) * 0.8f;
+            hit_info.material.ior = 1.1f;
+            hit_info.material.refraction_chance = 1.0f;
+            hit_info.material.refraction_roughness = r;
+            hit_info.material.refraction_color = vec3(0.0f, 0.5f, 1.0f);
+        }
+    }
+
+#elif SCENE == 1
+
+    const int NUM_SPHERES = 7;
+    for (int sphere_index = 0; sphere_index < NUM_SPHERES; ++sphere_index) {
+        if (test_sphere_trace(ray_pos, ray_dir, hit_info,
+                              vec4(-18.0f + 6.0f * float(sphere_index), -8.0f, 0.0f, 2.8f))) {
+            float ior = 1.0f + 0.5f * float(sphere_index) / float(NUM_SPHERES - 1);
+
+            hit_info.material = get_zeroed_material();
+            hit_info.material.albedo = vec3(0.9f, 0.25f, 0.25f);
+            hit_info.material.emissive = vec3(0.0f, 0.0f, 0.0f);
+            hit_info.material.specular_chance = 0.02f;
+            hit_info.material.specular_roughness = 0.0f;
+            hit_info.material.specular_color = vec3(1.0f, 1.0f, 1.0f) * 0.8f;
+            hit_info.material.ior = ior;
+            hit_info.material.refraction_chance = 1.0f;
+            hit_info.material.refraction_roughness = 0.0f;
+        }
+    }
+
+#elif SCENE == 2
+
+    const int NUM_SPHERES = 7;
+    for (int sphere_index = 0; sphere_index < NUM_SPHERES; ++sphere_index) {
+        if (test_sphere_trace(ray_pos, ray_dir, hit_info,
+                              vec4(-18.0f + 6.0f * float(sphere_index), -8.0f, 0.0f, 2.8f))) {
+            float ior = 1.0f + 1.0f * float(sphere_index) / float(NUM_SPHERES - 1);
+
+            hit_info.material = get_zeroed_material();
+            hit_info.material.albedo = vec3(0.9f, 0.25f, 0.25f);
+            hit_info.material.emissive = vec3(0.0f, 0.0f, 0.0f);
+            hit_info.material.specular_chance = 0.02f;
+            hit_info.material.specular_roughness = 0.0f;
+            hit_info.material.specular_color = vec3(1.0f, 1.0f, 1.0f) * 0.8f;
+            hit_info.material.ior = ior;
+            hit_info.material.refraction_chance = 0.0f;
+        }
+    }
+
+#elif SCENE == 3
+
+    const int NUM_SPHERES = 7;
+    for (int sphere_index = 0; sphere_index < NUM_SPHERES; ++sphere_index) {
+        if (test_sphere_trace(ray_pos, ray_dir, hit_info,
+                              vec4(-18.0f + 6.0f * float(sphere_index), -8.0f, 0.0f, 2.8f))) {
+            float absorb = float(sphere_index) / float(NUM_SPHERES - 1);
+
+            hit_info.material = get_zeroed_material();
+            hit_info.material.albedo = vec3(0.9f, 0.25f, 0.25f);
+            hit_info.material.emissive = vec3(0.0f, 0.0f, 0.0f);
+            hit_info.material.specular_chance = 0.02f;
+            hit_info.material.specular_roughness = 0.0f;
+            hit_info.material.specular_color = vec3(1.0f, 1.0f, 1.0f) * 0.8f;
+            hit_info.material.ior = 1.1f;
+            hit_info.material.refraction_chance = 1.0f;
+            hit_info.material.refraction_roughness = 0.0f;
+            hit_info.material.refraction_color = vec3(1.0f, 2.0f, 3.0f) * absorb;
+        }
+    }
+
+#elif SCENE == 4
+
+    const int NUM_SPHERES = 7;
+    for (int sphere_index = 0; sphere_index < NUM_SPHERES; ++sphere_index) {
+        if (test_sphere_trace(ray_pos, ray_dir, hit_info,
+                              vec4(-18.0f + 6.0f * float(sphere_index),
+                                   -9.0f + 0.75f * float(sphere_index), 0.0f, 2.8f))) {
+            hit_info.material = get_zeroed_material();
+            hit_info.material.albedo = vec3(0.9f, 0.25f, 0.25f);
+            hit_info.material.emissive = vec3(0.0f, 0.0f, 0.0f);
+            hit_info.material.specular_chance = 0.02f;
+            hit_info.material.specular_roughness = 0.0f;
+            hit_info.material.specular_color = vec3(1.0f, 1.0f, 1.0f) * 0.8f;
+            hit_info.material.ior = 1.5f;
+            hit_info.material.refraction_chance = 1.0f;
+            hit_info.material.refraction_roughness = 0.0f;
+        }
+    }
+
+#elif SCENE == 5
+
+    const int NUM_SPHERES = 7;
+    for (int sphere_index = 0; sphere_index < NUM_SPHERES; ++sphere_index) {
+        if (test_sphere_trace(ray_pos, ray_dir, hit_info,
+                              vec4(-18.0f + 6.0f * float(sphere_index), -9.0f, 0.0f, 2.8f))) {
+            float transparency = float(sphere_index) / float(NUM_SPHERES - 1);
+
+            hit_info.material = get_zeroed_material();
+            hit_info.material.albedo = vec3(0.9f, 0.25f, 0.25f);
+            hit_info.material.emissive = vec3(0.0f, 0.0f, 0.0f);
+            hit_info.material.specular_chance = 0.02f;
+            hit_info.material.specular_roughness = 0.0f;
+            hit_info.material.specular_color = vec3(1.0f, 1.0f, 1.0f) * 0.8f;
+            hit_info.material.ior = 1.1f;
+            hit_info.material.refraction_chance = 1.0f - transparency;
+            hit_info.material.refraction_roughness = 0.0f;
+        }
+    }
+
+#elif SCENE == 6
+
+    const int NUM_SPHERES = 7;
+    for (int sphere_index = 0; sphere_index < NUM_SPHERES; ++sphere_index) {
+        if (test_sphere_trace(ray_pos, ray_dir, hit_info,
+                              vec4(-18.0f + 6.0f * float(sphere_index), -8.0f, 00.0f, 2.8f))) {
+            float r = float(sphere_index) / float(NUM_SPHERES - 1) * 0.5f;
+
+            hit_info.material = get_zeroed_material();
+            hit_info.material.albedo = vec3(0.9f, 0.25f, 0.25f);
+            hit_info.material.emissive = vec3(0.0f, 0.0f, 0.0f);
+            hit_info.material.specular_chance = 0.02f;
+            hit_info.material.specular_roughness = r;
+            hit_info.material.specular_color = vec3(1.0f, 1.0f, 1.0f) * 0.8f;
+            hit_info.material.ior = 1.1f;
+            hit_info.material.refraction_chance = 1.0f;
+            hit_info.material.refraction_roughness = r;
+            hit_info.material.refraction_color = vec3(0.0f, 0.0f, 0.0f);
+        }
+    }
+
+#endif
+}
+
+float caps(vec3 p, vec3 p1, vec3 p2, float s) {
+    vec3 pa = p - p1;
+    vec3 pb = p2 - p1;
+    float proj = dot(pa, pb) / dot(pb, pb);
+    proj = clamp(proj, 0., 1.);
+    return length(p1 + pb * proj - p) - s;
+}
+
+#define pcount 10
+vec3 points[pcount + 1];
+
+float atm = 0.0;
+vec3 diff = vec3(0.0);
+
+vec3 process_hit(vec3 ro, vec3 rd, inout RayHitInfo hit_info, float ior) {
+    vec3 r = ro + rd * hit_info.dist;
+    vec2 off = vec2(0.01, 0);
+    vec3 n = normalize(nrand3(0.005, hit_info.normal));
+    float side = 1. - float(hit_info.from_inside);
+    vec3 rn = refract(r, n, 1. - side * (0.3 + 0.1 * ior));
+    rn = refract(r, n, pow(ior, -side));
+    if (length(rn) > 0.5) {
+        side *= -1;
+    } else {
+        rn = reflect(r, n);
+    }
+    hit_info.dist = 0.1;
+    return rn;
+}
+
+void advance_ray(inout vec3 ray_pos, inout vec3 ray_dir, inout vec3 throughput, inout RayHitInfo hit_info,
+        inout vec3 ret, inout uint rng_state) {
+    if (hit_info.from_inside) {
+        throughput *= exp(-hit_info.material.refraction_color * hit_info.dist);
+    }
+
+    float specular_chance = hit_info.material.specular_chance;
+    float refraction_chance = hit_info.material.refraction_chance;
+
+    float ray_probability = 1.0;
+    if (specular_chance > 0.0) {
+        specular_chance =
+            fresnel_refelect_amount(hit_info.from_inside ? hit_info.material.ior : 1.0,
+                                    !hit_info.from_inside ? hit_info.material.ior : 1.0, ray_dir,
+                                    hit_info.normal, hit_info.material.specular_chance, 1.0);
+
+        float chance_multiplier =
+            (1.0 - specular_chance) / (1.0 - hit_info.material.specular_chance);
+        refraction_chance *= chance_multiplier;
+    }
+
+    float do_specular = 0.0;
+    float do_refraction = 0.0;
+    float ray_select_roll = random_float01(rng_state);
+    if (specular_chance > 0.0 && ray_select_roll < specular_chance) {
+        do_specular = 1.0;
+        ray_probability = specular_chance;
+    } else if (refraction_chance > 0.0 && ray_select_roll < specular_chance + refraction_chance) {
+        do_refraction = 1.0;
+        ray_probability = refraction_chance;
+    } else {
+        ray_probability = 1.0 - (specular_chance + refraction_chance);
+    }
+
+    ray_probability = max(ray_probability, 0.001);
+
+    if (do_refraction == 1.0) {
+        ray_pos = (ray_pos + ray_dir * hit_info.dist) - hit_info.normal * RAY_NORMAL_NUDGE;
+    } else {
+        ray_pos = (ray_pos + ray_dir * hit_info.dist) + hit_info.normal * RAY_NORMAL_NUDGE;
+    }
+
+    vec3 diffuse_ray_dir = normalize(hit_info.normal + random_unit_vector(rng_state));
+
+    vec3 specular_ray_dir = reflect(ray_dir, hit_info.normal);
+    specular_ray_dir =
+        normalize(mix(specular_ray_dir, diffuse_ray_dir,
+                      hit_info.material.specular_roughness * hit_info.material.specular_roughness));
+    vec3 refraction_ray_dir =
+        refract(ray_dir, hit_info.normal,
+                hit_info.from_inside ? hit_info.material.ior : 1.0 / hit_info.material.ior);
+    refraction_ray_dir = normalize(
+        mix(refraction_ray_dir, normalize(-hit_info.normal + random_unit_vector(rng_state)),
+            hit_info.material.refraction_roughness * hit_info.material.refraction_roughness));
+
+    ray_dir = mix(diffuse_ray_dir, specular_ray_dir, do_specular);
+    ray_dir = mix(ray_dir, refraction_ray_dir, do_refraction);
+
+    ret += hit_info.material.emissive * throughput;
+    ret += diff * atm * throughput;
+    /* ret += diff * atm * 0.1; */
+
+    if (do_refraction == 0.0) {
+        throughput *= mix(hit_info.material.albedo, hit_info.material.specular_color, do_specular);
+    }
+
+    throughput *= mix(hit_info.material.albedo, hit_info.material.specular_color, do_specular);
+
+    throughput /= ray_probability;
+}
+
+void trace_laser() {
+    vec3 ro = vec3(-24., -8., 0.);
+    vec3 rd = normalize(vec3(1., 0., 0));
+
+    float ior = rand() - 0.5;
+    float id = ior * 2.;
+    diff = 1.3 - vec3(1. + id, 0.45 + abs(id), 1. - id);
+
+    RayHitInfo hit_info;
+    hit_info.material = get_zeroed_material();
+    hit_info.dist = SUPER_FAR;
+    hit_info.from_inside = false;
+
+    int cpath;
+    for (cpath = 0; cpath < pcount - 1; cpath++) {
+        points[cpath] = ro;
+        test_scene_trace(ro, rd, hit_info);
+
+        rd = process_hit(ro, rd, hit_info, ior);
+        ro += rd * hit_info.dist;
+    }
+    points[cpath + 1] = ro;
+}
+
+void test_scene_trace_with_laser(in vec3 ray_pos, in vec3 ray_dir, inout RayHitInfo hit_info) {
+    test_scene_trace(ray_pos, ray_dir, hit_info);
+
+    float jitter = mix(rand(), 1., 0.95);
+    vec3 p = ray_pos;
+    vec3 dir = ray_dir;
+    float d = hit_info.dist;
+    bool hit = false;
+    for (int i = 0; i < 30; ++i) {
+         // abs(map2(p));
+
+        {
+            for (int i = 0; i < pcount - 1; ++i) {
+                float d2 = caps(p, points[i], points[i + 1], 0.01);
+                atm += 0.013 / (0.05 + abs(d2)) * smoothstep(4., 0.3, d2);
+
+                d = min(d, d2);
+            }
+        }
+        if (d < 0.001) {
+            hit = true;
+            dir = process_hit(p, dir, hit_info, hit_info.material.ior);
+        }
+        if (d > 100.) break;
+        p += dir * d * jitter;
+    }
+
+    if (hit) {
+        /* hit_info.material = get_zeroed_material(); */
+        hit_info.dist = min(abs(hit_info.dist), d);
+    }
+
+}
+
+vec3 get_color_for_ray(in vec3 start_ray_pos, in vec3 start_ray_dir, inout uint rng_state) {
+    vec3 ret = vec3(0.0);
+    vec3 throughput = vec3(1.0);
+    vec3 ray_pos = start_ray_pos;
+    vec3 ray_dir = start_ray_dir;
+
+    for (int bounce_index = 0; bounce_index <= NUM_BOUNCES; ++bounce_index) {
+        RayHitInfo hit_info;
+        hit_info.material = get_zeroed_material();
+        hit_info.dist = SUPER_FAR;
+        hit_info.from_inside = false;
+
+        test_scene_trace(ray_pos, ray_dir, hit_info);
+
+        if (hit_info.dist == SUPER_FAR) {
+            vec3 pos = (ray_pos + ray_dir * hit_info.dist) * 0.01;
+            float background =
+                1. - float((int(pos.x) ^ int(pos.y)) % 9) * SKYBOX_BRIGHTNESS_MULTIPLIER;
+            ret += srgb_to_linear(vec3(background)) * 0.5 * throughput;
+            break;
+        }
+
+        advance_ray(ray_pos, ray_dir, throughput, hit_info, ret, rng_state);
+
+        {
+            float p = max(throughput.r, max(throughput.g, throughput.b));
+            if (random_float01(rng_state) > p)
+                break;
+            throughput *= 1.0 / p;
+        }
+    }
+
+    return ret;
+}
+
+mat3 camera_rotation(vec2 m) {
+    m.y = -m.y;
+
+    vec2 s = sin(m);
+    vec2 c = cos(m);
+    mat3 rotX = mat3(1.0, 0.0, 0.0, 0.0, c.y, s.y, 0.0, -s.y, c.y);
+    mat3 rotY = mat3(c.x, 0.0, -s.x, 0.0, 1.0, 0.0, s.x, 0.0, c.x);
+
+    return rotY * rotX;
+}
+
+void get_camera_vectors(out vec3 camera_pos,
+                        out vec3 camera_fwd,
+                        out vec3 camera_up,
+                        out vec3 camera_right) {
+    vec2 mouse;
+    mouse.x = imageLoad(float_texture1, ivec2(0, 0)).x;
+    mouse.y = imageLoad(float_texture1, ivec2(1, 0)).x;
+    if (dot(mouse, vec2(1.0, 1.0)) == 0.0) {
+        camera_pos = vec3(0.0, 0.0, -CAMERA_DISTANCE);
+        camera_fwd = vec3(0.0, 0.0, 1.0);
+        camera_up = vec3(0.0, 1.0, 0.0);
+        camera_right = vec3(1.0, 0.0, 0.0);
+        return;
+    }
+
+    float angle_x = mouse.x * 16. / float(pc.resolution.x);
+    float angle_y =
+        mix(MIN_CAMERA_ANGLE, MAX_CAMERA_ANGLE, mouse.y / float(pc.resolution.y)) - PI / 2.;
+
+    camera_pos.x = sin(angle_x) * sin(angle_y) * CAMERA_DISTANCE;
+    camera_pos.y = -cos(angle_y) * CAMERA_DISTANCE;
+    camera_pos.z = cos(angle_x) * sin(angle_y) * CAMERA_DISTANCE;
+
+    camera_pos += CAMERA_AT;
+
+    camera_fwd = normalize(CAMERA_AT - camera_pos);
+    camera_right = normalize(cross(vec3(0.0, 1.0, 0.0), camera_fwd));
+    camera_up = normalize(cross(camera_fwd, camera_right));
+}
+
+vec2 mouse = pc.mouse;
+
+void main() {
+    if (gl_GlobalInvocationID.x >= pc.resolution.x || gl_GlobalInvocationID.y >= pc.resolution.y) {
+        return;
+    }
+
+    if (pc.mouse_pressed) {
+        vec2 mouse = (pc.mouse * 0.5 + 1) * pc.resolution;
+        imageStore(float_texture1, ivec2(0, 0), vec4(mouse.x, 0., 0., 0.));
+        imageStore(float_texture1, ivec2(1, 0), vec4(mouse.y, 0., 0., 0.));
+    }
+
+    rng_initialize(gl_GlobalInvocationID.xy, pc.frame);
+
+    vec2 frag_coord = gl_GlobalInvocationID.xy;
+    uint rng_state = uint(uint(frag_coord.x) * uint(1973) + uint(frag_coord.y) * uint(9277) +
+                          pc.frame * uint(26699)) | uint(1);
+
+    trace_laser();
+
+    vec2 jitter = vec2(random_float01(rng_state), random_float01(rng_state)) - 0.5;
+
+    vec3 camera_pos, camera_fwd, camera_up, camera_right;
+    get_camera_vectors(camera_pos, camera_fwd, camera_up, camera_right);
+    vec3 ray_dir;
+    {
+        vec2 screen = ((frag_coord + jitter) / pc.resolution.xy + -0.5) * 2.0 *
+                      vec2(pc.resolution.x / pc.resolution.y, 1);
+
+        camera_pos += pc.pos * 20.;
+
+        float camera_distance = tan(FOV_DEGREES * 0.5 * PI / 180.0);
+        ray_dir = vec3(screen, camera_distance);
+        ray_dir = normalize(mat3(camera_right, camera_up, camera_fwd) * ray_dir);
+    }
+
+    vec3 color = vec3(0.0);
+    for (int i = 0; i < NUM_RENDERS_PER_FRAME; ++i) {
+        color += get_color_for_ray(camera_pos, ray_dir, rng_state) / float(NUM_RENDERS_PER_FRAME);
+    }
+
+    vec3 last_frame_color = imageLoad(float_texture_wide, ivec2(frag_coord)).rgb;
+    color = mix(last_frame_color, color, 1.0 / float(pc.frame + 1));
+
+    imageStore(float_texture_wide, ivec2(frag_coord), vec4(color, 1.));
+}
