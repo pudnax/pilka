@@ -1,9 +1,4 @@
-use pilka_ash::ash::{
-    pilka_util::return_aligned,
-    prelude::VkResult,
-    version::{DeviceV1_0, InstanceV1_0},
-    ShaderInfo, ShaderSet, *,
-};
+use pilka_ash::ash::{pilka_util::return_aligned, prelude::VkResult, ShaderInfo, ShaderSet, *};
 use pilka_ash::ash_window;
 use std::{collections::HashMap, ffi::CStr, io::Write, path::PathBuf};
 

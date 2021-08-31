@@ -1,5 +1,4 @@
 use crate::{
-    ash::version::{DeviceV1_0, InstanceV1_0},
     ash::vk,
     device::{RawDevice, VkDevice},
     instance::{VkInstance, VkQueues},

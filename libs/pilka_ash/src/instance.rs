@@ -4,7 +4,6 @@ use crate::ash::{
         khr::{Surface, Swapchain},
     },
     prelude::VkResult,
-    version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
     vk::{self, Handle},
 };
 
@@ -53,7 +52,7 @@ impl VkInstance {
         // Enumerate available vulkan API version and set 1.0.0 otherwise.
         let version = match entry.try_enumerate_instance_version()? {
             Some(version) => version,
-            None => vk::make_version(1, 0, 0),
+            None => vk::make_api_version(1, 0, 0, 0),
         };
 
         // Find approciate validation layers from available.
@@ -100,7 +99,7 @@ impl VkInstance {
         let app_info = vk::ApplicationInfo::builder()
             .application_name(unsafe { CStr::from_ptr("Pilka".as_ptr() as *const i8) })
             .engine_name(unsafe { CStr::from_ptr("Pilka Engine".as_ptr() as *const i8) })
-            .engine_version(vk::make_version(1, 1, 0))
+            .engine_version(vk::make_api_version(1, 1, 0, 0))
             .api_version(version);
 
         // let mut additional_instance_features = vk::ValidationFeaturesEXT::builder()

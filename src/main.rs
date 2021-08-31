@@ -12,7 +12,7 @@ mod recorder;
 
 use pilka::create_folder;
 
-use ash::{version::DeviceV1_0, vk, SHADER_ENTRY_POINT, SHADER_PATH};
+use ash::{vk, SHADER_ENTRY_POINT, SHADER_PATH};
 use eyre::*;
 use notify::{
     event::{EventKind, ModifyKind},

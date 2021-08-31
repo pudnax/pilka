@@ -1,5 +1,5 @@
 use crate::device::VkDevice;
-use ash::{prelude::VkResult, version::DeviceV1_0, vk};
+use ash::{prelude::VkResult, vk};
 
 use std::ffi::CString;
 use std::path::{Path, PathBuf};

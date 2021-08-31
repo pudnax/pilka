@@ -2,7 +2,7 @@ use crate::{
     device::{RawDevice, VkDevice},
     renderpass_and_pipeline::VkRenderPass,
 };
-use ash::{extensions::khr::Swapchain, prelude::VkResult, version::DeviceV1_0, vk};
+use ash::{extensions::khr::Swapchain, prelude::VkResult, vk};
 use std::sync::Arc;
 
 pub struct VkSwapchain {
