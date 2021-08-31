@@ -101,14 +101,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (tx, rx) = std::sync::mpsc::channel();
 
-    let mut watcher: RecommendedWatcher = Watcher::new_immediate(move |res| match res {
+    let mut watcher: RecommendedWatcher = notify::recommended_watcher(move |res| match res {
         Ok(event) => {
             tx.send(event).unwrap();
         }
         Err(e) => println!("watch error: {:?}", e),
     })?;
 
-    watcher.watch(SHADER_PATH, RecursiveMode::Recursive)?;
+    watcher.watch(Path::new(SHADER_PATH), RecursiveMode::Recursive)?;
 
     let mut video_recording = false;
     let (video_tx, video_rx) = std::sync::mpsc::channel();
@@ -141,12 +141,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                     timeline.elapsed().as_secs_f32()
                 };
 
+                input.process_position(&mut pilka.push_constant);
+
                 if !pause {
                     let mut tmp_buf = [0f32; audio::FFT_SIZE];
                     audio_context.get_fft(&mut tmp_buf);
                     pilka.update_fft_texture(&tmp_buf).unwrap();
-
-                    input.process_position(&mut pilka.push_constant);
 
                     dt = timeline.elapsed().saturating_sub(prev_time);
                     pilka.push_constant.time_delta = dt.as_secs_f32();
@@ -230,6 +230,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if VirtualKeyCode::F5 == keycode {
                             pilka.push_constant.pos = [0.; 3];
                             pilka.push_constant.time = 0.;
+                            pilka.push_constant.frame = 0;
                             timeline = Instant::now();
                             backup_time = timeline.elapsed();
                         }
