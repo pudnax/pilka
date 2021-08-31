@@ -42,12 +42,13 @@ layout(set = 0, binding = 4) uniform sampler2D float_texture2;
 layout(set = 1, binding = 0) uniform sampler1D fft_texture;
 
 layout(std430, push_constant) uniform PushConstant {
-	vec3 pos;
-	float time;
-	vec2 resolution;
-	vec2 mouse;
-	bool mouse_pressed;
+    vec3 pos;
+    float time;
+    vec2 resolution;
+    vec2 mouse;
+    bool mouse_pressed;
     uint frame;
+    float time_delta;
 } pc;
 
 float worldSDF(in vec3 pos) {
@@ -58,7 +59,7 @@ float worldSDF(in vec3 pos) {
 }
 
 void main() {
-    vec2 uv = (in_uv + -0.5) * 2.0 / vec2(pc.resolution.y / pc.resolution.x, 1);
+    vec2 uv = (in_uv + -0.5) * 2.0 * vec2(pc.resolution.x / pc.resolution.y, 1);
 
 	vec3 O = vec3(0.0, 0.0, 3.0);
 	vec3 D = normalize(vec3(uv, -2.));
@@ -84,12 +85,13 @@ const VERT_SHADER: &str = "#version 460
 layout(location = 0) out vec2 out_uv;
 
 layout(std430, push_constant) uniform PushConstant {
-	vec3 pos;
-	float time;
-	vec2 resolution;
-	vec2 mouse;
-	bool mouse_pressed;
+    vec3 pos;
+    float time;
+    vec2 resolution;
+    vec2 mouse;
+    bool mouse_pressed;
     uint frame;
+    float time_delta;
 } pc;
 
 void main() {
@@ -100,12 +102,13 @@ void main() {
 const COMP_SHADER: &str = "#version 460
 
 layout(std430, push_constant) uniform PushConstant {
-	vec3 pos;
-	float time;
-	vec2 resolution;
-	vec2 mouse;
-	bool mouse_pressed;
+    vec3 pos;
+    float time;
+    vec2 resolution;
+    vec2 mouse;
+    bool mouse_pressed;
     uint frame;
+    float time_delta;
 } pc;
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
@@ -114,8 +117,8 @@ layout (binding = 0, rgba8) uniform image2D previous_frame;
 layout (binding = 1, rgba8) uniform image2D generic_texture;
 layout (binding = 2, rgba8) uniform image2D dummy_texture;
 
-layout (binding = 3, r32f) uniform image2D float_texture1;
-layout (binding = 4, r32f) uniform image2D float_texture2;
+layout (binding = 3, rgba32f) uniform image2D float_texture1;
+layout (binding = 4, rgba32f) uniform image2D float_texture2;
 
 layout(set = 1, binding = 0) uniform sampler1D fft_texture;
 
