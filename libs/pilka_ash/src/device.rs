@@ -1,9 +1,4 @@
-use ash::{
-    extensions::khr,
-    prelude::VkResult,
-    version::{DeviceV1_0, InstanceV1_0},
-    vk, Device,
-};
+use ash::{extensions::khr, prelude::VkResult, vk, Device};
 use std::sync::Arc;
 
 use crate::{

@@ -13,7 +13,7 @@ pub fn create_folder<P: AsRef<Path>>(name: P) -> io::Result<()> {
 
 #[cfg(test)]
 mod test {
-    use ash::{version::DeviceV1_0, vk, VkInstance};
+    use ash::{vk, VkInstance};
     use pilka_lib::*;
 
     #[test]

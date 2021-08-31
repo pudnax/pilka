@@ -1,5 +1,5 @@
 use crate::device::{RawDevice, VkDevice};
-use ash::{prelude::VkResult, version::DeviceV1_0, vk};
+use ash::{prelude::VkResult, vk};
 use std::sync::Arc;
 
 //
