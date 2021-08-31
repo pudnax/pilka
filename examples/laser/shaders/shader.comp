@@ -1,26 +1,44 @@
 #version 460
 
+#include <prelude.glsl>
+
 layout(std430, push_constant) uniform PushConstant {
     vec3 pos;
     float time;
     vec2 resolution;
     vec2 mouse;
-    float spectrum;
     bool mouse_pressed;
+    uint frame;
     float time_delta;
-} pc;
+}
+pc;
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 layout (binding = 0, rgba8) uniform image2D previous_frame;
 layout (binding = 1, rgba8) uniform image2D generic_texture;
 layout (binding = 2, rgba8) uniform image2D dummy_texture;
+
 layout (binding = 3, rgba32f) uniform image2D float_texture1;
 layout (binding = 4, rgba32f) uniform image2D float_texture2;
+
+layout(set = 1, binding = 0) uniform sampler1D fft_texture;
 
 void main() {
     if (gl_GlobalInvocationID.x >= pc.resolution.x ||
         gl_GlobalInvocationID.y >= pc.resolution.y) {
         return;
     }
+
+#ifdef COMPUTE_ROUTINE
+    time = pc.time;
+
+    vec3 color = render(gl_GlobalInvocationID.xy, pc.resolution, pc.frame);
+
+    vec3 last_frame_color = imageLoad(float_texture1, ivec2(gl_GlobalInvocationID.xy)).rgb;
+    color = mix(last_frame_color, color, 1. / float(pc.frame + 1));
+    /* color = mix(last_frame_color, color, 0.5); */
+
+    imageStore(float_texture1, ivec2(gl_GlobalInvocationID.xy), vec4(color, 1.));
+#endif
 }
