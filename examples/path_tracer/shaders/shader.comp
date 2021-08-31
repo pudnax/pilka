@@ -17,9 +17,8 @@ layout (binding = 0, rgba8) uniform image2D previous_frame;
 layout (binding = 1, rgba8) uniform image2D generic_texture;
 layout (binding = 2, rgba8) uniform image2D dummy_texture;
 
-layout (binding = 3, r32f) uniform image2D float_texture1;
-layout (binding = 4, r32f) uniform image2D float_texture2;
-layout (binding = 5, rgba32f) uniform image2D float_texture_wide;
+layout (binding = 3, rgba32f) uniform image2D float_texture1;
+layout (binding = 4, rgba32f) uniform image2D float_texture2;
 
 layout(set = 1, binding = 0) uniform sampler1D fft_texture;
 
@@ -90,6 +89,12 @@ vec3 random_unit_vector(inout uint state) {
     float x = r * cos(a);
     float y = r * sin(a);
     return vec3(x, y, z);
+}
+
+vec3 udir(vec2 rng) {
+    vec2 r = vec2(2. * PI * rng.x, acos(2. * rng.y - 1.));
+    vec2 c = cos(r), s = sin(r);
+    return vec3(c.x * s.y, s.x * s.y, c.y);
 }
 
 struct Material {
@@ -485,7 +490,7 @@ void advance_ray(inout vec3 ray_pos, inout vec3 ray_dir, inout vec3 throughput, 
 
     ret += hit_info.material.emissive;
     ret *= throughput;
-    /* ret += diff * atm * 0.1; */
+    // ret += diff * atm * 0.1;
 
     if (do_refraction == 0.0) {
         throughput *= mix(hit_info.material.albedo, hit_info.material.specular_color, do_specular);
@@ -496,11 +501,183 @@ void advance_ray(inout vec3 ray_pos, inout vec3 ray_dir, inout vec3 throughput, 
     throughput /= ray_probability;
 }
 
+void processHit(inout vec3 ro, inout vec3 rd, inout vec3 col,
+                inout vec3 att, float ior, RayHitInfo res) {
+    Material m = get_zeroed_material();
+
+    col += att * res.material.emissive;
+    att *= res.material.albedo;
+    vec3 normal = res.normal;
+    ro = ro + rd * res.dist;
+    float inside = float(res.from_inside);
+
+    vec3 matn = normalize(nrand3(0.005, normal * inside));
+    vec3 newrd = refract(rd, matn, pow(ior, -inside));
+    if (length(newrd) > 0.5)  // not total internal reflection
+    {
+        inside = -inside;
+        rd = newrd;
+    } else {
+        rd = reflect(rd, matn);
+    }
+}
+
+#define LASER_PATH 9
+int cpath;
+vec3 scol;
+vec3 path[LASER_PATH + 1];
+
+float ior;
+
+float getClosestLinePoint(vec3 ro, vec3 rd, vec3 x) {
+    return dot(rd, x - ro);
+}
+
+float rand(float a, float b) {
+    return mix(a, b, rand());
+}
+
+// Importance sample a point on a segment so that the probability of sampling a point on the segment
+// r1 r2 is inversely proportional to the square of the distance to point x
+vec3 importanceSampleSegmentPoint(vec3 r1, vec3 r2, vec3 x) {
+    vec3 x0 = r1 - x;
+    vec3 rd = normalize(r2 - r1);
+    float l = length(r2 - r1);
+    float a = dot(rd, x0);
+    float x02 = dot(x0, x0);
+    float sq = sqrt(x02 - a * a);
+    float t = sq * tan(rand(atan(a / sq), atan((l + a) / sq))) - a;
+    return r1 + rd * t;  // importance sampled point
+}
+
+// get closest point pair for 2 segments
+void getClosestPointPair(vec3 r00, vec3 r01, vec3 r10, vec3 r11, out vec3 P1, out vec3 P2) {
+    vec3 delta1 = r01 - r00;
+    vec3 delta2 = r11 - r10;
+    vec3 rd1 = normalize(delta1);
+    vec3 rd2 = normalize(delta2);
+    float l1 = length(delta1);
+    float l2 = length(delta2);
+    vec3 delta3 = r00 - r10;
+    float d1d2 = dot(rd1, rd2);
+    float d1de = dot(rd1, delta3);
+    float d2de = dot(rd2, delta3);
+    float deno = 1.0 / (1.0 - d1d2 * d1d2);
+    float t1 = (d1d2 * d2de - d1de) * deno;
+    float t2 = (d2de - d1d2 * d1de) * deno;
+
+    if (t1 < 0.0 || t1 > l1) {
+        t1 = clamp(t1, 0.0, l1);
+        P1 = r00 + t1 * rd1;
+        t2 = clamp(getClosestLinePoint(r10, rd2, P1), 0.0, l2);
+        P2 = r10 + t2 * rd2;
+        return;
+    }
+
+    if (t2 < 0.0 || t2 > l2) {
+        t2 = clamp(t2, 0.0, l2);
+        P2 = r10 + t2 * rd2;
+        t1 = clamp(getClosestLinePoint(r00, rd1, P2), 0.0, l1);
+        P1 = r00 + t1 * rd1;
+        return;
+    }
+
+    P1 = r00 + t1 * rd1;
+    P2 = r10 + t2 * rd2;
+}
+
+// choose a laser path segment p0 p1 with probability proportional to the path segment lenght and
+// inverse distance to the camera ray path segment r0 r1
+void importanceSamplePath(vec3 r0, vec3 r1, out vec3 p0, out vec3 p1) {
+    float score[LASER_PATH];
+    float totalscore = 0.0;
+    vec3 P0, P1;
+    for (int i = 0; i < cpath; i++) {
+        getClosestPointPair(r0, r1, path[i], path[i + 1], P0, P1);
+        float s = distance(path[i], path[i + 1]) / distance(P0, P1);
+        totalscore += s;
+        score[i] = totalscore;
+    }
+
+    // target score
+    float rscore = rand() * totalscore;
+
+    for (int i = 0; i < cpath; i++) {
+        if (rscore < score[i])  // found score
+        {
+            p0 = path[i];
+            p1 = path[i + 1];
+            return;
+        }
+    }
+}
+
+// next event estimation sample using the light path
+void connectPath(RayHitInfo res, vec3 ray_pos, vec3 ray_dir, inout vec3 col, inout vec3 att) {
+    // ray path
+    vec3 r0 = ray_pos;
+    vec3 r1 = ray_pos + ray_dir * res.dist;
+
+    // get random path
+    vec3 p0, p1;
+    importanceSamplePath(r0, r1, p0, p1);
+
+    // find 2 closest points on camera segment and light path
+    vec3 s1, s2;
+    getClosestPointPair(p0, p1, r0, r1, s1, s2);
+
+    vec3 pathp = importanceSampleSegmentPoint(p0, p1, s2);
+    vec3 camp = importanceSampleSegmentPoint(r0, r1, s1);
+
+    // trace a ray from the camp to pathp
+    vec3 delta = pathp - camp;
+    float td = length(delta);
+
+    test_scene_trace(ray_pos, ray_dir, res);
+
+    if (res.dist >= td)
+        col += att / (td + 1e-10);
+    // col += att*pathhit(res.ro, res.rd, res.td);
+}
+
+void traceLaser() {
+    vec3 ro = vec3(-24., -8., 0.);
+    vec3 rd = normalize(vec3(1., 0., 0));
+
+    vec3 throughput = vec3(0.);
+    vec3 ret = vec3(0.);
+    uint rng_state = 0;
+
+    ior = rand() - 0.5;
+    float id = ior * 2.;
+    ior = id;
+    scol = 1.3 - vec3(1. + id, 0.45 + abs(id), 1. - id);
+
+    float inside = 1.0;
+
+    vec3 col = vec3(0.0);
+    vec3 att = scol;
+
+    RayHitInfo hit_info;
+    hit_info.material = get_zeroed_material();
+    hit_info.dist = SUPER_FAR;
+    hit_info.from_inside = false;
+
+    for (cpath = 0; cpath < LASER_PATH - 1; cpath++) {
+        path[cpath] = ro;
+        test_scene_trace(ro, rd, hit_info);
+        processHit(ro, rd, col, att, ior, hit_info);
+    }
+    path[cpath + 1] = ro;
+}
+
 vec3 get_color_for_ray(in vec3 start_ray_pos, in vec3 start_ray_dir, inout uint rng_state) {
     vec3 ret = vec3(0.0);
     vec3 throughput = vec3(1.0);
     vec3 ray_pos = start_ray_pos;
     vec3 ray_dir = start_ray_dir;
+
+    vec3 att = scol;
 
     for (int bounce_index = 0; bounce_index <= NUM_BOUNCES; ++bounce_index) {
         RayHitInfo hit_info;
@@ -509,6 +686,8 @@ vec3 get_color_for_ray(in vec3 start_ray_pos, in vec3 start_ray_dir, inout uint 
         hit_info.from_inside = false;
 
         test_scene_trace(ray_pos, ray_dir, hit_info);
+        connectPath(hit_info, ray_pos, ray_dir, ret, att);
+        processHit(ray_pos, ray_dir, ret, att, ior, hit_info);
 
         if (hit_info.dist == SUPER_FAR) {
             vec3 pos = (ray_pos + ray_dir * hit_info.dist) * 0.01;
@@ -547,8 +726,8 @@ void get_camera_vectors(out vec3 camera_pos,
                         out vec3 camera_up,
                         out vec3 camera_right) {
     vec2 mouse;
-    mouse.x = imageLoad(float_texture1, ivec2(0, 0)).x;
-    mouse.y = imageLoad(float_texture1, ivec2(1, 0)).x;
+    mouse.x = imageLoad(float_texture2, ivec2(0, 0)).x;
+    mouse.y = imageLoad(float_texture2, ivec2(1, 0)).x;
     if (dot(mouse, vec2(1.0, 1.0)) == 0.0) {
         camera_pos = vec3(0.0, 0.0, -CAMERA_DISTANCE);
         camera_fwd = vec3(0.0, 0.0, 1.0);
@@ -581,8 +760,8 @@ void main() {
 
     if (pc.mouse_pressed) {
         vec2 mouse = (pc.mouse * 0.5 + 1) * pc.resolution;
-        imageStore(float_texture1, ivec2(0, 0), vec4(mouse.x, 0., 0., 0.));
-        imageStore(float_texture1, ivec2(1, 0), vec4(mouse.y, 0., 0., 0.));
+        imageStore(float_texture2, ivec2(0, 0), vec4(mouse.x, 0., 0., 0.));
+        imageStore(float_texture2, ivec2(1, 0), vec4(mouse.y, 0., 0., 0.));
     }
 
     rng_initialize(gl_GlobalInvocationID.xy, pc.frame);
@@ -607,13 +786,15 @@ void main() {
         ray_dir = normalize(mat3(camera_right, camera_up, camera_fwd) * ray_dir);
     }
 
+    traceLaser();
+
     vec3 color = vec3(0.0);
     for (int i = 0; i < NUM_RENDERS_PER_FRAME; ++i) {
         color += get_color_for_ray(camera_pos, ray_dir, rng_state) / float(NUM_RENDERS_PER_FRAME);
     }
 
-    vec3 last_frame_color = imageLoad(float_texture_wide, ivec2(frag_coord)).rgb;
+    vec3 last_frame_color = imageLoad(float_texture1, ivec2(frag_coord)).rgb;
     color = mix(last_frame_color, color, 1.0 / float(pc.frame + 1));
 
-    imageStore(float_texture_wide, ivec2(frag_coord), vec4(color, 1.));
+    imageStore(float_texture1, ivec2(frag_coord), vec4(color, 1.));
 }
