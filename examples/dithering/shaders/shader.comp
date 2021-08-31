@@ -19,7 +19,7 @@ layout (binding = 3, rgba32f) uniform image2D float_texture1;
 layout (binding = 4, rgba32f) uniform image2D float_texture2;
 
 void main() {
-   if (gl_GlobalInvocationID.x >= pc.resolution.x || gl_GlobalInvocationID.y >= pc.resolution.y) {
+    if (gl_GlobalInvocationID.x >= pc.resolution.x || gl_GlobalInvocationID.y >= pc.resolution.y) {
         return;
     }
 
