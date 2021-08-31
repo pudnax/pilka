@@ -16,20 +16,21 @@ layout(set = 0, binding = 4) uniform sampler2D float_texture2;
 #define T_off(t,off) (texture(t, vec2(in_uv.x + off.x, -(in_uv.y + off.y))))
 
 layout(std430, push_constant) uniform PushConstant {
-	vec3 pos;
-	float time;
-	vec2 resolution;
-	vec2 mouse;
-	float spectrum;
-	bool mouse_pressed;
+    vec3 pos;
+    float time;
+    vec2 resolution;
+    vec2 mouse;
+    float spectrum;
+    bool mouse_pressed;
+    float time_delta;
 } pc;
 
 #define MAX_STEPS 100
 #define MAX_DIST 0.1
 
 mat2 Rot(float a) {
-	float c = cos(a), s = sin(a);
-	return mat2(c, -s, s, c);
+    float c = cos(a), s = sin(a);
+    return mat2(c, -s, s, c);
 }
 
 float sc(vec3 p, float s) {

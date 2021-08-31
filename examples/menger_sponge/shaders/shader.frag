@@ -16,12 +16,12 @@ layout(set = 0, binding = 4) uniform sampler2D float_texture2;
 #define T_off(t,off) (texture(t, vec2(uv.x + off.x, -(uv.y + off.y))))
 
 layout(std430, push_constant) uniform PushConstant {
-	vec3 pos;
-	float time;
-	vec2 resolution;
-	vec2 mouse;
-	float spectrum;
-	bool mouse_pressed;
+    vec3 pos;
+    float time;
+    vec2 resolution;
+    vec2 mouse;
+    float spectrum;
+    bool mouse_pressed;
 } pc;
 
 const vec3 missColor = vec3(0.0002);

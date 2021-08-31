@@ -14,12 +14,12 @@ layout(set = 0, binding = 4) uniform sampler2D float_texture2;
 #define T_off(t,off) (texture(t, vec2(in_uv.x + off.x, -(in_uv.y + off.y))))
 
 layout(std430, push_constant) uniform PushConstant {
-	vec3 pos;
-	float time;
-	vec2 resolution;
-	vec2 mouse;
-	float spectrum;
-	bool mouse_pressed;
+    vec3 pos;
+    float time;
+    vec2 resolution;
+    vec2 mouse;
+    float spectrum;
+    bool mouse_pressed;
 } pc;
 
 #define TRACE_STEPS 128
@@ -62,14 +62,16 @@ vec3 normal(in vec3 at) {
 }
 
 vec4 raymarch(in vec3 pos, in vec3 dir, in float maxL) {
-	float l = 0.;
-	for (int i = 0; i < TRACE_STEPS; ++i) {
-		float d = world(pos + dir * l);
-		if (d < TRACE_EPSILON*l) break;
-		l += d;
-		if (l > maxL) break;
-	}
-	return vec4(pos + dir * l, l);
+    float l = 0.;
+    for (int i = 0; i < TRACE_STEPS; ++i) {
+        float d = world(pos + dir * l);
+        if (d < TRACE_EPSILON * l)
+            break;
+        l += d;
+        if (l > maxL)
+            break;
+    }
+    return vec4(pos + dir * l, l);
 }
 
 vec3 lookAtDir(in vec3 dir, in vec3 pos, in vec3 at) {
