@@ -400,8 +400,8 @@ impl<'a> PilkaRender<'a> {
         let previous_frame = screen_sized_texture(vk::Format::R8G8B8A8_UNORM)?;
         let generic_texture = screen_sized_texture(vk::Format::R8G8B8A8_UNORM)?;
         let dummy_texture = screen_sized_texture(vk::Format::R8G8B8A8_UNORM)?;
-        let float_texture1 = screen_sized_texture(vk::Format::R32_SFLOAT)?;
-        let float_texture2 = screen_sized_texture(vk::Format::R32_SFLOAT)?;
+        let float_texture1 = screen_sized_texture(vk::Format::R32G32B32A32_SFLOAT)?;
+        let float_texture2 = screen_sized_texture(vk::Format::R32G32B32A32_SFLOAT)?;
         let name_image = |object, name: &str| -> VkResult<()> {
             instance.name_object(&device, object, vk::ObjectType::IMAGE, name)
         };
@@ -1405,8 +1405,8 @@ impl<'a> Drop for PilkaRender<'a> {
 
             self.fft_texture.destroy(&self.device);
 
-            self.float_texture2.destroy(&self.device);
             self.float_texture1.destroy(&self.device);
+            self.float_texture2.destroy(&self.device);
             self.previous_frame.destroy(&self.device);
             self.generic_texture.destroy(&self.device);
             self.dummy_texture.destroy(&self.device);
