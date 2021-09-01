@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initialize error hook.
     color_eyre::install()?;
 
-    let mut audio_context = audio::AudioContext::new()?;
+    // let mut audio_context = audio::AudioContext::new()?;
 
     let mut input = input::Input::new();
     let mut pause = false;
@@ -82,11 +82,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("Device name: {}", pilka.get_device_name()?);
     println!("Device type: {:?}", pilka.get_device_type());
     println!("Vulkan version: {}", pilka.get_vulkan_version_name()?);
-    println!("Audio host: {:?}", audio_context.host_id);
-    println!(
-        "Sample rate: {}, channels: {}",
-        audio_context.sample_rate, audio_context.num_channels
-    );
+    // println!("Audio host: {:?}", audio_context.host_id);
+    // println!(
+    //     "Sample rate: {}, channels: {}",
+    //     audio_context.sample_rate, audio_context.num_channels
+    // );
     println!("{}", ffmpeg_version);
     println!(
         "Default shader path:\n\t{}",
@@ -145,7 +145,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                 if !pause {
                     let mut tmp_buf = [0f32; audio::FFT_SIZE];
-                    audio_context.get_fft(&mut tmp_buf);
+                    // audio_context.get_fft(&mut tmp_buf);
                     pilka.update_fft_texture(&tmp_buf).unwrap();
 
                     dt = timeline.elapsed().saturating_sub(prev_time);
