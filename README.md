@@ -109,9 +109,11 @@ temporary solution after which I switch to [rav1e](https://github.com/xiph/rav1e
 - https://github.com/w23/OpenSource
 
 ## Examples
-
-All examples are in the `examples` folder and to run them,
-compile project and run `pilka` inside of approciate example folder.
+You can run any example by executing `pilka` inside of the folder
+```bash
+cd examples/dithering
+cargo run
+```
 
 | cube                                                | cellular automata                                               | line segment                                      |
 |-----------------------------------------------------|-----------------------------------------------------------------|---------------------------------------------------|
