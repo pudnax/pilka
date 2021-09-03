@@ -185,12 +185,14 @@ impl PushConstant {
     }
 }
 
+// TODO: Make proper ms -> sec converion
 impl std::fmt::Display for PushConstant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "position:\t{:?}\ntime:\t\t{}\ntime delta:\t{}\nwidth, height:\t{:?}\nmouse:\t\t{:?}\nframe:\t\t{}\n",
-            self.pos, self.time, self.time_delta, self.wh, self.mouse, self.frame
+            "position:\t{:?}\ntime:\t\t{}\ntime delta:\t{} ms, fps: {}\nwidth, height:\t{:?}\nmouse:\t\t{:?}\nframe:\t\t{}\n",
+            self.pos, self.time, self.time_delta * 1000., 1. / self.time_delta,
+            self.wh, self.mouse, self.frame
         )
     }
 }
