@@ -1,10 +1,13 @@
+#![feature(crate_visibility_modifier)]
+
 mod audio;
 mod default_shaders;
 mod input;
 mod recorder;
 mod renderer;
+mod util;
 
-use pilka::create_folder;
+use util::create_folder;
 
 use crate::renderer::PilkaRender;
 use pilka_ash::*;
@@ -141,9 +144,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 input.process_position(&mut pilka.push_constant);
 
                 if !pause {
-                    let mut tmp_buf = [0f32; audio::FFT_SIZE];
+                    // let mut tmp_buf = [0f32; audio::FFT_SIZE];
                     // audio_context.get_fft(&mut tmp_buf);
-                    pilka.update_fft_texture(&tmp_buf).unwrap();
+                    // pilka.update_fft_texture(&tmp_buf).unwrap();
 
                     dt = timeline.elapsed().saturating_sub(prev_time);
                     pilka.push_constant.time_delta = dt.as_secs_f32();

@@ -6,7 +6,7 @@ use std::thread;
 
 use rustfft::{num_complex::Complex32, Fft, FftPlanner};
 
-pub const FFT_SIZE: usize = 1024 * 2;
+pub const FFT_SIZE: u32 = 1024 * 2;
 const AMPLIFICATION: f32 = 1.;
 
 pub struct AudioContext {
@@ -34,10 +34,10 @@ fn start_audio_thread() -> Result<AudioContext> {
         eprintln!("an error occured on stream: {}", err);
     };
 
-    let inner = vec![Complex32::default(); FFT_SIZE];
-    let buff = Arc::new(Mutex::new(vec![Complex32::default(); FFT_SIZE]));
+    let inner = vec![Complex32::default(); FFT_SIZE as usize];
+    let buff = Arc::new(Mutex::new(vec![Complex32::default(); FFT_SIZE as usize]));
     let mut planner = FftPlanner::<f32>::new();
-    let fft = planner.plan_fft_forward(FFT_SIZE);
+    let fft = planner.plan_fft_forward(FFT_SIZE as usize);
     let scratch_area = vec![Complex32::default(); fft.get_inplace_scratch_len()];
 
     let stream = device.build_input_stream(
