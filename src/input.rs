@@ -1,7 +1,5 @@
-use pilka_lib::{
-    winit::event::{ElementState, VirtualKeyCode},
-    PushConstant,
-};
+use crate::renderer::PushConstant;
+use winit::event::{ElementState, VirtualKeyCode};
 
 #[derive(Debug, Default)]
 pub struct Input {
