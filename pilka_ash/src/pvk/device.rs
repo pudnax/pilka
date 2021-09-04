@@ -1,7 +1,7 @@
 use ash::{extensions::khr, prelude::VkResult, vk, Device};
 use std::sync::Arc;
 
-use crate::{
+use super::{
     command_pool::VkCommandPool,
     instance::{VkInstance, VkQueues},
     renderpass_and_pipeline::VkRenderPass,

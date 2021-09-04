@@ -1,6 +1,7 @@
-use pilka_ash::ash::{prelude::VkResult, vk, VkCommandPool, VkDevice, VkDeviceProperties, VkQueue};
+use crate::pvk::{VkCommandPool, VkDevice, VkDeviceProperties, VkQueue};
+use ash::{prelude::VkResult, vk};
 
-use crate::audio::FFT_SIZE;
+const FFT_SIZE: u32 = 1024 * 2;
 
 #[derive(Debug)]
 pub struct VkImage {

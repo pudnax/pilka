@@ -10,7 +10,7 @@ use std::{
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-use crate::util::create_folder;
+use super::utils::create_folder;
 use crate::VIDEO_FOLDER;
 
 pub enum RecordEvent {
