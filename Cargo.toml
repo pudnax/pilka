@@ -17,14 +17,11 @@ maintenance = { status = "experimental" }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[workspace]
-members = ["libs/*"]
-
 [dependencies]
+winit = "0.25.0"
 color-eyre = "0.5.11"
 eyre = "0.6.5"
-pilka_lib = { version = "0.5.0", path = "libs/pilka_lib" }
-pilka_dyn = { version = "0.5.0", path = "libs/pilka_dyn" }
+pilka_ash = { version = "0.5.0", path = "pilka_ash" }
 notify = "5.0.0-pre.11"
 chrono = "0.4.19"
 png = "0.16.8"
