@@ -31,7 +31,7 @@ cpal = "0.13.4"
 rustfft = "6.0.1"
 
 [profile.release]
-lto = true 
+lto = true
 
 # [profile.dev.package.'*']
 # opt-level = 3
