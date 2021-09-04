@@ -192,7 +192,7 @@ impl std::fmt::Display for PushConstant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "position:\t{:?}\ntime:\t\t{}\ntime delta:\t{} ms, fps: {}\nwidth, height:\t{:?}\nmouse:\t\t{:?}\nframe:\t\t{}\n",
+            "position:\t{:?}\ntime:\t\t{:.2}\ntime delta:\t{:.3} ms, fps: {:.2}\nwidth, height:\t{:?}\nmouse:\t\t{:.2?}\nframe:\t\t{}\n",
             self.pos, self.time, self.time_delta * 1000., 1. / self.time_delta,
             self.wh, self.mouse, self.frame
         )
