@@ -1,4 +1,8 @@
-use crate::ash::{
+use super::{
+    device::{RawDevice, VkDevice, VkDeviceProperties},
+    surface::VkSurface,
+};
+use ash::{
     extensions::{
         ext::DebugUtils,
         khr::{Surface, Swapchain},
@@ -10,11 +14,6 @@ use crate::ash::{
 use raw_window_handle::HasRawWindowHandle;
 
 use std::{ffi::CStr, ops::Deref, sync::Arc};
-
-use crate::{
-    device::{RawDevice, VkDevice, VkDeviceProperties},
-    surface::VkSurface,
-};
 
 #[allow(unused_macros)]
 macro_rules! offset_of {
@@ -66,7 +65,7 @@ impl VkInstance {
                     .find(|x| unsafe { CStr::from_ptr(x.layer_name.as_ptr()) } == lyr)
                     .map(|_| lyr.as_ptr())
                     .or_else(|| {
-                        println!(
+                        eprintln!(
                             "Unable to find layer: {}, have you installed the Vulkan SDK?",
                             lyr.to_string_lossy()
                         );

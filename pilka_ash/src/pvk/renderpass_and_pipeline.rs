@@ -1,6 +1,8 @@
-use crate::{ash::VkQueues, device::RawDevice, shader_module::ShaderInfo};
+use super::{device::RawDevice, shader_module::ShaderInfo};
 use ash::{prelude::VkResult, vk};
 use std::sync::Arc;
+
+use super::instance::VkQueues;
 
 #[derive(Debug)]
 pub enum Pipeline {

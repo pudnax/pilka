@@ -4,15 +4,12 @@ mod audio;
 mod default_shaders;
 mod input;
 mod recorder;
-mod renderer;
-mod util;
+mod utils;
 
-use util::create_folder;
+use utils::create_folder;
 
-use crate::renderer::PilkaRender;
-use pilka_ash::*;
+use pilka_ash::{vk, PilkaRender, ShaderInfo, SHADER_ENTRY_POINT, SHADER_PATH};
 
-use ash::{vk, SHADER_ENTRY_POINT, SHADER_PATH};
 use eyre::*;
 use notify::{
     event::{EventKind, ModifyKind},
@@ -66,13 +63,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     pilka.push_render_pipeline(
-        ash::ShaderInfo::new(shader_dir.join("shader.vert"), SHADER_ENTRY_POINT.into())?,
-        ash::ShaderInfo::new(shader_dir.join("shader.frag"), SHADER_ENTRY_POINT.into())?,
+        ShaderInfo::new(shader_dir.join("shader.vert"), SHADER_ENTRY_POINT.into())?,
+        ShaderInfo::new(shader_dir.join("shader.frag"), SHADER_ENTRY_POINT.into())?,
         &[shader_dir.join("prelude.glsl")],
     )?;
 
     pilka.push_compute_pipeline(
-        ash::ShaderInfo::new(shader_dir.join("shader.comp"), SHADER_ENTRY_POINT.into())?,
+        ShaderInfo::new(shader_dir.join("shader.comp"), SHADER_ENTRY_POINT.into())?,
         &[],
     )?;
 
@@ -105,7 +102,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Ok(event) => {
             tx.send(event).unwrap();
         }
-        Err(e) => println!("watch error: {:?}", e),
+        Err(e) => eprintln!("watch error: {:?}", e),
     })?;
 
     watcher.watch(Path::new(SHADER_PATH), RecursiveMode::Recursive)?;

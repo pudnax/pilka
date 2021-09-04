@@ -1,8 +1,9 @@
-use crate::{
-    ash::vk,
+use super::{
     device::{RawDevice, VkDevice},
     instance::{VkInstance, VkQueues},
 };
+use ash::vk;
+
 use ash::prelude::VkResult;
 use ktx::{Ktx, KtxInfo};
 use std::path::Path;
