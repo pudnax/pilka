@@ -1,6 +1,6 @@
 [package]
 name = "pilka"
-version = "0.5.7"
+version = "0.5.8"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2018"
 license = "GPL-2.0-or-later"
@@ -16,6 +16,8 @@ appveyor = { repository = "https://github.com/pudnax/pilka", branch = "master", 
 maintenance = { status = "experimental" }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[workspace]
+members = ["pilka_ash"]
 
 [dependencies]
 winit = "0.25.0"
