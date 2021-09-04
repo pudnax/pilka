@@ -5,6 +5,7 @@
 /recordings
 .clang-format
 renderdoc_pilka_settings.cap
+/compilation_timings/*
 /examples/cube/record-22-02-2021-19-02-53.mp4
 /examples/line_segment/record-13-03-2021-21-49-21.mp4
 /examples/circle_pattern/record-13-03-2021-20-27-52.mp4

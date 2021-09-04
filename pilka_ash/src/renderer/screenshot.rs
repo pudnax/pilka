@@ -1,7 +1,6 @@
 use super::images::VkImage;
-use pilka_ash::ash::{
-    pilka_util::return_aligned, prelude::VkResult, vk, VkCommandPool, VkDevice, VkDeviceProperties,
-};
+use crate::pvk::{utils::return_aligned, VkCommandPool, VkDevice, VkDeviceProperties};
+use ash::{prelude::VkResult, vk};
 
 pub struct ScreenshotCtx<'a> {
     pub fence: vk::Fence,

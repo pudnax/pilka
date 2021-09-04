@@ -1,4 +1,4 @@
-use crate::device::{RawDevice, VkDevice};
+use super::device::{RawDevice, VkDevice};
 use ash::{prelude::VkResult, vk};
 use std::sync::Arc;
 

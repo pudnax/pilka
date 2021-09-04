@@ -1,4 +1,4 @@
-use crate::device::VkDevice;
+use super::device::VkDevice;
 use ash::{extensions::khr::Surface, prelude::VkResult, vk};
 
 pub struct VkSurface {

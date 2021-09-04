@@ -1,13 +1,14 @@
 use super::images::{FftTexture, VkTexture};
-use pilka_ash::ash::{pilka_util::return_aligned, prelude::VkResult, ShaderInfo, ShaderSet, *};
-use pilka_ash::ash_window;
+use crate::pvk::{utils::return_aligned, *};
+use ash::{
+    prelude::VkResult,
+    vk::{self, PhysicalDeviceType},
+};
 use std::{collections::HashMap, ffi::CStr, io::Write, path::PathBuf};
 
 use super::screenshot::ScreenshotCtx;
 
 type Frame<'a> = (&'a [u8], (u32, u32));
-
-// const FFT_SIZE: u32 = 1024 * 2;
 
 fn graphics_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetLayout>> {
     let descriptor_set_layout = {
@@ -202,7 +203,7 @@ impl<'a> PilkaRender<'a> {
     pub fn get_device_name(&self) -> Result<&str, std::str::Utf8Error> {
         unsafe { CStr::from_ptr(self.device_properties.properties.device_name.as_ptr()) }.to_str()
     }
-    pub fn get_device_type(&self) -> pilka_ash::ash::vk::PhysicalDeviceType {
+    pub fn get_device_type(&self) -> PhysicalDeviceType {
         self.device_properties.properties.device_type
     }
     pub fn get_vendor_name(&self) -> &str {
@@ -235,7 +236,7 @@ impl<'a> PilkaRender<'a> {
             vec![]
         };
         // let validation_layers = vec!["VK_LAYER_KHRONOS_validation\0"];
-        let extention_names = ash_window::ash_window::enumerate_required_extensions(window)?;
+        let extention_names = ash_window::enumerate_required_extensions(window)?;
         let instance = VkInstance::new(&validation_layers, &extention_names)?;
 
         let surface = instance.create_surface(window)?;
@@ -1200,7 +1201,7 @@ impl<'a> PilkaRender<'a> {
                 });
                 res
             }
-            Err(pilka_ash::ash::vk::Result::ERROR_UNKNOWN) => return Ok(()),
+            Err(ash::vk::Result::ERROR_UNKNOWN) => return Ok(()),
             Err(e) => return Err(e),
         };
         self.pipelines[index] = new_pipeline;
