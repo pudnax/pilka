@@ -1305,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "pilka_ash"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "ash 0.33.2+1.2.186",
  "ash-molten",
