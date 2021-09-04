@@ -1,16 +1,13 @@
-use pilka_lib::*;
-
-#[cfg(debug_assertions)]
-#[allow(unused_imports)]
-#[allow(clippy::single_component_path_imports)]
-use pilka_dyn;
-
 mod audio;
 mod default_shaders;
 mod input;
 mod recorder;
+mod renderer;
 
 use pilka::create_folder;
+
+use crate::renderer::PilkaRender;
+use pilka_ash::*;
 
 use ash::{vk, SHADER_ENTRY_POINT, SHADER_PATH};
 use eyre::*;

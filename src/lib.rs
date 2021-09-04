@@ -14,7 +14,7 @@ pub fn create_folder<P: AsRef<Path>>(name: P) -> io::Result<()> {
 #[cfg(test)]
 mod test {
     use ash::{vk, VkInstance};
-    use pilka_lib::*;
+    use pilka_ash::*;
 
     #[test]
     #[allow(unused_variables)]
