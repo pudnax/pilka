@@ -1,6 +1,11 @@
 use super::images::VkImage;
-use crate::pvk::{utils::return_aligned, VkCommandPool, VkDevice, VkDeviceProperties};
+use crate::{
+    pvk::{utils::return_aligned, VkCommandPool, VkDevice, VkDeviceProperties},
+    VkQueue,
+};
 use ash::{prelude::VkResult, vk};
+
+pub type Frame<'a> = (&'a [u8], (u32, u32));
 
 pub struct ScreenshotCtx<'a> {
     pub fence: vk::Fence,
@@ -212,5 +217,118 @@ impl<'a> ScreenshotCtx<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn capture_frame(
+        &mut self,
+        device: &VkDevice,
+        device_properties: &VkDeviceProperties,
+        present_image: ash::vk::Image,
+        queue: &VkQueue,
+    ) -> VkResult<Frame> {
+        let copybuffer = self.commbuf;
+        unsafe {
+            device.reset_command_buffer(copybuffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES)
+        }?;
+        let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        unsafe { device.begin_command_buffer(copybuffer, &cmd_begininfo) }?;
+
+        let extent = vk::Extent3D {
+            width: self.extent.width,
+            height: self.extent.height,
+            depth: 1,
+        };
+
+        self.realloc(device, device_properties, extent)?;
+
+        // let present_image = self.swapchain.images[self.command_pool.active_command];
+        let copy_image = self.image.image;
+        let dst_stage = vk::PipelineStageFlags::TRANSFER;
+        let src_stage = vk::PipelineStageFlags::TRANSFER;
+
+        let transport_barrier = |image, old_layout, new_layout| {
+            device.set_image_layout(
+                copybuffer, image, old_layout, new_layout, src_stage, dst_stage,
+            )
+        };
+
+        use vk::ImageLayout;
+        transport_barrier(
+            present_image,
+            ImageLayout::PRESENT_SRC_KHR,
+            ImageLayout::TRANSFER_SRC_OPTIMAL,
+        );
+        transport_barrier(
+            copy_image,
+            ImageLayout::UNDEFINED,
+            ImageLayout::TRANSFER_DST_OPTIMAL,
+        );
+
+        device.blit_image(copybuffer, present_image, copy_image, extent, self.extent);
+
+        if let Some(ref blit_image) = self.blit_image {
+            transport_barrier(
+                blit_image.image,
+                ImageLayout::UNDEFINED,
+                ImageLayout::TRANSFER_DST_OPTIMAL,
+            );
+
+            transport_barrier(
+                copy_image,
+                ImageLayout::TRANSFER_DST_OPTIMAL,
+                ImageLayout::TRANSFER_SRC_OPTIMAL,
+            );
+
+            device.copy_image(copybuffer, copy_image, blit_image.image, self.extent);
+        }
+
+        transport_barrier(
+            if let Some(ref blit_image) = self.blit_image {
+                blit_image.image
+            } else {
+                copy_image
+            },
+            ImageLayout::TRANSFER_DST_OPTIMAL,
+            ImageLayout::GENERAL,
+        );
+
+        transport_barrier(
+            present_image,
+            ImageLayout::TRANSFER_SRC_OPTIMAL,
+            ImageLayout::PRESENT_SRC_KHR,
+        );
+
+        unsafe { device.end_command_buffer(copybuffer) }?;
+        let submit_commbuffers = [copybuffer];
+        let submit_infos = [vk::SubmitInfo::builder()
+            .command_buffers(&submit_commbuffers)
+            .build()];
+        unsafe { device.queue_submit(queue.queue, &submit_infos, self.fence) }?;
+        unsafe { device.wait_for_fences(&[self.fence], true, u64::MAX) }?;
+        unsafe { device.reset_fences(&[self.fence]) }?;
+
+        let subresource_layout = unsafe {
+            let image = if let Some(ref blit_image) = self.blit_image {
+                blit_image.image
+            } else {
+                self.image.image
+            };
+            device.get_image_subresource_layout(
+                image,
+                vk::ImageSubresource {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    mip_level: 0,
+                    array_layer: 0,
+                },
+            )
+        };
+
+        let (w, h) = (
+            subresource_layout.row_pitch as u32 / 4,
+            (subresource_layout.size / subresource_layout.row_pitch) as u32,
+        );
+
+        Ok((&self.data[..(w * h * 4) as usize], (w, h)))
     }
 }
