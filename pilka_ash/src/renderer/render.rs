@@ -6,9 +6,7 @@ use ash::{
 };
 use std::{collections::HashMap, ffi::CStr, io::Write, path::PathBuf};
 
-use super::screenshot::ScreenshotCtx;
-
-type Frame<'a> = (&'a [u8], (u32, u32));
+use super::screenshot::{Frame, ScreenshotCtx};
 
 fn graphics_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetLayout>> {
     let descriptor_set_layout = {
@@ -1256,132 +1254,14 @@ impl<'a> PilkaRender<'a> {
     }
 
     pub fn capture_frame(&mut self) -> VkResult<Frame> {
-        let copybuffer = self.screenshot_ctx.commbuf;
-        unsafe {
-            self.device
-                .reset_command_buffer(copybuffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES)
-        }?;
-        let cmd_begininfo = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        unsafe { self.device.begin_command_buffer(copybuffer, &cmd_begininfo) }?;
-
-        let extent = vk::Extent3D {
-            width: self.extent.width,
-            height: self.extent.height,
-            depth: 1,
-        };
-
-        self.screenshot_ctx
-            .realloc(&self.device, &self.device_properties, extent)?;
-
         let present_image = self.swapchain.images[self.command_pool.active_command];
-        let copy_image = self.screenshot_ctx.image.image;
-        let dst_stage = vk::PipelineStageFlags::TRANSFER;
-        let src_stage = vk::PipelineStageFlags::TRANSFER;
-
-        let transport_barrier = |image, old_layout, new_layout| {
-            self.device.set_image_layout(
-                copybuffer, image, old_layout, new_layout, src_stage, dst_stage,
-            )
-        };
-
-        use vk::ImageLayout;
-        transport_barrier(
+        let queue = &self.queues.graphics_queue;
+        self.screenshot_ctx.capture_frame(
+            &self.device,
+            &self.device_properties,
             present_image,
-            ImageLayout::PRESENT_SRC_KHR,
-            ImageLayout::TRANSFER_SRC_OPTIMAL,
-        );
-        transport_barrier(
-            copy_image,
-            ImageLayout::UNDEFINED,
-            ImageLayout::TRANSFER_DST_OPTIMAL,
-        );
-
-        self.device.blit_image(
-            copybuffer,
-            present_image,
-            copy_image,
-            extent,
-            self.screenshot_ctx.extent,
-        );
-
-        if let Some(ref blit_image) = self.screenshot_ctx.blit_image {
-            transport_barrier(
-                blit_image.image,
-                ImageLayout::UNDEFINED,
-                ImageLayout::TRANSFER_DST_OPTIMAL,
-            );
-
-            transport_barrier(
-                copy_image,
-                ImageLayout::TRANSFER_DST_OPTIMAL,
-                ImageLayout::TRANSFER_SRC_OPTIMAL,
-            );
-
-            self.device.copy_image(
-                copybuffer,
-                copy_image,
-                blit_image.image,
-                self.screenshot_ctx.extent,
-            );
-        }
-
-        transport_barrier(
-            if let Some(ref blit_image) = self.screenshot_ctx.blit_image {
-                blit_image.image
-            } else {
-                copy_image
-            },
-            ImageLayout::TRANSFER_DST_OPTIMAL,
-            ImageLayout::GENERAL,
-        );
-
-        transport_barrier(
-            present_image,
-            ImageLayout::TRANSFER_SRC_OPTIMAL,
-            ImageLayout::PRESENT_SRC_KHR,
-        );
-
-        unsafe { self.device.end_command_buffer(copybuffer) }?;
-        let submit_commbuffers = [copybuffer];
-        let submit_infos = [vk::SubmitInfo::builder()
-            .command_buffers(&submit_commbuffers)
-            .build()];
-        unsafe {
-            self.device.queue_submit(
-                self.queues.graphics_queue.queue,
-                &submit_infos,
-                self.screenshot_ctx.fence,
-            )
-        }?;
-        unsafe {
-            self.device
-                .wait_for_fences(&[self.screenshot_ctx.fence], true, u64::MAX)
-        }?;
-        unsafe { self.device.reset_fences(&[self.screenshot_ctx.fence]) }?;
-
-        let subresource_layout = unsafe {
-            let image = if let Some(ref blit_image) = self.screenshot_ctx.blit_image {
-                blit_image.image
-            } else {
-                self.screenshot_ctx.image.image
-            };
-            self.device.get_image_subresource_layout(
-                image,
-                vk::ImageSubresource {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    mip_level: 0,
-                    array_layer: 0,
-                },
-            )
-        };
-
-        let (w, h) = (
-            subresource_layout.row_pitch as u32 / 4,
-            (subresource_layout.size / subresource_layout.row_pitch) as u32,
-        );
-
-        Ok((&self.screenshot_ctx.data[..(w * h * 4) as usize], (w, h)))
+            queue,
+        )
     }
 
     #[allow(dead_code)]
