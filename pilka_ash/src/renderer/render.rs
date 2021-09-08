@@ -2,7 +2,7 @@ use super::images::{FftTexture, VkTexture};
 use crate::pvk::{utils::return_aligned, *};
 use ash::{
     prelude::VkResult,
-    vk::{self, PhysicalDeviceType},
+    vk::{self, Extent3D, PhysicalDeviceType},
 };
 use std::{collections::HashMap, ffi::CStr, io::Write, path::PathBuf};
 
@@ -142,7 +142,7 @@ pub struct PilkaRender<'a> {
 
     pub scissors: Box<[vk::Rect2D]>,
     pub viewports: Box<[vk::Viewport]>,
-    pub extent: vk::Extent2D,
+    pub resolution: vk::Extent2D,
 
     pub shader_set: HashMap<PathBuf, usize>,
     pub compiler: shaderc::Compiler,
@@ -561,7 +561,7 @@ impl<'a> PilkaRender<'a> {
 
             viewports,
             scissors,
-            extent,
+            resolution: extent,
 
             push_constant,
             screenshot_ctx,
@@ -616,8 +616,8 @@ impl<'a> PilkaRender<'a> {
         let present_image = self.swapchain.images[present_index as usize];
         let prev_frame = self.previous_frame.image.image;
         let extent = vk::Extent3D {
-            width: self.extent.width,
-            height: self.extent.height,
+            width: self.resolution.width,
+            height: self.resolution.height,
             depth: 1,
         };
 
@@ -846,8 +846,8 @@ impl<'a> PilkaRender<'a> {
     pub fn resize(&mut self) -> VkResult<()> {
         unsafe { self.device.device_wait_idle() }?;
 
-        self.extent = self.surface.resolution(&self.device)?;
-        let vk::Extent2D { width, height } = self.extent;
+        self.resolution = self.surface.resolution(&self.device)?;
+        let vk::Extent2D { width, height } = self.resolution;
 
         self.viewports.copy_from_slice(&[vk::Viewport {
             x: 0.,
@@ -1001,6 +1001,14 @@ impl<'a> PilkaRender<'a> {
                 .build()];
             unsafe { self.device.update_descriptor_sets(&desc_sets_write, &[]) };
         }
+
+        let extent = Extent3D {
+            width,
+            height,
+            depth: 1,
+        };
+        self.screenshot_ctx
+            .realloc(&self.device, &self.device_properties, extent)?;
 
         Ok(())
     }
