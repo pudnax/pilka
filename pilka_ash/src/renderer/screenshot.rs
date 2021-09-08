@@ -1,11 +1,13 @@
+use std::mem::size_of;
+
 use super::images::VkImage;
 use crate::{
-    pvk::{utils::return_aligned, VkCommandPool, VkDevice, VkDeviceProperties},
+    pvk::{VkCommandPool, VkDevice, VkDeviceProperties},
     VkQueue,
 };
 use ash::{prelude::VkResult, vk};
 
-pub type Frame<'a> = (&'a [u8], (u32, u32));
+pub type Frame<'a> = (&'a [u8], ImageDimentions);
 
 pub struct ScreenshotCtx<'a> {
     pub fence: vk::Fence,
@@ -34,7 +36,7 @@ impl<'a> ScreenshotCtx<'a> {
         let fence = device.create_fence(false)?;
         let extent = vk::Extent3D {
             width: extent.width,
-            height: return_aligned(extent.height, 2),
+            height: extent.height,
             depth: 1,
         };
 
@@ -133,10 +135,9 @@ impl<'a> ScreenshotCtx<'a> {
         &mut self,
         device: &VkDevice,
         device_properties: &VkDeviceProperties,
-        mut extent: vk::Extent3D,
+        extent: vk::Extent3D,
     ) -> VkResult<()> {
         if self.extent != extent {
-            extent.height = return_aligned(extent.height, 2);
             self.extent = extent;
 
             unsafe { device.destroy_image(self.image.image, None) };
@@ -234,11 +235,7 @@ impl<'a> ScreenshotCtx<'a> {
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         unsafe { device.begin_command_buffer(copybuffer, &cmd_begininfo) }?;
 
-        let extent = vk::Extent3D {
-            width: self.extent.width,
-            height: self.extent.height,
-            depth: 1,
-        };
+        let extent = self.extent;
 
         self.realloc(device, device_properties, extent)?;
 
@@ -325,10 +322,31 @@ impl<'a> ScreenshotCtx<'a> {
         };
 
         let (w, h) = (
-            subresource_layout.row_pitch as u32 / 4,
-            (subresource_layout.size / subresource_layout.row_pitch) as u32,
+            subresource_layout.row_pitch as usize / 4,
+            (subresource_layout.size / subresource_layout.row_pitch) as usize,
         );
+        let byte_depth = size_of::<[u8; 4]>();
+        let image_dimentions = {
+            let width = extent.width as usize;
+            let height = extent.height as usize;
+            let padded_bytes_per_row = w * byte_depth;
+            let unpadded_bytes_per_row = width * byte_depth;
+            ImageDimentions {
+                width,
+                height,
+                padded_bytes_per_row,
+                unpadded_bytes_per_row,
+            }
+        };
 
-        Ok((&self.data[..(w * h * 4) as usize], (w, h)))
+        Ok((&self.data[..w * h * byte_depth], image_dimentions))
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ImageDimentions {
+    pub width: usize,
+    pub height: usize,
+    pub padded_bytes_per_row: usize,
+    pub unpadded_bytes_per_row: usize,
 }
