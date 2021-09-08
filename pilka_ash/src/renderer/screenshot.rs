@@ -321,7 +321,7 @@ impl<'a> ScreenshotCtx<'a> {
             )
         };
 
-        let (w, h) = (
+        let (padded_width, padded_height) = (
             subresource_layout.row_pitch as usize / 4,
             (subresource_layout.size / subresource_layout.row_pitch) as usize,
         );
@@ -329,7 +329,7 @@ impl<'a> ScreenshotCtx<'a> {
         let image_dimentions = {
             let width = extent.width as usize;
             let height = extent.height as usize;
-            let padded_bytes_per_row = w * byte_depth;
+            let padded_bytes_per_row = padded_width * byte_depth;
             let unpadded_bytes_per_row = width * byte_depth;
             ImageDimentions {
                 width,
@@ -339,7 +339,10 @@ impl<'a> ScreenshotCtx<'a> {
             }
         };
 
-        Ok((&self.data[..w * h * byte_depth], image_dimentions))
+        Ok((
+            &self.data[..padded_width * padded_height * byte_depth],
+            image_dimentions,
+        ))
     }
 }
 
