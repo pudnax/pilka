@@ -1,5 +1,3 @@
-#![feature(crate_visibility_modifier)]
-
 mod audio;
 mod default_shaders;
 mod input;
@@ -8,7 +6,7 @@ mod utils;
 
 use utils::create_folder;
 
-use pilka_ash::{vk, PilkaRender, ShaderInfo, SHADER_ENTRY_POINT, SHADER_PATH};
+use pilka_ash::{vk, ImageDimentions, PilkaRender, ShaderInfo, SHADER_ENTRY_POINT, SHADER_PATH};
 
 use eyre::*;
 use notify::{
@@ -19,7 +17,7 @@ use recorder::RecordEvent;
 use std::{
     error::Error,
     fs::File,
-    io::BufWriter,
+    io::{BufWriter, Write},
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -161,7 +159,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let vk::Extent2D {
                         width: old_width,
                         height: old_height,
-                    } = pilka.extent;
+                    } = pilka.resolution;
 
                     if width == old_width && height == old_height {
                         return;
@@ -242,20 +240,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                         if VirtualKeyCode::F11 == keycode {
                             let now = Instant::now();
-                            let (_, (width, height)) = pilka.capture_frame().unwrap();
+                            let (_, image_dimentions) = pilka.capture_frame().unwrap();
                             eprintln!("Capture image: {:#?}", now.elapsed());
-                            let frame = &pilka.screenshot_ctx.data[..(width * height * 4) as usize];
-                            save_screenshot(frame, width, height);
+                            let frame = &pilka.screenshot_ctx.data
+                                [..image_dimentions.padded_bytes_per_row * image_dimentions.height];
+                            save_screenshot(frame, image_dimentions);
                         }
 
                         if has_ffmpeg && VirtualKeyCode::F12 == keycode {
                             if video_recording {
                                 video_tx.send(RecordEvent::Finish).unwrap()
                             } else {
-                                let (_, (w, h)) = pilka.capture_frame().unwrap();
-                                video_tx
-                                    .send(RecordEvent::Start(w as u32, h as u32))
-                                    .unwrap()
+                                let (_, image_dimentions) = pilka.capture_frame().unwrap();
+                                video_tx.send(RecordEvent::Start(image_dimentions)).unwrap()
                             }
                             video_recording = !video_recording;
                         }
@@ -267,7 +264,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     ..
                 } => {
                     if !pause {
-                        let vk::Extent2D { width, height } = pilka.extent;
+                        let vk::Extent2D { width, height } = pilka.resolution;
                         let x = (x as f32 / width as f32 - 0.5) * 2.;
                         let y = -(y as f32 / height as f32 - 0.5) * 2.;
                         pilka.push_constant.mouse = [x, y];
@@ -316,8 +313,7 @@ fn print_help() {
 
 fn save_screenshot(
     frame: &'static [u8],
-    width: u32,
-    height: u32,
+    image_dimentions: ImageDimentions,
 ) -> std::thread::JoinHandle<Result<()>> {
     std::thread::spawn(move || {
         let now = Instant::now();
@@ -329,11 +325,17 @@ fn save_screenshot(
         ));
         let file = File::create(path)?;
         let w = BufWriter::new(file);
-        let mut encoder = png::Encoder::new(w, width, height);
+        let mut encoder =
+            png::Encoder::new(w, image_dimentions.width as _, image_dimentions.height as _);
         encoder.set_color(png::ColorType::RGBA);
         encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header()?;
-        writer.write_image_data(frame)?;
+        let mut writer = encoder
+            .write_header()?
+            .into_stream_writer_with_size(image_dimentions.unpadded_bytes_per_row);
+        for chunk in frame.chunks(image_dimentions.padded_bytes_per_row) {
+            writer.write_all(&chunk[..image_dimentions.unpadded_bytes_per_row])?;
+        }
+        writer.finish()?;
         eprintln!("Encode image: {:#?}", now.elapsed());
         Ok(())
     })
