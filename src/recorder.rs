@@ -4,7 +4,6 @@ use std::{
     io::{self, Write},
     path::Path,
     process::{Child, Command, Stdio},
-    sync::mpsc,
 };
 
 #[cfg(windows)]
@@ -68,10 +67,15 @@ pub fn ffmpeg_version() -> Result<(String, bool), ProcessError> {
     Ok(res)
 }
 
+pub struct RecordChild {
+    child: Child,
+    dim: ImageDimentions,
+}
+
 pub fn new_ffmpeg_command(
     image_dimentions: ImageDimentions,
     filename: &str,
-) -> Result<Child, ProcessError> {
+) -> Result<RecordChild, ProcessError> {
     #[rustfmt::skip]
     let args = [
         "-framerate", "60",
@@ -114,10 +118,13 @@ pub fn new_ffmpeg_command(
 
     let child = command.spawn().map_err(ProcessError::SpawnError)?;
 
-    Ok(child)
+    Ok(RecordChild {
+        child,
+        dim: image_dimentions,
+    })
 }
 
-pub fn record_thread(rx: mpsc::Receiver<RecordEvent>) {
+pub fn record_thread(rx: crossbeam::channel::Receiver<RecordEvent>) {
     let mut process = None;
 
     while let Ok(event) = rx.recv() {
@@ -134,14 +141,14 @@ pub fn record_thread(rx: mpsc::Receiver<RecordEvent>) {
             }
             RecordEvent::Record(frame) => {
                 if let Some(ref mut process) = process {
-                    let writer = process.stdin.as_mut().unwrap();
+                    let writer = process.child.stdin.as_mut().unwrap();
                     writer.write_all(&frame).unwrap();
                     writer.flush().unwrap();
                 }
             }
             RecordEvent::Finish => {
                 if let Some(ref mut process) = process {
-                    process.wait().unwrap();
+                    process.child.wait().unwrap();
                 }
                 drop(process);
                 process = None;
