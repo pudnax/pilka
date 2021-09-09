@@ -37,7 +37,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     color_eyre::install()?;
 
     // let mut audio_context = audio::AudioContext::new()?;
-
     let mut input = input::Input::new();
     let mut pause = false;
     let mut timeline = Instant::now();
@@ -94,7 +93,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("// And let's begin the⏎ ");
     println!("\tSIMULATION⏎ \n");
 
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = crossbeam::channel::unbounded();
 
     let mut watcher: RecommendedWatcher = notify::recommended_watcher(move |res| match res {
         Ok(event) => {
@@ -106,7 +105,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     watcher.watch(Path::new(SHADER_PATH), RecursiveMode::Recursive)?;
 
     let mut video_recording = false;
-    let (video_tx, video_rx) = std::sync::mpsc::channel();
+    let (video_tx, video_rx) = crossbeam::channel::unbounded();
     std::thread::spawn(move || recorder::record_thread(video_rx));
 
     event_loop.run(move |event, _, control_flow| {
@@ -284,7 +283,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             Event::MainEventsCleared => {
                 pilka.render().unwrap();
                 if video_recording {
-                    let (frame, _) = pilka.capture_frame().unwrap();
+                    let (frame, _image_dimentions) = pilka.capture_frame().unwrap();
                     video_tx.send(RecordEvent::Record(frame.to_vec())).unwrap()
                 }
             }
@@ -321,7 +320,7 @@ fn save_screenshot(
         create_folder(screenshots_folder)?;
         let path = screenshots_folder.join(format!(
             "screenshot-{}.png",
-            chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
+            chrono::Local::now().format("%d-%m-%Y-%H-%M-%S")
         ));
         let file = File::create(path)?;
         let w = BufWriter::new(file);
@@ -332,8 +331,11 @@ fn save_screenshot(
         let mut writer = encoder
             .write_header()?
             .into_stream_writer_with_size(image_dimentions.unpadded_bytes_per_row);
-        for chunk in frame.chunks(image_dimentions.padded_bytes_per_row) {
-            writer.write_all(&chunk[..image_dimentions.unpadded_bytes_per_row])?;
+        for chunk in frame
+            .chunks(image_dimentions.padded_bytes_per_row)
+            .map(|chunk| &chunk[..image_dimentions.unpadded_bytes_per_row])
+        {
+            writer.write_all(chunk)?;
         }
         writer.finish()?;
         eprintln!("Encode image: {:#?}", now.elapsed());

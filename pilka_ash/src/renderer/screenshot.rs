@@ -2,7 +2,7 @@ use std::mem::size_of;
 
 use super::images::VkImage;
 use crate::{
-    pvk::{VkCommandPool, VkDevice, VkDeviceProperties},
+    pvk::{utils::return_aligned, VkCommandPool, VkDevice, VkDeviceProperties},
     VkQueue,
 };
 use ash::{prelude::VkResult, vk};
@@ -36,7 +36,7 @@ impl<'a> ScreenshotCtx<'a> {
         let fence = device.create_fence(false)?;
         let extent = vk::Extent3D {
             width: extent.width,
-            height: extent.height,
+            height: return_aligned(extent.height, 2),
             depth: 1,
         };
 
@@ -135,9 +135,10 @@ impl<'a> ScreenshotCtx<'a> {
         &mut self,
         device: &VkDevice,
         device_properties: &VkDeviceProperties,
-        extent: vk::Extent3D,
+        mut extent: vk::Extent3D,
     ) -> VkResult<()> {
         if self.extent != extent {
+            extent.height = return_aligned(extent.height, 2);
             self.extent = extent;
 
             unsafe { device.destroy_image(self.image.image, None) };
@@ -305,44 +306,29 @@ impl<'a> ScreenshotCtx<'a> {
         unsafe { device.wait_for_fences(&[self.fence], true, u64::MAX) }?;
         unsafe { device.reset_fences(&[self.fence]) }?;
 
-        let subresource_layout = unsafe {
+        let (subresource_layout, image_dimentions) = unsafe {
             let image = if let Some(ref blit_image) = self.blit_image {
-                blit_image.image
+                blit_image
             } else {
-                self.image.image
+                &self.image
             };
-            device.get_image_subresource_layout(
-                image,
+            let image_dimentions = ImageDimentions::new(
+                extent.width as _,
+                extent.height as _,
+                image.memory_requirements.alignment as _,
+            );
+            let subresource_layout = device.get_image_subresource_layout(
+                image.image,
                 vk::ImageSubresource {
                     aspect_mask: vk::ImageAspectFlags::COLOR,
                     mip_level: 0,
                     array_layer: 0,
                 },
-            )
+            );
+            (subresource_layout, image_dimentions)
         };
 
-        let (padded_width, padded_height) = (
-            subresource_layout.row_pitch as usize / 4,
-            (subresource_layout.size / subresource_layout.row_pitch) as usize,
-        );
-        let byte_depth = size_of::<[u8; 4]>();
-        let image_dimentions = {
-            let width = extent.width as usize;
-            let height = extent.height as usize;
-            let padded_bytes_per_row = padded_width * byte_depth;
-            let unpadded_bytes_per_row = width * byte_depth;
-            ImageDimentions {
-                width,
-                height,
-                padded_bytes_per_row,
-                unpadded_bytes_per_row,
-            }
-        };
-
-        Ok((
-            &self.data[..padded_width * padded_height * byte_depth],
-            image_dimentions,
-        ))
+        Ok((&self.data[..subresource_layout.size as _], image_dimentions))
     }
 }
 
@@ -352,4 +338,19 @@ pub struct ImageDimentions {
     pub height: usize,
     pub padded_bytes_per_row: usize,
     pub unpadded_bytes_per_row: usize,
+}
+
+impl ImageDimentions {
+    fn new(width: usize, height: usize, align: usize) -> Self {
+        let bytes_per_pixel = size_of::<[u8; 4]>();
+        let unpadded_bytes_per_row = width * bytes_per_pixel;
+        let padded_bytes_per_row_padding = (align - unpadded_bytes_per_row % align) % align;
+        let padded_bytes_per_row = unpadded_bytes_per_row + padded_bytes_per_row_padding;
+        Self {
+            width,
+            height,
+            unpadded_bytes_per_row,
+            padded_bytes_per_row,
+        }
+    }
 }
