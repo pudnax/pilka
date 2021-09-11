@@ -24,10 +24,12 @@ layout(std430, push_constant) uniform PushConstant {
     bool mouse_pressed;
     uint frame;
     float time_delta;
+	float record_period;
 } pc;
 
 #define time pc.time
 
+const float PI = 3.14159265359;
 const float TAU = 6.28318530717958647692;
 
 const float GAMMA = 1.1;
@@ -87,7 +89,7 @@ float tMorph;
 int NB_CUTS = 4;
 float opSuperCut(inout vec3 p) {
     float ksp = .04 * step(0.5, tMorph), dcut = 999.;
-    uint id = uint(floor(time / 95.));
+    uint id = 6; // uint(floor(time / 95.));
     if (ksp > 0.) {
         for (int i = 0; i < NB_CUTS; i++) {
             float w = -.4 + .8 * hash1(id + uint(i + 8989)),
@@ -127,36 +129,43 @@ float sdIcosahedron(vec3 p, float radius){
     float d = dot(p, n2) - n1.x;
     return max(max(max(a, b), c) - n1.x, d) * radius;
 }
+
 float sdIcosahestar(vec3 p){
     float radius = 1.5;
     return min(sdDodecahedron(p, radius), sdIcosahedron(p.zyx, radius));
 }
+float easeInOutCirc(float x) {
+    return x < 0.5 ? (1. - sqrt(1. - pow(2. * x, 2.))) / 2.
+                   : (sqrt(1. - pow(-2. * x + 2., 2.)) + 1.) / 2.;
+}
 
-float scene(vec3 p) {
+vec2 scene(vec3 p) {
     vec3 pos = p;
 
-    float d = sdIcosahestar(p);
+    float dodestar = sdIcosahestar(p);
+	float d = dodestar;
 
-    /* d = length(p) - 1.5; */
     float cut = op_cut_space(p, normalize(vec3(0., 1., 1.)), 0.1, 0.1);
     d = max(d, -cut);
 
     cut = op_cut_space(p, normalize(vec3(1., 1., 0.)), 0.1, 0.1);
-    /* d = max(d, -cut); */
+    d = max(d, -cut);
 
     float sc = opSuperCut(p);
     d = max(d, -sc);
 
-    float box = sdBox(p, vec3(2.));
+    float box = sdBox(p, vec3(0.4)) - 0.3 -
+                2.6 * easeInOutCirc(1 - abs(sin(time * TAU / pc.record_period)));
     d = max(d, box);
 
-    return d;
+    return vec2(d, dodestar);
 }
 
 vec3 sky(vec3 ray) {
     vec3 col = vec3(0.);
 
-    col += vec3(93, 74, 161)/255. * smoothstep(.2, 1.0, dot(ray, normalize(vec3(1, 1, 3))));
+    col += vec3(173, 172, 181) / 255. * 0.1 * smoothstep(.2, 1.5, dot(ray, normalize(vec3(0, -1, 0))));
+    col += vec3(93, 74, 161) / 255. * smoothstep(.2, 1.0, dot(ray, normalize(vec3(1, 1, 3))));
     col += vec3(.1, .1, .05) * 0.01 * noise(ray * 2.0 + vec3(0, 1, 5) * time).x;
     col += 3.0 * vec3(1, 1.7, 3) * smoothstep(.8, 1.0, dot(ray, normalize(vec3(3, 3, -2))));
     col += 2.0 * vec3(2, 1, 3) * smoothstep(.9, 1.0, dot(ray, normalize(vec3(3, 8, -2))));
@@ -166,7 +175,7 @@ vec3 sky(vec3 ray) {
 
 vec3 normal_vector(vec3 p, float rep) {
     mat3 k = mat3(p, p, p) - mat3(rep);
-    return normalize(scene(p) - vec3(scene(k[0]), scene(k[1]), scene(k[2])));
+    return normalize(scene(p).x - vec3(scene(k[0]).x, scene(k[1]).x, scene(k[2]).x));
 }
 
 void main() {
@@ -179,9 +188,12 @@ void main() {
     vec3 ro = vec3(0., 1., -10);
     vec3 rd = vec3(uv, 1.);
 
-    float zoom = 2.4;
-    vec3 origin = .005 * vec3(noise(vec3(2.0 * time, 0., 0.)).xy, 0.);
-    set_camera(ro, rd, origin, vec2(0.4, TAU) * (pc.mouse.yx * 0.5 + 1.) + vec2(0., time / 2.5), 6.0, zoom, uv);
+    float zoom = 2.0;
+    vec3 origin = 0.005 * vec3(noise(vec3(2.0 * time, 0., 0.)).xy, 0.);
+    vec2 rotation = vec2(0.4, -PI / 3);
+	/* rotation *= (pc.mouse.yx * 0.5 + 1.); */
+    rotation += vec2(0., time * TAU / pc.record_period);
+    set_camera(ro, rd, origin, rotation, 6.0, zoom, uv);
 
     const float cone_radius = .7071 / (pc.resolution.y * zoom);
 
@@ -194,19 +206,28 @@ void main() {
     vec3 color = vec3(0.);
 
     float t = 0.;
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < 50; ++i) {
         const float radius = t * cone_radius + aperture * abs(t - focus);
         vec3 p = ro + t * rd;
-        const float h = scene(p);
+        vec2 dist = scene(p);
+        const float h = dist.x;
 
         if (h < radius) {
             vec3 normal = normal_vector(p, radius);
 
+            const vec3 GOLD1 = vec3(1.1, 0.91, 0.52);
+            const vec3 GOLD2 = vec3(1.1, 1.07, 0.88);
+            const vec3 GOLD3 = vec3(1.02, 0.82, 0.55);
+
             vec3 albedo = vec3(.2);
+            if (dist.x > dist.y) {
+                /* albedo = vec3(1.0, 0.0, 0.0); */
+				albedo = vec3(184, 46, 46) / 256 ;
+            }
 
             vec3 ambient = vec3(.1) * smoothstep(.7, 2.0, length(p.xz) + abs(p.y));
-            vec3 directional = 3.0 * vec3(1, .1, .13) *
-                max(dot(normal, normalize(vec3(-2, -2, -1))), .0);
+            vec3 directional =
+                3.0 * vec3(1, .1, .13) * max(dot(normal, normalize(vec3(-2, -2, -1))), .0);
             directional *= smoothstep(.5, 1.5, dot(p, normalize(vec3(1, 1, -1))));
 
             float fresnel = pow(1.0 - abs(dot(normal, rd)), 5.0);
@@ -214,7 +235,7 @@ void main() {
 
             vec3 reflection = sky(reflect(rd, normal));
 
-            vec3 sample_color = mix(albedo *(ambient + directional), reflection, vec3(fresnel));
+            vec3 sample_color = mix(albedo * (ambient + directional), reflection, vec3(fresnel));
 
             float new_coverage = -h / radius;
             vec3 new_coverage_dir = normalize(normal - dot(normal, rd) * rd);
@@ -225,18 +246,18 @@ void main() {
             if (new_coverage > coverage) {
                 color += sample_color * (new_coverage - coverage) * .5;
 
-                cover_dir =
-                    normalize(mix(new_coverage_dir, cover_dir,
-                                  (coverage + 1.0) / (new_coverage + 1.0)));
+                cover_dir = normalize(
+                    mix(new_coverage_dir, cover_dir, (coverage + 1.0) / (new_coverage + 1.0)));
                 coverage = new_coverage;
             }
         }
         t += max(h, radius * .5);
-        if (h < -radius || coverage > 1.0) break;
+        if (h < -radius || coverage > 1.0)
+            break;
     }
     color += (1.0 - coverage) * .5 * sky(rd);
 
-    vec3 grainPos = vec3(in_uv  * .8, time * 30.0);
+    vec3 grainPos = vec3(in_uv * .8, time * 30.0);
     grainPos.xy = grainPos.xy * cos(.75) + grainPos.yx * vec2(-1, 1) * sin(.75);
     grainPos.yz = grainPos.yz * cos(.5) + grainPos.zy * vec2(-1, 1) * sin(.5);
     vec2 filmNoise = noise(grainPos * .5);
