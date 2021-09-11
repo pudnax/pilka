@@ -14,7 +14,7 @@ Available features:
 - [x] Record video
 - [x] Compute pipeline for post processing
 
-![preview](boring_tunnel.png)
+![preview](menger_sponge.png)
 
 ## How
 
@@ -51,6 +51,11 @@ emacs, vim, ed etc.) and `pilka` would fetch changes after each save.
 | frame         | uint    |         |
 | time_delta    | float   |         |
 | prev_frame    | texture |         |
+
+## Flags
+
+ - `--record f32` - Start video record
+ - `--size f32xf32` - specify window size and locks window from resizing
 
 ## Requirements
 
