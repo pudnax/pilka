@@ -1,9 +1,12 @@
+use color_eyre::*;
+use crossbeam::channel::Sender;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
     io::{self, Write},
     path::Path,
     process::{Child, Command, Stdio},
+    time::Duration,
 };
 
 #[cfg(windows)]
@@ -67,15 +70,10 @@ pub fn ffmpeg_version() -> Result<(String, bool), ProcessError> {
     Ok(res)
 }
 
-pub struct RecordChild {
-    child: Child,
-    dim: ImageDimentions,
-}
-
 pub fn new_ffmpeg_command(
     image_dimentions: ImageDimentions,
     filename: &str,
-) -> Result<RecordChild, ProcessError> {
+) -> Result<Child, ProcessError> {
     #[rustfmt::skip]
     let args = [
         "-framerate", "60",
@@ -118,10 +116,7 @@ pub fn new_ffmpeg_command(
 
     let child = command.spawn().map_err(ProcessError::SpawnError)?;
 
-    Ok(RecordChild {
-        child,
-        dim: image_dimentions,
-    })
+    Ok(child)
 }
 
 pub fn record_thread(rx: crossbeam::channel::Receiver<RecordEvent>) {
@@ -141,17 +136,51 @@ pub fn record_thread(rx: crossbeam::channel::Receiver<RecordEvent>) {
             }
             RecordEvent::Record(frame) => {
                 if let Some(ref mut process) = process {
-                    let writer = process.child.stdin.as_mut().unwrap();
+                    let writer = process.stdin.as_mut().unwrap();
                     writer.write_all(&frame).unwrap();
                     writer.flush().unwrap();
                 }
             }
             RecordEvent::Finish => {
                 if let Some(ref mut process) = process {
-                    process.child.wait().unwrap();
+                    process.wait().unwrap();
                 }
                 drop(process);
                 process = None;
+            }
+        }
+    }
+}
+
+pub struct RecordTimer {
+    until: Option<Duration>,
+    tx: Sender<RecordEvent>,
+}
+
+impl RecordTimer {
+    pub fn new(until: Option<Duration>, tx: Sender<RecordEvent>) -> Self {
+        Self { until, tx }
+    }
+
+    pub fn start(
+        &self,
+        video_recording: &mut bool,
+        image_dimentions: ImageDimentions,
+    ) -> Result<()> {
+        if self.until.is_some() {
+            self.tx.send(RecordEvent::Start(image_dimentions))?;
+            *video_recording = true;
+        }
+        Ok(())
+    }
+
+    pub fn update(&self, now: Duration, video_recording: &mut bool) {
+        if let Some(until) = self.until {
+            if until < now {
+                *video_recording = false;
+                self.tx.send(RecordEvent::Finish).unwrap();
+                std::thread::sleep(Duration::from_millis(100));
+                std::process::exit(0);
             }
         }
     }
