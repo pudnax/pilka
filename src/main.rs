@@ -45,9 +45,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let event_loop = winit::event_loop::EventLoop::new();
 
     let window = {
-        let mut window_builder = winit::window::WindowBuilder::new()
-            .with_title("Pilka")
-            .with_resize_increments(winit::dpi::LogicalSize::<u32>::from((8, 2)));
+        let mut window_builder = winit::window::WindowBuilder::new().with_title("Pilka");
+        #[cfg(unix)]
+        {
+            window_builder =
+                window_builder.with_resize_increments(winit::dpi::LogicalSize::<u32>::from((8, 2)));
+        }
         if let Some(size) = inner_size {
             window_builder = window_builder
                 .with_resizable(false)
