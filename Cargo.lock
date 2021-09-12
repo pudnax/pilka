@@ -1290,7 +1290,7 @@ checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
 
 [[package]]
 name = "pilka"
-version = "0.5.9"
+version = "0.5.10"
 dependencies = [
  "chrono",
  "color-eyre",
@@ -1306,7 +1306,7 @@ dependencies = [
 
 [[package]]
 name = "pilka_ash"
-version = "0.5.9"
+version = "0.5.10"
 dependencies = [
  "ash 0.33.3+1.2.191",
  "ash-molten",
