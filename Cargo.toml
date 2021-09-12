@@ -1,6 +1,6 @@
 [package]
 name = "pilka"
-version = "0.5.9"
+version = "0.5.10"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2018"
 license = "GPL-2.0-or-later"
