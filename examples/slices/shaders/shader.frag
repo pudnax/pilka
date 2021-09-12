@@ -154,8 +154,8 @@ vec2 scene(vec3 p) {
     float sc = opSuperCut(p);
     d = max(d, -sc);
 
-    float box = sdBox(p, vec3(0.4)) - 0.3 -
-                2.6 * easeInOutCirc(1 - abs(sin(time * TAU / pc.record_period)));
+    float box = sdBox(p, vec3(0.4) + 0.3 +
+                2.6 * easeInOutCirc(1 - abs(sin(time * TAU / pc.record_period))));
     d = max(d, box);
 
     return vec2(d, dodestar);
@@ -221,8 +221,7 @@ void main() {
 
             vec3 albedo = vec3(.2);
             if (dist.x > dist.y) {
-                /* albedo = vec3(1.0, 0.0, 0.0); */
-				albedo = vec3(184, 46, 46) / 256 ;
+                albedo = vec3(1.0, 0.0, 0.0);
             }
 
             vec3 ambient = vec3(.1) * smoothstep(.7, 2.0, length(p.xz) + abs(p.y));
