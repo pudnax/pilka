@@ -6,7 +6,7 @@ pub use screenshot::ImageDimentions;
 use crate::pvk::{utils::return_aligned, *};
 use ash::{
     prelude::VkResult,
-    vk::{self, Extent3D, PhysicalDeviceType},
+    vk::{self, Extent3D, PhysicalDeviceType, SubresourceLayout},
 };
 use std::{collections::HashMap, ffi::CStr, io::Write, path::PathBuf};
 
@@ -182,6 +182,7 @@ pub struct PushConstant {
     pub mouse_pressed: vk::Bool32,
     pub frame: u32,
     pub time_delta: f32,
+    pub record_period: f32,
 }
 
 impl PushConstant {
@@ -195,9 +196,9 @@ impl std::fmt::Display for PushConstant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "position:\t{:?}\ntime:\t\t{:.2}\ntime delta:\t{:.3} ms, fps: {:.2}\nwidth, height:\t{:?}\nmouse:\t\t{:.2?}\nframe:\t\t{}\n",
+            "position:\t{:?}\ntime:\t\t{:.2}\ntime delta:\t{:.3} ms, fps: {:.2}\nwidth, height:\t{:?}\nmouse:\t\t{:.2?}\nframe:\t\t{}\nrecord_period:\t{}\n",
             self.pos, self.time, self.time_delta * 1000., 1. / self.time_delta,
-            self.wh, self.mouse, self.frame
+            self.wh, self.mouse, self.frame, self.record_period
         )
     }
 }
@@ -327,9 +328,10 @@ impl<'a> PilkaRender<'a> {
             wh: surface.resolution_slice(&device)?,
             mouse: [0.; 2],
             time: 0.,
-            time_delta: 0.16,
+            time_delta: 0.166666,
             mouse_pressed: false as _,
             frame: 0,
+            record_period: 10.,
         };
 
         let pipeline_cache_create_info = vk::PipelineCacheCreateInfo::builder();
@@ -1281,6 +1283,13 @@ impl<'a> PilkaRender<'a> {
     pub fn update_fft_texture(&mut self, data: &[f32]) -> VkResult<()> {
         self.fft_texture
             .update(data, &self.device, &self.queues.transfer_queue)
+    }
+
+    pub fn screenshot_layout(&self) -> SubresourceLayout {
+        self.screenshot_ctx.image_dimentions(&self.device).0
+    }
+    pub fn screenshot_dimentions(&self) -> ImageDimentions {
+        self.screenshot_ctx.image_dimentions(&self.device).1
     }
 }
 
