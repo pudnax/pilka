@@ -5,7 +5,10 @@ use crate::{
     pvk::{utils::return_aligned, VkCommandPool, VkDevice, VkDeviceProperties},
     VkQueue,
 };
-use ash::{prelude::VkResult, vk};
+use ash::{
+    prelude::VkResult,
+    vk::{self, SubresourceLayout},
+};
 
 pub type Frame<'a> = (&'a [u8], ImageDimentions);
 
@@ -306,29 +309,33 @@ impl<'a> ScreenshotCtx<'a> {
         unsafe { device.wait_for_fences(&[self.fence], true, u64::MAX) }?;
         unsafe { device.reset_fences(&[self.fence]) }?;
 
-        let (subresource_layout, image_dimentions) = unsafe {
-            let image = if let Some(ref blit_image) = self.blit_image {
-                blit_image
-            } else {
-                &self.image
-            };
-            let image_dimentions = ImageDimentions::new(
-                extent.width as _,
-                extent.height as _,
-                image.memory_requirements.alignment as _,
-            );
-            let subresource_layout = device.get_image_subresource_layout(
+        let (subresource_layout, image_dimentions) = self.image_dimentions(device);
+
+        Ok((&self.data[..subresource_layout.size as _], image_dimentions))
+    }
+
+    pub fn image_dimentions(&self, device: &VkDevice) -> (SubresourceLayout, ImageDimentions) {
+        let image = if let Some(ref blit_image) = self.blit_image {
+            blit_image
+        } else {
+            &self.image
+        };
+        let image_dimentions = ImageDimentions::new(
+            self.extent.width as _,
+            self.extent.height as _,
+            image.memory_requirements.alignment as _,
+        );
+        let subresource_layout = unsafe {
+            device.get_image_subresource_layout(
                 image.image,
                 vk::ImageSubresource {
                     aspect_mask: vk::ImageAspectFlags::COLOR,
                     mip_level: 0,
                     array_layer: 0,
                 },
-            );
-            (subresource_layout, image_dimentions)
+            )
         };
-
-        Ok((&self.data[..subresource_layout.size as _], image_dimentions))
+        (subresource_layout, image_dimentions)
     }
 }
 

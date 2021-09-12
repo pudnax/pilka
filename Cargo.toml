@@ -33,9 +33,10 @@ crossbeam = "0.8.1"
 
 [profile.release]
 lto = true
+debug = 0
 
 # [profile.dev.package.'*']
 # opt-level = 3
 
-# [profile.dev]
-# debug = 0
+[profile.dev]
+debug = 0

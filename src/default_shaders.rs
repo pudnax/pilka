@@ -49,6 +49,7 @@ layout(std430, push_constant) uniform PushConstant {
     bool mouse_pressed;
     uint frame;
     float time_delta;
+    float record_period;
 } pc;
 
 float worldSDF(in vec3 pos) {
@@ -92,6 +93,7 @@ layout(std430, push_constant) uniform PushConstant {
     bool mouse_pressed;
     uint frame;
     float time_delta;
+    float record_period;
 } pc;
 
 void main() {
@@ -109,6 +111,7 @@ layout(std430, push_constant) uniform PushConstant {
     bool mouse_pressed;
     uint frame;
     float time_delta;
+    float record_period;
 } pc;
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;

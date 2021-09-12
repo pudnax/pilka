@@ -4,52 +4,60 @@ mod input;
 mod recorder;
 mod utils;
 
-use utils::create_folder;
+use std::{
+    error::Error,
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
 
-use pilka_ash::{vk, ImageDimentions, PilkaRender, ShaderInfo, SHADER_ENTRY_POINT, SHADER_PATH};
+use pilka_ash::{vk, PilkaRender, ShaderInfo, SHADER_ENTRY_POINT, SHADER_PATH};
+use recorder::{RecordEvent, RecordTimer};
+use utils::{parse_args, print_help, save_screenshot, save_shaders, Args};
 
 use eyre::*;
 use notify::{
     event::{EventKind, ModifyKind},
     RecommendedWatcher, RecursiveMode, Watcher,
 };
-use recorder::RecordEvent;
-use std::{
-    error::Error,
-    fs::File,
-    io::{BufWriter, Write},
-    path::{Path, PathBuf},
-    time::{Duration, Instant},
-};
 use winit::{
     dpi::PhysicalPosition,
     dpi::PhysicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
+    platform::unix::WindowBuilderExtUnix,
 };
 
-const SCREENSHOTS_FOLDER: &str = "screenshots";
-const SHADER_DUMP_FOLDER: &str = "shader_dump";
-const VIDEO_FOLDER: &str = "recordings";
+pub const SCREENSHOTS_FOLDER: &str = "screenshots";
+pub const SHADER_DUMP_FOLDER: &str = "shader_dump";
+pub const VIDEO_FOLDER: &str = "recordings";
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Initialize error hook.
     color_eyre::install()?;
 
+    let Args {
+        record_time,
+        inner_size,
+    } = parse_args();
+
     // let mut audio_context = audio::AudioContext::new()?;
-    let mut input = input::Input::new();
-    let mut pause = false;
-    let mut timeline = Instant::now();
-    let mut prev_time = timeline.elapsed();
-    let mut backup_time = timeline.elapsed();
-    let mut dt = Duration::from_secs_f32(1. / 60.);
 
     let event_loop = winit::event_loop::EventLoop::new();
 
-    let window = winit::window::WindowBuilder::new()
-        .with_title("Pilka")
-        .with_inner_size(winit::dpi::LogicalSize::new(1280, 720))
-        .build(&event_loop)?;
+    let window = {
+        let mut window_builder = winit::window::WindowBuilder::new()
+            .with_title("Pilka")
+            .with_resize_increments(winit::dpi::LogicalSize::<u32>::from((8, 2)));
+        if let Some(size) = inner_size {
+            window_builder = window_builder
+                .with_resizable(false)
+                .with_inner_size(winit::dpi::LogicalSize::<u32>::from(size));
+        } else {
+            window_builder =
+                window_builder.with_inner_size(winit::dpi::LogicalSize::new(1280, 720));
+        }
+        window_builder.build(&event_loop)?
+    };
 
     let mut pilka = PilkaRender::new(&window)?;
 
@@ -69,6 +77,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         ShaderInfo::new(shader_dir.join("shader.comp"), SHADER_ENTRY_POINT.into())?,
         &[],
     )?;
+    pilka.render()?;
+    pilka.capture_frame()?;
 
     let (ffmpeg_version, has_ffmpeg) = recorder::ffmpeg_version()?;
 
@@ -107,6 +117,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut video_recording = false;
     let (video_tx, video_rx) = crossbeam::channel::unbounded();
     std::thread::spawn(move || recorder::record_thread(video_rx));
+
+    let mut input = input::Input::new();
+    let mut pause = false;
+    let mut timeline = Instant::now();
+    let mut prev_time = timeline.elapsed();
+    let mut backup_time = timeline.elapsed();
+    let mut dt = Duration::from_secs_f32(1. / 60.);
+
+    let timer = RecordTimer::new(record_time, video_tx.clone());
+    if let Some(period) = record_time {
+        pilka.push_constant.record_period = period.as_secs_f32();
+    }
+
+    timer.start(&mut video_recording, pilka.screenshot_dimentions())?;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
@@ -148,6 +172,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                     prev_time = timeline.elapsed();
                 }
                 pilka.push_constant.wh = pilka.surface.resolution_slice(&pilka.device).unwrap();
+
+                timer.update(timeline.elapsed(), &mut video_recording);
             }
 
             Event::WindowEvent { event, .. } => match event {
@@ -294,73 +320,4 @@ fn main() -> Result<(), Box<dyn Error>> {
             _ => {}
         }
     });
-}
-
-fn print_help() {
-    println!("\n- `F1`:   Print help");
-    println!("- `F2`:   Toggle play/pause");
-    println!("- `F3`:   Pause and step back one frame");
-    println!("- `F4`:   Pause and step forward one frame");
-    println!("- `F5`:   Restart playback at frame 0 (`Time` and `Pos` = 0)");
-    println!("- `F6`:   Print parameters");
-    println!("- `F10`:  Save shaders");
-    println!("- `F11`:  Take Screenshot");
-    println!("- `F12`:  Start/Stop record video");
-    println!("- `ESC`:  Exit the application");
-    println!("- `Arrows`: Change `Pos`\n");
-}
-
-fn save_screenshot(
-    frame: &'static [u8],
-    image_dimentions: ImageDimentions,
-) -> std::thread::JoinHandle<Result<()>> {
-    std::thread::spawn(move || {
-        let now = Instant::now();
-        let screenshots_folder = Path::new(SCREENSHOTS_FOLDER);
-        create_folder(screenshots_folder)?;
-        let path = screenshots_folder.join(format!(
-            "screenshot-{}.png",
-            chrono::Local::now().format("%d-%m-%Y-%H-%M-%S")
-        ));
-        let file = File::create(path)?;
-        let w = BufWriter::new(file);
-        let mut encoder =
-            png::Encoder::new(w, image_dimentions.width as _, image_dimentions.height as _);
-        encoder.set_color(png::ColorType::RGBA);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder
-            .write_header()?
-            .into_stream_writer_with_size(image_dimentions.unpadded_bytes_per_row);
-        for chunk in frame
-            .chunks(image_dimentions.padded_bytes_per_row)
-            .map(|chunk| &chunk[..image_dimentions.unpadded_bytes_per_row])
-        {
-            writer.write_all(chunk)?;
-        }
-        writer.finish()?;
-        eprintln!("Encode image: {:#?}", now.elapsed());
-        Ok(())
-    })
-}
-
-fn save_shaders(pilka: &PilkaRender) -> Result<()> {
-    let dump_folder = std::path::Path::new(SHADER_DUMP_FOLDER);
-    create_folder(dump_folder)?;
-    let dump_folder =
-        dump_folder.join(chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string());
-    create_folder(&dump_folder)?;
-    let dump_folder = dump_folder.join(SHADER_PATH);
-    create_folder(&dump_folder)?;
-
-    for path in pilka.shader_set.keys() {
-        let to = dump_folder.join(path.strip_prefix(Path::new(SHADER_PATH).canonicalize()?)?);
-        if !to.exists() {
-            std::fs::create_dir_all(&to.parent().unwrap().canonicalize()?)?;
-            std::fs::File::create(&to)?;
-        }
-        std::fs::copy(path, &to)?;
-        eprintln!("Saved: {}", &to.display());
-    }
-
-    Ok(())
 }
