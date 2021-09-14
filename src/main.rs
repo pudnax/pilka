@@ -80,8 +80,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         ShaderInfo::new(shader_dir.join("shader.comp"), SHADER_ENTRY_POINT.into())?,
         &[],
     )?;
-    pilka.render()?;
-    pilka.capture_frame()?;
 
     let (ffmpeg_version, has_ffmpeg) = recorder::ffmpeg_version()?;
 
