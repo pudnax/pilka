@@ -1,5 +1,5 @@
 use color_eyre::*;
-use crossbeam::channel::Sender;
+use crossbeam_channel::{Receiver, Sender};
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
@@ -119,7 +119,7 @@ pub fn new_ffmpeg_command(
     Ok(child)
 }
 
-pub fn record_thread(rx: crossbeam::channel::Receiver<RecordEvent>) {
+pub fn record_thread(rx: crossbeam_channel::Receiver<RecordEvent>) {
     let mut process = None;
 
     while let Ok(event) = rx.recv() {

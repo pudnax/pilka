@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("// And let's begin the⏎ ");
     println!("\tSIMULATION⏎ \n");
 
-    let (tx, rx) = crossbeam::channel::unbounded();
+    let (tx, rx) = crossbeam_channel::unbounded();
 
     let mut watcher: RecommendedWatcher = notify::recommended_watcher(move |res| match res {
         Ok(event) => {
@@ -118,7 +118,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     watcher.watch(Path::new(SHADER_PATH), RecursiveMode::Recursive)?;
 
     let mut video_recording = false;
-    let (video_tx, video_rx) = crossbeam::channel::unbounded();
+    let (video_tx, video_rx) = crossbeam_channel::unbounded();
     std::thread::spawn(move || recorder::record_thread(video_rx));
 
     let mut input = input::Input::new();
