@@ -1295,7 +1295,7 @@ dependencies = [
  "chrono",
  "color-eyre",
  "cpal",
- "crossbeam",
+ "crossbeam-channel",
  "eyre",
  "notify",
  "pilka_ash",
