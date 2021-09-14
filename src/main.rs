@@ -126,12 +126,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut backup_time = timeline.elapsed();
     let mut dt = Duration::from_secs_f32(1. / 60.);
 
-    let timer = RecordTimer::new(record_time, video_tx.clone());
+    let (mut timer, start_event) = RecordTimer::new(record_time, video_tx.clone());
     if let Some(period) = record_time {
         pilka.push_constant.record_period = period.as_secs_f32();
     }
-
-    timer.start(&mut video_recording, pilka.screenshot_dimentions())?;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
@@ -174,7 +172,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
                 pilka.push_constant.wh = pilka.surface.resolution_slice(&pilka.device).unwrap();
 
-                timer.update(timeline.elapsed(), &mut video_recording);
+                timer
+                    .update(&mut video_recording, pilka.screenshot_dimentions())
+                    .unwrap();
             }
 
             Event::WindowEvent { event, .. } => match event {
@@ -309,6 +309,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             Event::MainEventsCleared => {
                 pilka.render().unwrap();
+                start_event.try_send(()).ok();
                 if video_recording {
                     let (frame, _image_dimentions) = pilka.capture_frame().unwrap();
                     video_tx.send(RecordEvent::Record(frame.to_vec())).unwrap()

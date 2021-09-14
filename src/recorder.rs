@@ -6,7 +6,7 @@ use std::{
     io::{self, Write},
     path::Path,
     process::{Child, Command, Stdio},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 #[cfg(windows)]
@@ -83,6 +83,7 @@ pub fn new_ffmpeg_command(
         "-c:v", "libx264",
         "-crf", "15",
         "-preset", "ultrafast",
+        "-tune", "animation",
         "-color_primaries", "bt709",
         "-color_trc", "bt709",
         "-colorspace", "bt709",
@@ -122,6 +123,7 @@ pub fn new_ffmpeg_command(
 pub fn record_thread(rx: crossbeam_channel::Receiver<RecordEvent>) {
     let mut process = None;
 
+    // TODO: try resv
     while let Ok(event) = rx.recv() {
         match event {
             RecordEvent::Start(image_dimentions) => {
@@ -154,34 +156,51 @@ pub fn record_thread(rx: crossbeam_channel::Receiver<RecordEvent>) {
 
 pub struct RecordTimer {
     until: Option<Duration>,
+    counter: Option<Instant>,
+    start_rx: Option<Receiver<()>>,
     tx: Sender<RecordEvent>,
 }
 
 impl RecordTimer {
-    pub fn new(until: Option<Duration>, tx: Sender<RecordEvent>) -> Self {
-        Self { until, tx }
+    pub fn new(until: Option<Duration>, tx: Sender<RecordEvent>) -> (Self, Sender<()>) {
+        let (start_tx, start_rx) = crossbeam_channel::bounded(3);
+        let counter = None;
+        (
+            Self {
+                until: until.map(|x| x + Duration::from_micros(480)),
+                counter,
+                start_rx: Some(start_rx),
+                tx,
+            },
+            start_tx,
+        )
     }
 
-    pub fn start(
-        &self,
+    pub fn update(
+        &mut self,
         video_recording: &mut bool,
         image_dimentions: ImageDimentions,
     ) -> Result<()> {
-        if self.until.is_some() {
-            self.tx.send(RecordEvent::Start(image_dimentions))?;
-            *video_recording = true;
-        }
-        Ok(())
-    }
-
-    pub fn update(&self, now: Duration, video_recording: &mut bool) {
         if let Some(until) = self.until {
-            if until < now {
-                *video_recording = false;
-                self.tx.send(RecordEvent::Finish).unwrap();
-                std::thread::sleep(Duration::from_millis(100));
-                std::process::exit(0);
+            if let Some(ref start_rx) = self.start_rx {
+                if start_rx.is_full() {
+                    self.counter = Some(Instant::now());
+                    self.tx.send(RecordEvent::Start(image_dimentions))?;
+                    *video_recording = true;
+
+                    self.start_rx = None;
+                }
+            }
+
+            if let Some(now) = self.counter {
+                if until < now.elapsed() {
+                    *video_recording = false;
+                    self.tx.send(RecordEvent::Finish).unwrap();
+                    std::thread::sleep(Duration::from_millis(100));
+                    std::process::exit(0);
+                }
             }
         }
+        Ok(())
     }
 }
