@@ -29,7 +29,7 @@ chrono = "0.4.19"
 png = "0.16.8"
 cpal = "0.13.4"
 rustfft = "6.0.1"
-crossbeam = "0.8.1"
+crossbeam-channel = "0.5.1"
 
 [profile.release]
 lto = true
