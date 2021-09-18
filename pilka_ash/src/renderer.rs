@@ -3,7 +3,10 @@ mod screenshot;
 
 pub use screenshot::ImageDimentions;
 
-use crate::pvk::{utils::return_aligned, *};
+use crate::pvk::{
+    utils::{any_as_u8_slice, return_aligned},
+    *,
+};
 use ash::{
     prelude::VkResult,
     vk::{self, Extent3D, PhysicalDeviceType, SubresourceLayout},
@@ -187,7 +190,7 @@ pub struct PushConstant {
 
 impl PushConstant {
     unsafe fn as_slice(&self) -> &[u8] {
-        std::slice::from_raw_parts((self as *const Self).cast(), std::mem::size_of::<Self>())
+        unsafe { any_as_u8_slice(self) }
     }
 }
 
@@ -1188,6 +1191,17 @@ impl<'a> PilkaRender<'a> {
             device,
             &self.queues,
         )
+    }
+
+    pub fn rebuild_pipelines(&mut self, paths: &[PathBuf]) -> VkResult<()> {
+        unsafe { self.device.device_wait_idle() }.unwrap();
+        for path in paths {
+            if self.shader_set.contains_key(path) {
+                self.rebuild_pipeline(self.shader_set[path]).unwrap();
+            }
+        }
+
+        Ok(())
     }
 
     pub fn rebuild_pipeline(&mut self, index: usize) -> VkResult<()> {
