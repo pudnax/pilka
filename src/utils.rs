@@ -152,7 +152,7 @@ mod test {
         let rendering_complete_semaphore = device.create_semaphore();
 
         let pipeline_cache_create_info = vk::PipelineCacheCreateInfo::builder();
-        let pipeline_cache =
-            unsafe { device.create_pipeline_cache(&pipeline_cache_create_info, None) }.unwrap();
+        // let pipeline_cache =
+        //     unsafe { device.create_pipeline_cache(&pipeline_cache_create_info, None) }.unwrap();
     }
 }
