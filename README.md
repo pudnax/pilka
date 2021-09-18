@@ -55,7 +55,7 @@ emacs, vim, ed etc.) and `pilka` would fetch changes after each save.
 ## Flags
 
  - `--record f32` - Specify duration of recorded video
- - `--size u32xu32` - specify window size and locks window from resizing
+ - `--size u32xu32` - Specify window size and lock from resizing
 
 ## Requirements
 
