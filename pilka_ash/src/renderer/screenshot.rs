@@ -13,11 +13,11 @@ use ash::{
 pub type Frame<'a> = (&'a [u8], ImageDimentions);
 
 pub struct ScreenshotCtx<'a> {
-    pub fence: vk::Fence,
-    pub commbuf: vk::CommandBuffer,
-    pub image: VkImage,
-    pub blit_image: Option<VkImage>,
-    pub extent: vk::Extent3D,
+    fence: vk::Fence,
+    commbuf: vk::CommandBuffer,
+    image: VkImage,
+    blit_image: Option<VkImage>,
+    extent: vk::Extent3D,
     format: vk::Format,
     pub data: &'a [u8],
 }
