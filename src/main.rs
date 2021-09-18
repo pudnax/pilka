@@ -1,8 +1,10 @@
-mod audio;
 mod default_shaders;
 mod input;
 mod recorder;
 mod utils;
+
+#[allow(dead_code)]
+mod audio;
 
 use std::{
     error::Error,
@@ -141,12 +143,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         ..
                     } = rx_event
                     {
-                        unsafe { pilka.device.device_wait_idle() }.unwrap();
-                        for path in rx_event.paths {
-                            if pilka.shader_set.contains_key(&path) {
-                                pilka.rebuild_pipeline(pilka.shader_set[&path]).unwrap();
-                            }
-                        }
+                        pilka.rebuild_pipelines(&rx_event.paths).unwrap();
                     }
                 }
 

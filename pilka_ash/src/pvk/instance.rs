@@ -343,8 +343,8 @@ unsafe extern "system" fn vulkan_debug_callback(
     p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _user_data: *mut std::os::raw::c_void,
 ) -> vk::Bool32 {
-    let callback_data = &*p_callback_data;
-    let message = CStr::from_ptr(callback_data.p_message).to_string_lossy();
+    let callback_data = &unsafe { *p_callback_data };
+    let message = unsafe { CStr::from_ptr(callback_data.p_message) }.to_string_lossy();
 
     println!(
         "{:?}:\n{:?} : {}\n",
