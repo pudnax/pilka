@@ -156,7 +156,7 @@ vec2 scene(vec3 p) {
 
     float box = sdBox(p, vec3(0.4) + 0.3 +
                 2.6 * easeInOutCirc(1 - abs(sin(time * TAU / pc.record_period))));
-    d = max(d, box);
+    /* d = max(d, box); */
 
     return vec2(d, dodestar);
 }
