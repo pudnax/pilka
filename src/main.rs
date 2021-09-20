@@ -22,11 +22,11 @@ use notify::{
     RecommendedWatcher, RecursiveMode, Watcher,
 };
 use winit::{
-    dpi::PhysicalPosition,
-    dpi::PhysicalSize,
+    dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
     platform::unix::WindowBuilderExtUnix,
+    window::WindowBuilder,
 };
 
 pub const SCREENSHOTS_FOLDER: &str = "screenshots";
@@ -47,19 +47,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     let event_loop = winit::event_loop::EventLoop::new();
 
     let window = {
-        let mut window_builder = winit::window::WindowBuilder::new().with_title("Pilka");
+        let mut window_builder = WindowBuilder::new().with_title("Pilka");
         #[cfg(unix)]
         {
             window_builder =
-                window_builder.with_resize_increments(winit::dpi::LogicalSize::<u32>::from((8, 2)));
+                window_builder.with_resize_increments(LogicalSize::<u32>::from((8, 2)));
         }
         if let Some(size) = inner_size {
             window_builder = window_builder
                 .with_resizable(false)
-                .with_inner_size(winit::dpi::LogicalSize::<u32>::from(size));
+                .with_inner_size(LogicalSize::<u32>::from(size));
         } else {
-            window_builder =
-                window_builder.with_inner_size(winit::dpi::LogicalSize::new(1280, 720));
+            window_builder = window_builder.with_inner_size(LogicalSize::new(1280, 720));
         }
         window_builder.build(&event_loop)?
     };
@@ -152,7 +151,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 pilka.push_constant.time = if pause {
                     backup_time.as_secs_f32()
                 } else {
-                    timeline.elapsed().as_secs_f32()
+                    if let Some(recording_time) = timer.counter {
+                        recording_time.elapsed().as_secs_f32()
+                    } else {
+                        timeline.elapsed().as_secs_f32()
+                    }
                 };
 
                 input.process_position(&mut pilka.push_constant);
@@ -318,5 +321,5 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             _ => {}
         }
-    });
+    })
 }
