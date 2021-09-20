@@ -154,20 +154,25 @@ pub fn record_thread(rx: crossbeam_channel::Receiver<RecordEvent>) {
     }
 }
 
+/// ---------------RecordTimer------------------
+/// |<-              until                   ->|
+/// |<-  start_rx  ->|<-      counter        ->|
+///                  |<-         tx          ->|
 pub struct RecordTimer {
     until: Option<Duration>,
-    counter: Option<Instant>,
+    pub counter: Option<Instant>,
     start_rx: Option<Receiver<()>>,
     tx: Sender<RecordEvent>,
 }
 
 impl RecordTimer {
+    const NUM_SKIPPED_FRAMES: usize = 3;
     pub fn new(until: Option<Duration>, tx: Sender<RecordEvent>) -> (Self, Sender<()>) {
-        let (start_tx, start_rx) = crossbeam_channel::bounded(3);
+        let (start_tx, start_rx) = crossbeam_channel::bounded(Self::NUM_SKIPPED_FRAMES);
         let counter = None;
         (
             Self {
-                until: until.map(|x| x + Duration::from_micros(480)),
+                until,
                 counter,
                 start_rx: Some(start_rx),
                 tx,
