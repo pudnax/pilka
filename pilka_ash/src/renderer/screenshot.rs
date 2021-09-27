@@ -266,7 +266,42 @@ impl<'a> ScreenshotCtx<'a> {
             ImageLayout::TRANSFER_DST_OPTIMAL,
         );
 
-        device.blit_image(copybuffer, present_image, copy_image, extent, self.extent);
+        let offset = [
+            vk::Offset3D { x: 0, y: 0, z: 0 },
+            vk::Offset3D {
+                x: extent.width as i32,
+                y: extent.height as i32,
+                z: extent.depth as i32,
+            },
+        ];
+        let blit_region = [vk::ImageBlit::builder()
+            .src_subresource(vk::ImageSubresourceLayers {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_array_layer: 0,
+                layer_count: 1,
+                mip_level: 0,
+            })
+            .dst_subresource(vk::ImageSubresourceLayers {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_array_layer: 0,
+                layer_count: 1,
+                mip_level: 0,
+            })
+            .src_offsets(offset)
+            .dst_offsets(offset)
+            .build()];
+
+        unsafe {
+            device.cmd_blit_image(
+                copybuffer,
+                present_image,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                copy_image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                blit_region.as_ref(),
+                vk::Filter::NEAREST,
+            )
+        };
 
         if let Some(ref blit_image) = self.blit_image {
             transport_barrier(
