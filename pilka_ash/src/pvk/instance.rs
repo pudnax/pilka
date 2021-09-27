@@ -149,7 +149,7 @@ impl VkInstance {
     }
 
     pub fn create_device_and_queues(
-        &self,
+        self,
         surface: Option<&VkSurface>,
     ) -> VkResult<(VkDevice, VkDeviceProperties, VkQueues)> {
         // Acuire all availble device for this machine.
@@ -218,6 +218,7 @@ impl VkInstance {
 
         Ok((
             VkDevice {
+                instance: Arc::new(self),
                 device,
                 physical_device,
                 memory_properties,
