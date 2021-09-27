@@ -148,8 +148,8 @@ pub struct PilkaRender<'a> {
     pub screenshot_ctx: ScreenshotCtx<'a>,
     pub push_constant: PushConstant,
 
-    pub scissors: Box<[vk::Rect2D]>,
-    pub viewports: Box<[vk::Viewport]>,
+    pub scissors: vk::Rect2D,
+    pub viewport: vk::Viewport,
     pub resolution: vk::Extent2D,
 
     pub shader_set: HashMap<PathBuf, usize>,
@@ -172,7 +172,6 @@ pub struct PilkaRender<'a> {
 
     pub queues: VkQueues,
     pub device: VkDevice,
-    pub instance: VkInstance,
 }
 
 #[repr(C)]
@@ -225,7 +224,12 @@ impl<'a> PilkaRender<'a> {
         }
     }
     pub fn get_vulkan_version_name(&self) -> VkResult<String> {
-        match self.instance.entry.try_enumerate_instance_version()? {
+        match self
+            .device
+            .instance
+            .entry
+            .try_enumerate_instance_version()?
+        {
             Some(version) => {
                 let major = version >> 22;
                 let minor = (version >> 12) & 0x3ff;
@@ -251,15 +255,13 @@ impl<'a> PilkaRender<'a> {
         let (device, device_properties, queues) =
             instance.create_device_and_queues(Some(&surface))?;
 
-        let name_queue =
-            |queue, name| instance.name_object(&device, queue, vk::ObjectType::QUEUE, name);
-        name_queue(queues.graphics_queue.queue, "Graphics Queue")?;
-        name_queue(queues.transfer_queue.queue, "Transfer Queue")?;
-        name_queue(queues.compute_queue.queue, "Compute Queue")?;
+        device.name_queue(queues.graphics_queue.queue, "Graphics Queue")?;
+        device.name_queue(queues.transfer_queue.queue, "Transfer Queue")?;
+        device.name_queue(queues.compute_queue.queue, "Compute Queue")?;
 
         let surface_resolution = surface.resolution(&device)?;
 
-        let swapchain_loader = instance.create_swapchain_loader(&device);
+        let swapchain_loader = device.instance.create_swapchain_loader(&device);
 
         let swapchain = device.create_swapchain(swapchain_loader, &surface, &queues)?;
 
@@ -293,11 +295,8 @@ impl<'a> PilkaRender<'a> {
         let present_complete_semaphore = device.create_semaphore()?;
         let rendering_complete_semaphore = device.create_semaphore()?;
 
-        let name_semaphore = |object, name: &str| -> VkResult<()> {
-            instance.name_object(&device, object, vk::ObjectType::SEMAPHORE, name)
-        };
-        name_semaphore(present_complete_semaphore, "Present Compelete Semaphore")?;
-        name_semaphore(rendering_complete_semaphore, "Render Complete Semaphore")?;
+        device.name_semaphore(present_complete_semaphore, "Present Compelete Semaphore")?;
+        device.name_semaphore(rendering_complete_semaphore, "Render Complete Semaphore")?;
 
         let framebuffers = swapchain.create_framebuffers(
             (surface_resolution.width, surface_resolution.height),
@@ -305,21 +304,21 @@ impl<'a> PilkaRender<'a> {
             &device,
         )?;
 
-        let (viewports, scissors, extent) = {
+        let (viewport, scissors, extent) = {
             let surface_resolution = surface.resolution(&device)?;
             (
-                Box::new([vk::Viewport {
+                vk::Viewport {
                     x: 0.0,
                     y: surface_resolution.height as f32,
                     width: surface_resolution.width as f32,
                     height: -(surface_resolution.height as f32),
                     min_depth: 0.0,
                     max_depth: 1.0,
-                }]),
-                Box::new([vk::Rect2D {
+                },
+                vk::Rect2D {
                     offset: vk::Offset2D { x: 0, y: 0 },
                     extent: surface_resolution,
-                }]),
+                },
                 surface_resolution,
             )
         };
@@ -343,7 +342,9 @@ impl<'a> PilkaRender<'a> {
 
         let mut need2steps = false;
         let format_props = unsafe {
-            instance.get_physical_device_format_properties(device.physical_device, swapchain.format)
+            device
+                .instance
+                .get_physical_device_format_properties(device.physical_device, swapchain.format)
         };
         let blit_linear = format_props
             .linear_tiling_features
@@ -409,16 +410,13 @@ impl<'a> PilkaRender<'a> {
         let dummy_texture = screen_sized_texture(vk::Format::R8G8B8A8_UNORM)?;
         let float_texture1 = screen_sized_texture(vk::Format::R32G32B32A32_SFLOAT)?;
         let float_texture2 = screen_sized_texture(vk::Format::R32G32B32A32_SFLOAT)?;
-        let name_image = |object, name: &str| -> VkResult<()> {
-            instance.name_object(&device, object, vk::ObjectType::IMAGE, name)
-        };
 
-        name_image(previous_frame.image.image, "Previous Frame Texture")?;
-        name_image(generic_texture.image.image, "Generic Texture")?;
-        name_image(dummy_texture.image.image, "Dummy Texture")?;
-        name_image(float_texture1.image.image, "Float Texture 1")?;
-        name_image(float_texture2.image.image, "Float Texture 2")?;
-        name_image(fft_texture.texture.image.image, "FFT Texture")?;
+        device.name_image(previous_frame.image.image, "Previous Frame Texture")?;
+        device.name_image(generic_texture.image.image, "Generic Texture")?;
+        device.name_image(dummy_texture.image.image, "Dummy Texture")?;
+        device.name_image(float_texture1.image.image, "Float Texture 1")?;
+        device.name_image(float_texture2.image.image, "Float Texture 2")?;
+        device.name_image(fft_texture.texture.image.image, "FFT Texture")?;
         {
             let images = [
                 previous_frame.image.image,
@@ -547,7 +545,6 @@ impl<'a> PilkaRender<'a> {
         Ok(Self {
             paused: false,
 
-            instance,
             device,
             queues,
 
@@ -569,7 +566,7 @@ impl<'a> PilkaRender<'a> {
             shader_set: HashMap::new(),
             compiler,
 
-            viewports,
+            viewport,
             scissors,
             resolution: extent,
 
@@ -619,8 +616,8 @@ impl<'a> PilkaRender<'a> {
             },
         }];
 
-        let viewports = self.viewports.as_ref();
-        let scissors = self.scissors.as_ref();
+        let viewport = self.viewport;
+        let scissors = self.scissors;
         let push_constant = self.push_constant;
         let descriptor_sets = &self.descriptor_sets;
         let present_image = self.swapchain.images[present_index as usize];
@@ -794,8 +791,8 @@ impl<'a> PilkaRender<'a> {
                                 vk::PipelineBindPoint::GRAPHICS,
                                 pipeline.pipeline,
                             );
-                            device.cmd_set_viewport(draw_command_buffer, 0, viewports);
-                            device.cmd_set_scissor(draw_command_buffer, 0, scissors);
+                            device.cmd_set_viewport(draw_command_buffer, 0, &[viewport]);
+                            device.cmd_set_scissor(draw_command_buffer, 0, &[scissors]);
                             device.cmd_bind_descriptor_sets(
                                 draw_command_buffer,
                                 vk::PipelineBindPoint::GRAPHICS,
@@ -859,18 +856,18 @@ impl<'a> PilkaRender<'a> {
         self.resolution = self.surface.resolution(&self.device)?;
         let vk::Extent2D { width, height } = self.resolution;
 
-        self.viewports.copy_from_slice(&[vk::Viewport {
+        self.viewport = vk::Viewport {
             x: 0.,
             y: height as f32,
             width: width as f32,
             height: -(height as f32),
             min_depth: 0.0,
             max_depth: 1.0,
-        }]);
-        self.scissors = Box::new([vk::Rect2D {
+        };
+        self.scissors = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
             extent: vk::Extent2D { width, height },
-        }]);
+        };
 
         self.swapchain
             .recreate_swapchain((width, height), &self.device)?;
@@ -923,16 +920,17 @@ impl<'a> PilkaRender<'a> {
             .resize(&self.device, &self.device_properties.memory, width, height)?;
         self.float_texture2
             .resize(&self.device, &self.device_properties.memory, width, height)?;
-        let name_image = |object, name: &str| -> VkResult<()> {
-            self.instance
-                .name_object(&self.device, object, vk::ObjectType::IMAGE, name)
-        };
 
-        name_image(self.previous_frame.image.image, "Previous Frame Texture")?;
-        name_image(self.generic_texture.image.image, "Generic Texture")?;
-        name_image(self.dummy_texture.image.image, "Dummy Texture")?;
-        name_image(self.float_texture1.image.image, "Float Texture 1")?;
-        name_image(self.float_texture2.image.image, "Float Texture 2")?;
+        self.device
+            .name_image(self.previous_frame.image.image, "Previous Frame Texture")?;
+        self.device
+            .name_image(self.generic_texture.image.image, "Generic Texture")?;
+        self.device
+            .name_image(self.dummy_texture.image.image, "Dummy Texture")?;
+        self.device
+            .name_image(self.float_texture1.image.image, "Float Texture 1")?;
+        self.device
+            .name_image(self.float_texture2.image.image, "Float Texture 2")?;
         {
             let images = [
                 self.previous_frame.image.image,
@@ -1135,12 +1133,8 @@ impl<'a> PilkaRender<'a> {
                     ..Default::default()
                 };
                 let new_pipeline = self.new_compute_pipeline(shader_stage, comp_info)?;
-                self.instance.name_object(
-                    &self.device,
-                    new_pipeline.semaphore,
-                    vk::ObjectType::SEMAPHORE,
-                    "Compute Semaphore",
-                )?;
+                self.device
+                    .name_semaphore(new_pipeline.semaphore, "Compute Semaphore")?;
 
                 unsafe {
                     self.device.destroy_shader_module(comp_module, None);
