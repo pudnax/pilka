@@ -464,24 +464,33 @@ impl VkDevice {
         &self,
         command_buffer: vk::CommandBuffer,
         src_image: vk::Image,
+        src_image_layout: vk::ImageLayout,
         dst_image: vk::Image,
-        src_extent: vk::Extent3D,
-        dst_extent: vk::Extent3D,
+        dst_image_layout: vk::ImageLayout,
+        extent: vk::Extent3D,
     ) {
-        let src_offset = [
+        self.set_image_layout(
+            command_buffer,
+            src_image,
+            src_image_layout,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::TRANSFER,
+        );
+        self.set_image_layout(
+            command_buffer,
+            dst_image,
+            dst_image_layout,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::TRANSFER,
+        );
+        let offset = [
             vk::Offset3D { x: 0, y: 0, z: 0 },
             vk::Offset3D {
-                x: src_extent.width as i32,
-                y: src_extent.height as i32,
-                z: src_extent.depth as i32,
-            },
-        ];
-        let dst_offset = [
-            vk::Offset3D { x: 0, y: 0, z: 0 },
-            vk::Offset3D {
-                x: dst_extent.width as i32,
-                y: dst_extent.height as i32,
-                z: dst_extent.depth as i32,
+                x: extent.width as i32,
+                y: extent.height as i32,
+                z: extent.depth as i32,
             },
         ];
         let blit_region = [vk::ImageBlit::builder()
@@ -497,8 +506,8 @@ impl VkDevice {
                 layer_count: 1,
                 mip_level: 0,
             })
-            .src_offsets(src_offset)
-            .dst_offsets(dst_offset)
+            .src_offsets(offset)
+            .dst_offsets(offset)
             .build()];
 
         unsafe {
@@ -512,6 +521,22 @@ impl VkDevice {
                 vk::Filter::NEAREST,
             )
         };
+        self.set_image_layout(
+            command_buffer,
+            dst_image,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            dst_image_layout,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::PipelineStageFlags::ALL_GRAPHICS,
+        );
+        self.set_image_layout(
+            command_buffer,
+            src_image,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            src_image_layout,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::PipelineStageFlags::ALL_GRAPHICS,
+        );
     }
 
     pub fn create_vk_buffer_from_slice<T>(

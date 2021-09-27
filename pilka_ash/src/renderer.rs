@@ -668,44 +668,13 @@ impl<'a> PilkaRender<'a> {
                                     )
                                 };
 
-                            transport_barrier(
-                                present_image,
-                                vk::ImageLayout::PRESENT_SRC_KHR,
-                                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                                vk::PipelineStageFlags::TOP_OF_PIPE,
-                                vk::PipelineStageFlags::TRANSFER,
-                            );
-
-                            transport_barrier(
-                                prev_frame,
-                                vk::ImageLayout::GENERAL,
-                                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                                vk::PipelineStageFlags::TOP_OF_PIPE,
-                                vk::PipelineStageFlags::TRANSFER,
-                            );
-
                             self.device.blit_image(
                                 cmd_buf,
                                 present_image,
-                                prev_frame,
-                                extent,
-                                extent,
-                            );
-
-                            transport_barrier(
-                                prev_frame,
-                                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                                vk::ImageLayout::GENERAL,
-                                vk::PipelineStageFlags::TRANSFER,
-                                vk::PipelineStageFlags::COMPUTE_SHADER,
-                            );
-
-                            transport_barrier(
-                                present_image,
-                                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                                 vk::ImageLayout::PRESENT_SRC_KHR,
-                                vk::PipelineStageFlags::TRANSFER,
-                                vk::PipelineStageFlags::COMPUTE_SHADER,
+                                prev_frame,
+                                vk::ImageLayout::GENERAL,
+                                extent,
                             );
 
                             self.device.cmd_bind_pipeline(
