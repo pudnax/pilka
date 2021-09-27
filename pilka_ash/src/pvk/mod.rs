@@ -18,7 +18,7 @@ pub use renderpass_and_pipeline::{
     Pipeline, PipelineDescriptor, VkComputePipeline, VkGraphicsPipeline, VkRenderPass,
 };
 pub use shader_module::{
-    create_shader_module, ShaderInfo, ShaderSet, VkShaderModule, SHADER_ENTRY_POINT, SHADER_PATH,
+    create_shader_module, ShaderSet, VkShaderModule, SHADER_ENTRY_POINT, SHADER_PATH,
 };
 pub use surface::VkSurface;
 pub use swapchain::VkSwapchain;

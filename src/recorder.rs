@@ -12,12 +12,13 @@ use std::{
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-use pilka_ash::ImageDimentions;
+use pilka_types::ImageDimentions;
 
 use super::utils::create_folder;
 use crate::VIDEO_FOLDER;
 
 pub enum RecordEvent {
+    Screenshot(Vec<u8>, ImageDimentions),
     Start(ImageDimentions),
     Record(Vec<u8>),
     Finish,
@@ -150,6 +151,7 @@ pub fn record_thread(rx: crossbeam_channel::Receiver<RecordEvent>) {
                 drop(process);
                 process = None;
             }
+            RecordEvent::Screenshot(frame, dimentions) => {}
         }
     }
 }
