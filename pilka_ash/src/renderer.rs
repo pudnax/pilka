@@ -642,179 +642,188 @@ impl<'a> PilkaRender<'a> {
 
         unsafe { self.device.queue_wait_idle(self.queues.compute_queue.queue) }?;
 
-        if let Pipeline::Compute(ref pipeline) = self.pipelines[1] {
-            let cmd_buf = pipeline.command_buffer;
-            unsafe {
-                self.device
-                    .reset_command_buffer(cmd_buf, vk::CommandBufferResetFlags::RELEASE_RESOURCES)
-            }?;
-            let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
-                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        for undefined_pipeline in &self.pipelines {
+            match undefined_pipeline {
+                Pipeline::Compute(ref pipeline) => {
+                    let cmd_buf = pipeline.command_buffer;
+                    unsafe {
+                        self.device.reset_command_buffer(
+                            cmd_buf,
+                            vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+                        )
+                    }?;
+                    let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+                        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
-            unsafe {
-                self.device
-                    .begin_command_buffer(cmd_buf, &command_buffer_begin_info)?;
+                    unsafe {
+                        self.device
+                            .begin_command_buffer(cmd_buf, &command_buffer_begin_info)?;
 
-                if self.paused {
-                    let transport_barrier =
-                        |image, old_layout, new_layout, src_stage, dst_stage| {
-                            self.device.set_image_layout(
-                                cmd_buf, image, old_layout, new_layout, src_stage, dst_stage,
-                            )
-                        };
+                        if self.paused {
+                            let transport_barrier =
+                                |image, old_layout, new_layout, src_stage, dst_stage| {
+                                    self.device.set_image_layout(
+                                        cmd_buf, image, old_layout, new_layout, src_stage,
+                                        dst_stage,
+                                    )
+                                };
 
-                    transport_barrier(
-                        present_image,
-                        vk::ImageLayout::PRESENT_SRC_KHR,
-                        vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                        vk::PipelineStageFlags::TOP_OF_PIPE,
-                        vk::PipelineStageFlags::TRANSFER,
-                    );
+                            transport_barrier(
+                                present_image,
+                                vk::ImageLayout::PRESENT_SRC_KHR,
+                                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                                vk::PipelineStageFlags::TOP_OF_PIPE,
+                                vk::PipelineStageFlags::TRANSFER,
+                            );
 
-                    transport_barrier(
-                        prev_frame,
-                        vk::ImageLayout::GENERAL,
-                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                        vk::PipelineStageFlags::TOP_OF_PIPE,
-                        vk::PipelineStageFlags::TRANSFER,
-                    );
-
-                    self.device
-                        .blit_image(cmd_buf, present_image, prev_frame, extent, extent);
-
-                    transport_barrier(
-                        prev_frame,
-                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                        vk::ImageLayout::GENERAL,
-                        vk::PipelineStageFlags::TRANSFER,
-                        vk::PipelineStageFlags::COMPUTE_SHADER,
-                    );
-
-                    transport_barrier(
-                        present_image,
-                        vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                        vk::ImageLayout::PRESENT_SRC_KHR,
-                        vk::PipelineStageFlags::TRANSFER,
-                        vk::PipelineStageFlags::COMPUTE_SHADER,
-                    );
-
-                    self.device.cmd_bind_pipeline(
-                        cmd_buf,
-                        vk::PipelineBindPoint::COMPUTE,
-                        pipeline.pipeline,
-                    );
-                    self.device.cmd_push_constants(
-                        cmd_buf,
-                        pipeline.pipeline_layout,
-                        vk::ShaderStageFlags::COMPUTE,
-                        0,
-                        push_constant.as_slice(),
-                    );
-                    self.device.cmd_bind_descriptor_sets(
-                        cmd_buf,
-                        vk::PipelineBindPoint::COMPUTE,
-                        pipeline.pipeline_layout,
-                        0,
-                        &self.descriptor_sets_compute,
-                        &[],
-                    );
-
-                    const ALIGN: u32 = 16;
-                    self.device.cmd_dispatch(
-                        cmd_buf,
-                        return_aligned(extent.width, ALIGN) / ALIGN,
-                        return_aligned(extent.height, ALIGN) / ALIGN,
-                        1,
-                    );
-                }
-                self.device.end_command_buffer(cmd_buf)?;
-
-                let command_buffers = [cmd_buf];
-                let wait_semaphores = [self.present_complete_semaphore];
-                let signal_semaphores = [pipeline.semaphore];
-                let compute_submit_info = [vk::SubmitInfo::builder()
-                    .command_buffers(&command_buffers)
-                    .wait_dst_stage_mask(&[vk::PipelineStageFlags::COMPUTE_SHADER])
-                    .wait_semaphores(&wait_semaphores)
-                    .signal_semaphores(&signal_semaphores)
-                    .build()];
-                self.device.queue_submit(
-                    self.queues.compute_queue.queue,
-                    &compute_submit_info,
-                    vk::Fence::null(),
-                )?;
-            }
-        }
-
-        for undefined_pipeline in &self.pipelines[..] {
-            if let Pipeline::Graphics(pipeline) = undefined_pipeline {
-                let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-                    .render_pass(*self.render_pass)
-                    .framebuffer(self.framebuffers[present_index as usize])
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent: self.surface.resolution(&self.device)?,
-                    })
-                    .clear_values(&clear_values);
-
-                let pipeline_layout = pipeline.pipeline_layout;
-                let wait_mask = &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-                // Start command queue
-                unsafe {
-                    self.command_pool.record_submit_commandbuffer(
-                        &self.device,
-                        self.queues.graphics_queue.queue,
-                        wait_mask,
-                        &[
-                            compute_semaphores.as_slice(),
-                            &[self.present_complete_semaphore],
-                        ]
-                        .concat(),
-                        &[self.rendering_complete_semaphore],
-                        |device, draw_command_buffer| {
-                            device.set_image_layout(
-                                draw_command_buffer,
+                            transport_barrier(
                                 prev_frame,
                                 vk::ImageLayout::GENERAL,
-                                vk::ImageLayout::GENERAL,
-                                vk::PipelineStageFlags::COMPUTE_SHADER,
-                                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                                vk::PipelineStageFlags::TOP_OF_PIPE,
+                                vk::PipelineStageFlags::TRANSFER,
                             );
 
-                            device.cmd_begin_render_pass(
-                                draw_command_buffer,
-                                &render_pass_begin_info,
-                                vk::SubpassContents::INLINE,
+                            self.device.blit_image(
+                                cmd_buf,
+                                present_image,
+                                prev_frame,
+                                extent,
+                                extent,
                             );
-                            device.cmd_bind_pipeline(
-                                draw_command_buffer,
-                                vk::PipelineBindPoint::GRAPHICS,
+
+                            transport_barrier(
+                                prev_frame,
+                                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                                vk::ImageLayout::GENERAL,
+                                vk::PipelineStageFlags::TRANSFER,
+                                vk::PipelineStageFlags::COMPUTE_SHADER,
+                            );
+
+                            transport_barrier(
+                                present_image,
+                                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                                vk::ImageLayout::PRESENT_SRC_KHR,
+                                vk::PipelineStageFlags::TRANSFER,
+                                vk::PipelineStageFlags::COMPUTE_SHADER,
+                            );
+
+                            self.device.cmd_bind_pipeline(
+                                cmd_buf,
+                                vk::PipelineBindPoint::COMPUTE,
                                 pipeline.pipeline,
                             );
-                            device.cmd_set_viewport(draw_command_buffer, 0, &[viewport]);
-                            device.cmd_set_scissor(draw_command_buffer, 0, &[scissors]);
-                            device.cmd_bind_descriptor_sets(
-                                draw_command_buffer,
-                                vk::PipelineBindPoint::GRAPHICS,
+                            self.device.cmd_push_constants(
+                                cmd_buf,
                                 pipeline.pipeline_layout,
-                                0,
-                                descriptor_sets,
-                                &[],
-                            );
-
-                            device.cmd_push_constants(
-                                draw_command_buffer,
-                                pipeline_layout,
-                                vk::ShaderStageFlags::ALL_GRAPHICS,
+                                vk::ShaderStageFlags::COMPUTE,
                                 0,
                                 push_constant.as_slice(),
                             );
+                            self.device.cmd_bind_descriptor_sets(
+                                cmd_buf,
+                                vk::PipelineBindPoint::COMPUTE,
+                                pipeline.pipeline_layout,
+                                0,
+                                &self.descriptor_sets_compute,
+                                &[],
+                            );
 
-                            // Or draw without the index buffer
-                            device.cmd_draw(draw_command_buffer, 3, 1, 0, 0);
-                            device.cmd_end_render_pass(draw_command_buffer);
-                        },
-                    )?;
+                            const ALIGN: u32 = 16;
+                            self.device.cmd_dispatch(
+                                cmd_buf,
+                                return_aligned(extent.width, ALIGN) / ALIGN,
+                                return_aligned(extent.height, ALIGN) / ALIGN,
+                                1,
+                            );
+                        }
+                        self.device.end_command_buffer(cmd_buf)?;
+
+                        let command_buffers = [cmd_buf];
+                        let wait_semaphores = [self.present_complete_semaphore];
+                        let signal_semaphores = [pipeline.semaphore];
+                        let compute_submit_info = [vk::SubmitInfo::builder()
+                            .command_buffers(&command_buffers)
+                            .wait_dst_stage_mask(&[vk::PipelineStageFlags::COMPUTE_SHADER])
+                            .wait_semaphores(&wait_semaphores)
+                            .signal_semaphores(&signal_semaphores)
+                            .build()];
+                        self.device.queue_submit(
+                            self.queues.compute_queue.queue,
+                            &compute_submit_info,
+                            vk::Fence::null(),
+                        )?;
+                    }
+                }
+                Pipeline::Graphics(ref pipeline) => {
+                    let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+                        .render_pass(*self.render_pass)
+                        .framebuffer(self.framebuffers[present_index as usize])
+                        .render_area(vk::Rect2D {
+                            offset: vk::Offset2D { x: 0, y: 0 },
+                            extent: self.surface.resolution(&self.device)?,
+                        })
+                        .clear_values(&clear_values);
+
+                    let pipeline_layout = pipeline.pipeline_layout;
+                    let wait_mask = &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+                    // Start command queue
+                    unsafe {
+                        self.command_pool.record_submit_commandbuffer(
+                            &self.device,
+                            self.queues.graphics_queue.queue,
+                            wait_mask,
+                            &[
+                                compute_semaphores.as_slice(),
+                                &[self.present_complete_semaphore],
+                            ]
+                            .concat(),
+                            &[self.rendering_complete_semaphore],
+                            |device, draw_command_buffer| {
+                                device.set_image_layout(
+                                    draw_command_buffer,
+                                    prev_frame,
+                                    vk::ImageLayout::GENERAL,
+                                    vk::ImageLayout::GENERAL,
+                                    vk::PipelineStageFlags::COMPUTE_SHADER,
+                                    vk::PipelineStageFlags::FRAGMENT_SHADER,
+                                );
+
+                                device.cmd_begin_render_pass(
+                                    draw_command_buffer,
+                                    &render_pass_begin_info,
+                                    vk::SubpassContents::INLINE,
+                                );
+                                device.cmd_bind_pipeline(
+                                    draw_command_buffer,
+                                    vk::PipelineBindPoint::GRAPHICS,
+                                    pipeline.pipeline,
+                                );
+                                device.cmd_set_viewport(draw_command_buffer, 0, &[viewport]);
+                                device.cmd_set_scissor(draw_command_buffer, 0, &[scissors]);
+                                device.cmd_bind_descriptor_sets(
+                                    draw_command_buffer,
+                                    vk::PipelineBindPoint::GRAPHICS,
+                                    pipeline.pipeline_layout,
+                                    0,
+                                    descriptor_sets,
+                                    &[],
+                                );
+
+                                device.cmd_push_constants(
+                                    draw_command_buffer,
+                                    pipeline_layout,
+                                    vk::ShaderStageFlags::ALL_GRAPHICS,
+                                    0,
+                                    push_constant.as_slice(),
+                                );
+
+                                // Or draw without the index buffer
+                                device.cmd_draw(draw_command_buffer, 3, 1, 0, 0);
+                                device.cmd_end_render_pass(draw_command_buffer);
+                            },
+                        )?;
+                    }
                 }
             }
         }
