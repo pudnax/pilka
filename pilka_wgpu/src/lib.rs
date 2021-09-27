@@ -438,7 +438,7 @@ fn make_render_pipeline(
         label,
         layout: Some(&render_pipeline_layout),
         vertex: wgpu::VertexState {
-            module: &vs_module,
+            module: vs_module,
             entry_point: "main",
             buffers: &[],
         },
@@ -458,7 +458,7 @@ fn make_render_pipeline(
             alpha_to_coverage_enabled: false,
         },
         fragment: Some(wgpu::FragmentState {
-            module: &fs_module,
+            module: fs_module,
             entry_point: "main",
             targets: &[wgpu::ColorTargetState {
                 format,

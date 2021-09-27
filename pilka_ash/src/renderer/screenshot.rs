@@ -252,18 +252,15 @@ impl<'a> ScreenshotCtx<'a> {
         };
 
         use vk::ImageLayout;
-        transport_barrier(
-            present_image,
-            ImageLayout::PRESENT_SRC_KHR,
-            ImageLayout::TRANSFER_SRC_OPTIMAL,
-        );
-        transport_barrier(
-            copy_image,
-            ImageLayout::UNDEFINED,
-            ImageLayout::TRANSFER_DST_OPTIMAL,
-        );
 
-        device.blit_image(copybuffer, present_image, copy_image, extent, self.extent);
+        device.blit_image(
+            copybuffer,
+            present_image,
+            vk::ImageLayout::PRESENT_SRC_KHR,
+            copy_image,
+            vk::ImageLayout::GENERAL,
+            extent,
+        );
 
         if let Some(ref blit_image) = self.blit_image {
             transport_barrier(
@@ -289,12 +286,6 @@ impl<'a> ScreenshotCtx<'a> {
             },
             ImageLayout::TRANSFER_DST_OPTIMAL,
             ImageLayout::GENERAL,
-        );
-
-        transport_barrier(
-            present_image,
-            ImageLayout::TRANSFER_SRC_OPTIMAL,
-            ImageLayout::PRESENT_SRC_KHR,
         );
 
         unsafe { device.end_command_buffer(copybuffer) }?;
