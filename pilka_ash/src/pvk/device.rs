@@ -11,9 +11,10 @@ use super::{
 };
 
 pub struct VkDevice {
-    pub device: Arc<RawDevice>,
     pub physical_device: vk::PhysicalDevice,
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
+    pub device: Arc<RawDevice>,
+    pub instance: Arc<VkInstance>,
 }
 
 pub struct RawDevice {
@@ -58,14 +59,6 @@ impl std::ops::Deref for VkDevice {
         &self.device.device
     }
 }
-
-// Do not do this, you lack!
-//
-// impl std::ops::DerefMut for VkDevice {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         Arc::get_mut(&mut self.device)
-//     }
-// }
 
 impl VkDevice {
     pub fn get_device_properties(&self, instance: &VkInstance) -> VkDeviceProperties {
@@ -585,6 +578,19 @@ impl VkDevice {
             descriptor,
             mapped: None,
         })
+    }
+
+    pub fn name_semaphore(&self, object: vk::Semaphore, name: &str) -> VkResult<()> {
+        self.instance
+            .name_object(self, object, vk::ObjectType::SEMAPHORE, name)
+    }
+    pub fn name_image(&self, object: vk::Image, name: &str) -> VkResult<()> {
+        self.instance
+            .name_object(self, object, vk::ObjectType::IMAGE, name)
+    }
+    pub fn name_queue(&self, object: vk::Queue, name: &str) -> VkResult<()> {
+        self.instance
+            .name_object(self, object, vk::ObjectType::QUEUE, name)
     }
 }
 
