@@ -71,15 +71,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         default_shaders::create_default_shaders(&shader_dir)?;
     }
 
+    pilka.push_compute_pipeline(
+        ShaderInfo::new(shader_dir.join("shader.comp"), SHADER_ENTRY_POINT.into())?,
+        &[],
+    )?;
+
     pilka.push_render_pipeline(
         ShaderInfo::new(shader_dir.join("shader.vert"), SHADER_ENTRY_POINT.into())?,
         ShaderInfo::new(shader_dir.join("shader.frag"), SHADER_ENTRY_POINT.into())?,
         &[shader_dir.join("prelude.glsl")],
-    )?;
-
-    pilka.push_compute_pipeline(
-        ShaderInfo::new(shader_dir.join("shader.comp"), SHADER_ENTRY_POINT.into())?,
-        &[],
     )?;
 
     let (ffmpeg_version, has_ffmpeg) = recorder::ffmpeg_version()?;
