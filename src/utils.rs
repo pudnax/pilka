@@ -1,7 +1,8 @@
 use color_eyre::*;
 
 use crate::{SCREENSHOTS_FOLDER, SHADER_DUMP_FOLDER, SHADER_PATH};
-use pilka_ash::{ImageDimentions, PilkaRender};
+use pilka_ash::PilkaRender;
+use pilka_types::ImageDimentions;
 
 use std::{
     fs::File,
@@ -74,7 +75,7 @@ pub fn print_help() {
 }
 
 pub fn save_screenshot(
-    frame: &'static [u8],
+    frame: Vec<u8>,
     image_dimentions: ImageDimentions,
 ) -> std::thread::JoinHandle<Result<()>> {
     std::thread::spawn(move || {
@@ -89,11 +90,11 @@ pub fn save_screenshot(
         let w = BufWriter::new(file);
         let mut encoder =
             png::Encoder::new(w, image_dimentions.width as _, image_dimentions.height as _);
-        encoder.set_color(png::ColorType::RGBA);
+        encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder
             .write_header()?
-            .into_stream_writer_with_size(image_dimentions.unpadded_bytes_per_row);
+            .into_stream_writer_with_size(image_dimentions.unpadded_bytes_per_row)?;
         for chunk in frame
             .chunks(image_dimentions.padded_bytes_per_row)
             .map(|chunk| &chunk[..image_dimentions.unpadded_bytes_per_row])
@@ -106,7 +107,7 @@ pub fn save_screenshot(
     })
 }
 
-pub fn save_shaders(pilka: &PilkaRender) -> Result<()> {
+pub fn save_shaders<P: AsRef<Path>>(paths: &[P]) -> Result<()> {
     let dump_folder = std::path::Path::new(SHADER_DUMP_FOLDER);
     create_folder(dump_folder)?;
     let dump_folder =
@@ -115,8 +116,11 @@ pub fn save_shaders(pilka: &PilkaRender) -> Result<()> {
     let dump_folder = dump_folder.join(SHADER_PATH);
     create_folder(&dump_folder)?;
 
-    for path in pilka.shader_set.keys() {
-        let to = dump_folder.join(path.strip_prefix(Path::new(SHADER_PATH).canonicalize()?)?);
+    for path in paths {
+        let to = dump_folder.join(
+            path.as_ref()
+                .strip_prefix(Path::new(SHADER_PATH).canonicalize()?)?,
+        );
         if !to.exists() {
             std::fs::create_dir_all(&to.parent().unwrap().canonicalize()?)?;
             std::fs::File::create(&to)?;

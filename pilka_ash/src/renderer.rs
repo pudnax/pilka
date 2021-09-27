@@ -1,20 +1,25 @@
 mod images;
 mod screenshot;
 
-pub use screenshot::ImageDimentions;
+use pilka_types::ShaderInfo;
 
-use crate::pvk::{
-    utils::{any_as_u8_slice, return_aligned},
-    *,
-};
+use crate::pvk::{utils::return_aligned, *};
 use ash::{
     prelude::VkResult,
-    vk::{self, Extent3D, PhysicalDeviceType, SubresourceLayout},
+    vk::{self, Extent3D, SubresourceLayout},
 };
-use std::{collections::HashMap, ffi::CStr, io::Write, path::PathBuf};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    ffi::CStr,
+    fmt::Display,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use images::{FftTexture, VkTexture};
-use screenshot::{Frame, ScreenshotCtx};
+use pilka_types::{Frame, ImageDimentions};
+use screenshot::ScreenshotCtx;
 
 fn graphics_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetLayout>> {
     let descriptor_set_layout = {
@@ -146,7 +151,7 @@ pub struct PilkaRender<'a> {
     float_texture2: VkTexture,
 
     pub screenshot_ctx: ScreenshotCtx<'a>,
-    pub push_constant: PushConstant,
+    pub push_constant_range: u32,
 
     pub scissors: Box<[vk::Rect2D]>,
     pub viewports: Box<[vk::Viewport]>,
@@ -175,43 +180,44 @@ pub struct PilkaRender<'a> {
     pub instance: VkInstance,
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct PushConstant {
-    pub pos: [f32; 3],
-    pub time: f32,
-    pub wh: [f32; 2],
-    pub mouse: [f32; 2],
-    pub mouse_pressed: vk::Bool32,
-    pub frame: u32,
-    pub time_delta: f32,
-    pub record_period: f32,
+#[derive(Debug)]
+pub struct RendererInfo {
+    pub device_name: String,
+    pub device_type: String,
+    pub vendor_name: String,
+    pub vulkan_version_name: String,
 }
 
-impl PushConstant {
-    unsafe fn as_slice(&self) -> &[u8] {
-        unsafe { any_as_u8_slice(self) }
-    }
-}
-
-// TODO: Make proper ms -> sec converion
-impl std::fmt::Display for PushConstant {
+impl Display for RendererInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "position:\t{:?}\ntime:\t\t{:.2}\ntime delta:\t{:.3} ms, fps: {:.2}\nwidth, height:\t{:?}\nmouse:\t\t{:.2?}\nframe:\t\t{}\nrecord_period:\t{}\n",
-            self.pos, self.time, self.time_delta * 1000., 1. / self.time_delta,
-            self.wh, self.mouse, self.frame, self.record_period
-        )
+        write!(f, "Vendor name: {}", self.vendor_name)?;
+        write!(f, "Device name: {}", self.device_name)?;
+        write!(f, "Device type: {}", self.device_type)?;
+        write!(f, "Vulkan version: {}", self.vulkan_version_name)?;
+        Ok(())
     }
 }
 
 impl<'a> PilkaRender<'a> {
+    pub fn get_info(&self) -> RendererInfo {
+        RendererInfo {
+            device_name: self.get_device_name().unwrap().to_string(),
+            device_type: self.get_device_type().to_string(),
+            vendor_name: self.get_device_name().unwrap().to_string(),
+            vulkan_version_name: self.get_vulkan_version_name().unwrap().to_string(),
+        }
+    }
     pub fn get_device_name(&self) -> Result<&str, std::str::Utf8Error> {
         unsafe { CStr::from_ptr(self.device_properties.properties.device_name.as_ptr()) }.to_str()
     }
-    pub fn get_device_type(&self) -> PhysicalDeviceType {
-        self.device_properties.properties.device_type
+    pub fn get_device_type(&self) -> &str {
+        match self.device_properties.properties.device_type {
+            vk::PhysicalDeviceType::CPU => "CPU",
+            vk::PhysicalDeviceType::INTEGRATED_GPU => "INTEGRATED_GPU",
+            vk::PhysicalDeviceType::DISCRETE_GPU => "DISCRETE_GPU",
+            vk::PhysicalDeviceType::VIRTUAL_GPU => "VIRTUAL_GPU",
+            _ => "OTHER",
+        }
     }
     pub fn get_vendor_name(&self) -> &str {
         match self.device_properties.properties.vendor_id {
@@ -224,19 +230,23 @@ impl<'a> PilkaRender<'a> {
             _ => "Unknown vendor",
         }
     }
-    pub fn get_vulkan_version_name(&self) -> VkResult<String> {
-        match self.instance.entry.try_enumerate_instance_version()? {
+    pub fn get_vulkan_version_name(&self) -> VkResult<Cow<str>> {
+        let name = match self.instance.entry.try_enumerate_instance_version()? {
             Some(version) => {
                 let major = version >> 22;
                 let minor = (version >> 12) & 0x3ff;
                 let patch = version & 0xfff;
-                Ok(format!("{}.{}.{}", major, minor, patch))
+                format!("{}.{}.{}", major, minor, patch).into()
             }
-            None => Ok("1.0.0".to_string()),
-        }
+            None => "1.0.0".into(),
+        };
+        Ok(name)
     }
 
-    pub fn new<W: HasRawWindowHandle>(window: &W) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new<W: HasRawWindowHandle>(
+        window: &W,
+        push_constant_range: u32,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let validation_layers = if cfg!(debug_assertions) {
             vec!["VK_LAYER_KHRONOS_validation\0"]
         } else {
@@ -325,17 +335,6 @@ impl<'a> PilkaRender<'a> {
         };
 
         let compiler = shaderc::Compiler::new().unwrap();
-
-        let push_constant = PushConstant {
-            pos: [0.; 3],
-            wh: surface.resolution_slice(&device)?,
-            mouse: [0.; 2],
-            time: 0.,
-            time_delta: 0.166666,
-            mouse_pressed: false as _,
-            frame: 0,
-            record_period: 10.,
-        };
 
         let pipeline_cache_create_info = vk::PipelineCacheCreateInfo::builder();
         let pipeline_cache =
@@ -573,7 +572,7 @@ impl<'a> PilkaRender<'a> {
             scissors,
             resolution: extent,
 
-            push_constant,
+            push_constant_range,
             screenshot_ctx,
 
             float_texture1,
@@ -592,7 +591,7 @@ impl<'a> PilkaRender<'a> {
         })
     }
 
-    pub fn render(&mut self) -> VkResult<()> {
+    pub fn render(&mut self, push_constant: &[u8]) -> VkResult<()> {
         let (present_index, is_suboptimal) = match unsafe {
             self.swapchain.swapchain_loader.acquire_next_image(
                 self.swapchain.swapchain,
@@ -621,7 +620,6 @@ impl<'a> PilkaRender<'a> {
 
         let viewports = self.viewports.as_ref();
         let scissors = self.scissors.as_ref();
-        let push_constant = self.push_constant;
         let descriptor_sets = &self.descriptor_sets;
         let present_image = self.swapchain.images[present_index as usize];
         let prev_frame = self.previous_frame.image.image;
@@ -711,7 +709,7 @@ impl<'a> PilkaRender<'a> {
                         pipeline.pipeline_layout,
                         vk::ShaderStageFlags::COMPUTE,
                         0,
-                        push_constant.as_slice(),
+                        push_constant,
                     );
                     self.device.cmd_bind_descriptor_sets(
                         cmd_buf,
@@ -810,7 +808,7 @@ impl<'a> PilkaRender<'a> {
                                 pipeline_layout,
                                 vk::ShaderStageFlags::ALL_GRAPHICS,
                                 0,
-                                push_constant.as_slice(),
+                                push_constant,
                             );
 
                             // Or draw without the index buffer
@@ -843,8 +841,6 @@ impl<'a> PilkaRender<'a> {
             Ok(_) => {}
             Err(e) => panic!("Unexpected error on presenting image: {}", e),
         }
-
-        self.push_constant.frame += 1;
 
         Ok(())
     }
@@ -1026,12 +1022,12 @@ impl<'a> PilkaRender<'a> {
     pub fn push_compute_pipeline(
         &mut self,
         comp_info: ShaderInfo,
-        dependencies: &[PathBuf],
+        includes: &[PathBuf],
     ) -> VkResult<()> {
         let pipeline_number = self.pipelines.len();
         self.shader_set
             .insert(comp_info.name.canonicalize().unwrap(), pipeline_number);
-        for deps in dependencies {
+        for deps in includes {
             self.shader_set
                 .insert(deps.canonicalize().unwrap(), pipeline_number);
         }
@@ -1046,14 +1042,14 @@ impl<'a> PilkaRender<'a> {
         &mut self,
         vert_info: ShaderInfo,
         frag_info: ShaderInfo,
-        dependencies: &[PathBuf],
+        includes: &[PathBuf],
     ) -> VkResult<()> {
         let pipeline_number = self.pipelines.len();
         self.shader_set
             .insert(vert_info.name.canonicalize().unwrap(), pipeline_number);
         self.shader_set
             .insert(frag_info.name.canonicalize().unwrap(), pipeline_number);
-        for deps in dependencies {
+        for deps in includes {
             self.shader_set
                 .insert(deps.canonicalize().unwrap(), pipeline_number);
         }
@@ -1094,13 +1090,13 @@ impl<'a> PilkaRender<'a> {
                 let shader_set = Box::new([
                     vk::PipelineShaderStageCreateInfo {
                         module: vert_module,
-                        p_name: vert_info.entry_point.as_ptr(),
+                        p_name: vert_info.entry_point.as_ptr().cast(),
                         stage: vk::ShaderStageFlags::VERTEX,
                         ..Default::default()
                     },
                     vk::PipelineShaderStageCreateInfo {
                         module: frag_module,
-                        p_name: frag_info.entry_point.as_ptr(),
+                        p_name: frag_info.entry_point.as_ptr().cast(),
                         stage: vk::ShaderStageFlags::FRAGMENT,
                         ..Default::default()
                     },
@@ -1130,7 +1126,7 @@ impl<'a> PilkaRender<'a> {
 
                 let shader_stage = vk::PipelineShaderStageCreateInfo {
                     module: comp_module,
-                    p_name: comp_info.entry_point.as_ptr(),
+                    p_name: comp_info.entry_point.as_ptr().cast(),
                     stage: vk::ShaderStageFlags::COMPUTE,
                     ..Default::default()
                 };
@@ -1242,7 +1238,7 @@ impl<'a> PilkaRender<'a> {
         let push_constant_ranges = [vk::PushConstantRange::builder()
             .offset(0)
             .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS)
-            .size(std::mem::size_of::<PushConstant>() as u32)
+            .size(self.push_constant_range)
             .build()];
 
         let descriptor_set_layouts = graphics_desc_set_leyout(&self.device)?;
@@ -1265,7 +1261,7 @@ impl<'a> PilkaRender<'a> {
         let push_constant_ranges = [vk::PushConstantRange::builder()
             .offset(0)
             .stage_flags(vk::ShaderStageFlags::COMPUTE)
-            .size(std::mem::size_of::<PushConstant>() as u32)
+            .size(self.push_constant_range)
             .build()];
 
         let descriptor_set_layouts = compute_desc_set_leyout(&self.device)?;
