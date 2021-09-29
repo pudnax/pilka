@@ -11,7 +11,14 @@ use ash::{
     prelude::VkResult,
     vk::{self, Extent3D, PhysicalDeviceType, SubresourceLayout},
 };
-use std::{collections::HashMap, ffi::CStr, io::Write, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::CStr,
+    hash::Hash,
+    io::Write,
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+};
 
 use images::{FftTexture, VkTexture};
 use screenshot::{Frame, ScreenshotCtx};
@@ -140,6 +147,27 @@ fn compute_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetL
     Ok(vec![descriptor_set_layout, fft_descriptor_set_layout])
 }
 
+pub struct ContiniousHashMap<K, V>(HashMap<K, HashSet<V>>);
+
+impl<K, V> Deref for ContiniousHashMap<K, V> {
+    type Target = HashMap<K, HashSet<V>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<K, V> DerefMut for ContiniousHashMap<K, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<K: Eq + Hash, V: Eq + Hash> ContiniousHashMap<K, V> {
+    fn push_value(&mut self, key: K, value: V) {
+        self.0.entry(key).or_insert(HashSet::new()).insert(value);
+    }
+}
+
 /// The main struct that holds all render primitives
 ///
 /// Rust documentation states for FIFO drop order for struct fields.
@@ -170,7 +198,7 @@ pub struct PilkaRender<'a> {
     pub viewport: vk::Viewport,
     pub resolution: vk::Extent2D,
 
-    pub shader_set: HashMap<PathBuf, usize>,
+    pub shader_set: ContiniousHashMap<PathBuf, usize>,
     pub compiler: shaderc::Compiler,
 
     pub rendering_complete_semaphore: vk::Semaphore,
@@ -616,7 +644,7 @@ impl<'a> PilkaRender<'a> {
             present_complete_semaphore,
             rendering_complete_semaphore,
 
-            shader_set: HashMap::new(),
+            shader_set: ContiniousHashMap(HashMap::new()),
             compiler,
 
             viewport,
@@ -1056,10 +1084,10 @@ impl<'a> PilkaRender<'a> {
     ) -> VkResult<()> {
         let pipeline_number = self.pipelines.len();
         self.shader_set
-            .insert(comp_info.name.canonicalize().unwrap(), pipeline_number);
+            .push_value(comp_info.name.canonicalize().unwrap(), pipeline_number);
         for deps in dependencies {
             self.shader_set
-                .insert(deps.canonicalize().unwrap(), pipeline_number);
+                .push_value(deps.canonicalize().unwrap(), pipeline_number);
         }
 
         let new_pipeline = self.make_pipeline_from_shaders(&ShaderSet::Compute(comp_info))?;
@@ -1076,12 +1104,12 @@ impl<'a> PilkaRender<'a> {
     ) -> VkResult<()> {
         let pipeline_number = self.pipelines.len();
         self.shader_set
-            .insert(vert_info.name.canonicalize().unwrap(), pipeline_number);
+            .push_value(vert_info.name.canonicalize().unwrap(), pipeline_number);
         self.shader_set
-            .insert(frag_info.name.canonicalize().unwrap(), pipeline_number);
+            .push_value(frag_info.name.canonicalize().unwrap(), pipeline_number);
         for deps in dependencies {
             self.shader_set
-                .insert(deps.canonicalize().unwrap(), pipeline_number);
+                .push_value(deps.canonicalize().unwrap(), pipeline_number);
         }
 
         let new_pipeline = self.make_pipeline_from_shaders(&ShaderSet::Graphics {
@@ -1218,8 +1246,15 @@ impl<'a> PilkaRender<'a> {
     pub fn rebuild_pipelines(&mut self, paths: &[PathBuf]) -> VkResult<()> {
         unsafe { self.device.device_wait_idle() }.unwrap();
         for path in paths {
-            if self.shader_set.contains_key(path) {
-                self.rebuild_pipeline(self.shader_set[path]).unwrap();
+            if let Some(pipeline_indexes) = self.shader_set.get(path) {
+                for pipeline_index in pipeline_indexes.clone() {
+                    match self.rebuild_pipeline(pipeline_index) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            eprintln!("Shader compilation error:\n{}", e);
+                        }
+                    }
+                }
             }
         }
 
