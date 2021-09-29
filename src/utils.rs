@@ -89,11 +89,11 @@ pub fn save_screenshot(
         let w = BufWriter::new(file);
         let mut encoder =
             png::Encoder::new(w, image_dimentions.width as _, image_dimentions.height as _);
-        encoder.set_color(png::ColorType::RGBA);
+        encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder
             .write_header()?
-            .into_stream_writer_with_size(image_dimentions.unpadded_bytes_per_row);
+            .into_stream_writer_with_size(image_dimentions.unpadded_bytes_per_row)?;
         for chunk in frame
             .chunks(image_dimentions.padded_bytes_per_row)
             .map(|chunk| &chunk[..image_dimentions.unpadded_bytes_per_row])
