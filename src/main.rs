@@ -63,7 +63,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         window_builder.build(&event_loop)?
     };
 
-    let mut pilka = PilkaRender::new(&window)?;
+    let mut pilka = PilkaRender::new(&window, PushConstant::size())?;
+
+    let mut push_constant = PushConstant::default();
 
     let shader_dir = PathBuf::new().join(SHADER_PATH);
 
@@ -129,7 +131,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (mut timer, start_event) = RecordTimer::new(record_time, video_tx.clone());
     if let Some(period) = record_time {
-        pilka.push_constant.record_period = period.as_secs_f32();
+        push_constant.record_period = period.as_secs_f32();
     }
 
     event_loop.run(move |event, _, control_flow| {
@@ -148,7 +150,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                 pilka.paused = !pause;
 
-                pilka.push_constant.time = if pause {
+                push_constant.time = if pause {
                     backup_time.as_secs_f32()
                 } else {
                     if let Some(recording_time) = timer.counter {
@@ -158,7 +160,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 };
 
-                input.process_position(&mut pilka.push_constant);
+                input.process_position(&mut push_constant);
 
                 if !pause {
                     // let mut tmp_buf = [0f32; audio::FFT_SIZE];
@@ -166,11 +168,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                     // pilka.update_fft_texture(&tmp_buf).unwrap();
 
                     dt = timeline.elapsed().saturating_sub(prev_time);
-                    pilka.push_constant.time_delta = dt.as_secs_f32();
+                    push_constant.time_delta = dt.as_secs_f32();
 
                     prev_time = timeline.elapsed();
                 }
-                pilka.push_constant.wh = pilka.surface.resolution_slice(&pilka.device).unwrap();
+                push_constant.wh = pilka.surface.resolution_slice(&pilka.device).unwrap();
 
                 timer
                     .update(&mut video_recording, pilka.screenshot_dimentions())
@@ -249,15 +251,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         if VirtualKeyCode::F5 == keycode {
-                            pilka.push_constant.pos = [0.; 3];
-                            pilka.push_constant.time = 0.;
-                            pilka.push_constant.frame = 0;
+                            push_constant.pos = [0.; 3];
+                            push_constant.time = 0.;
+                            push_constant.frame = 0;
                             timeline = Instant::now();
                             backup_time = timeline.elapsed();
                         }
 
                         if VirtualKeyCode::F6 == keycode {
-                            eprintln!("{}", pilka.push_constant);
+                            eprintln!("{}", push_constant);
                         }
 
                         if VirtualKeyCode::F10 == keycode {
@@ -293,7 +295,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         let vk::Extent2D { width, height } = pilka.resolution;
                         let x = (x as f32 / width as f32 - 0.5) * 2.;
                         let y = -(y as f32 / height as f32 - 0.5) * 2.;
-                        pilka.push_constant.mouse = [x, y];
+                        push_constant.mouse = [x, y];
                     }
                 }
                 WindowEvent::MouseInput {
@@ -301,19 +303,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                     state,
                     ..
                 } => match state {
-                    ElementState::Pressed => pilka.push_constant.mouse_pressed = true as _,
-                    ElementState::Released => pilka.push_constant.mouse_pressed = false as _,
+                    ElementState::Pressed => push_constant.mouse_pressed = true as _,
+                    ElementState::Released => push_constant.mouse_pressed = false as _,
                 },
                 _ => {}
             },
 
             Event::MainEventsCleared => {
-                pilka.render().unwrap();
+                pilka.render(push_constant.as_slice()).unwrap();
                 start_event.try_send(()).ok();
                 if video_recording {
                     let (frame, _image_dimentions) = pilka.capture_frame().unwrap();
                     video_tx.send(RecordEvent::Record(frame.to_vec())).unwrap()
                 }
+                push_constant.frame += 1;
             }
             Event::LoopDestroyed => {
                 println!("// End from the loop. Bye bye~⏎ ");
@@ -322,4 +325,70 @@ fn main() -> Result<(), Box<dyn Error>> {
             _ => {}
         }
     })
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct PushConstant {
+    pub pos: [f32; 3],
+    pub time: f32,
+    pub wh: [f32; 2],
+    pub mouse: [f32; 2],
+    pub mouse_pressed: u32,
+    pub frame: u32,
+    pub time_delta: f32,
+    pub record_period: f32,
+}
+
+impl PushConstant {
+    fn as_slice(&self) -> &[u8] {
+        unsafe { any_as_u8_slice(self) }
+    }
+
+    pub fn size() -> u32 {
+        std::mem::size_of::<Self>() as _
+    }
+}
+
+/// # Safety
+/// Until you're using it on not ZST or DST it's fine
+pub unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+    std::slice::from_raw_parts((p as *const T) as *const _, std::mem::size_of::<T>())
+}
+
+impl Default for PushConstant {
+    fn default() -> Self {
+        Self {
+            pos: [0.; 3],
+            time: 0.,
+            wh: [1920.0, 780.],
+            mouse: [0.; 2],
+            mouse_pressed: false as _,
+            frame: 0,
+            time_delta: 1. / 60.,
+            record_period: 10.,
+        }
+    }
+}
+
+// TODO: Make proper ms -> sec converion
+impl std::fmt::Display for PushConstant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "position:\t{:?}\n\
+             time:\t\t{:.2}\n\
+             time delta:\t{:.3} ms, fps: {:.2}\n\
+             width, height:\t{:?}\nmouse:\t\t{:.2?}\n\
+             frame:\t\t{}\nrecord_period:\t{}\n",
+            self.pos,
+            self.time,
+            self.time_delta * 1000.,
+            1. / self.time_delta,
+            self.wh,
+            self.mouse,
+            self.frame,
+            self.record_period
+        )
+    }
 }
