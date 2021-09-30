@@ -173,7 +173,7 @@ pub struct PilkaRender<'a> {
     pub paused: bool,
 
     descriptor_pool: vk::DescriptorPool,
-    pub descriptor_sets: Vec<vk::DescriptorSet>,
+    pub descriptor_sets_render: Vec<vk::DescriptorSet>,
     pub descriptor_sets_compute: Vec<vk::DescriptorSet>,
     descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
     descriptor_set_layouts_compute: Vec<vk::DescriptorSetLayout>,
@@ -484,7 +484,7 @@ impl<'a> PilkaRender<'a> {
             unsafe { device.create_descriptor_pool(&descriptor_pool_info, None) }?;
 
         let descriptor_set_layouts_graphics = graphics_desc_set_leyout(&device)?;
-        let descriptor_sets = {
+        let descriptor_sets_render = {
             let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
                 .descriptor_pool(descriptor_pool)
                 .set_layouts(&descriptor_set_layouts_graphics);
@@ -543,21 +543,12 @@ impl<'a> PilkaRender<'a> {
             vk::DescriptorType::SAMPLED_IMAGE,
         ];
 
-        for (descset, (image_infos, &desc_type)) in descriptor_sets
-            .iter()
-            .zip(image_infos.iter().zip(desc_types))
-        {
-            for (i, image_info) in image_infos.iter().enumerate() {
-                let desc_sets_write = [vk::WriteDescriptorSet::builder()
-                    .dst_set(*descset)
-                    .dst_binding(i as _)
-                    .dst_array_element(0)
-                    .descriptor_type(desc_type)
-                    .image_info(&[*image_info])
-                    .build()];
-                unsafe { device.update_descriptor_sets(&desc_sets_write, &[]) };
-            }
-        }
+        PilkaRender::update_image_bindings(
+            &device,
+            image_infos,
+            desc_types,
+            &descriptor_sets_render,
+        );
 
         let image_infos = &[image_infos[0], image_infos[2]];
         let desc_types = &[
@@ -565,21 +556,12 @@ impl<'a> PilkaRender<'a> {
             vk::DescriptorType::STORAGE_IMAGE,
         ];
 
-        for (descset, (image_infos, &desc_type)) in descriptor_sets_compute
-            .iter()
-            .zip(image_infos.iter().zip(desc_types))
-        {
-            for (i, image_info) in image_infos.iter().enumerate() {
-                let desc_sets_write = [vk::WriteDescriptorSet::builder()
-                    .dst_set(*descset)
-                    .dst_binding(i as _)
-                    .dst_array_element(0)
-                    .descriptor_type(desc_type)
-                    .image_info(&[*image_info])
-                    .build()];
-                unsafe { device.update_descriptor_sets(&desc_sets_write, &[]) };
-            }
-        }
+        PilkaRender::update_image_bindings(
+            &device,
+            image_infos,
+            desc_types,
+            &descriptor_sets_compute,
+        );
 
         Ok(Self {
             paused: false,
@@ -623,11 +605,36 @@ impl<'a> PilkaRender<'a> {
             fft_texture,
 
             descriptor_pool,
-            descriptor_sets,
+            descriptor_sets_render,
             descriptor_sets_compute,
             descriptor_set_layouts: descriptor_set_layouts_graphics,
             descriptor_set_layouts_compute,
         })
+    }
+
+    fn update_image_bindings(
+        device: &VkDevice,
+        image_infos: &[&[vk::DescriptorImageInfo]],
+        desc_types: &[vk::DescriptorType],
+        desc_sets: &[vk::DescriptorSet],
+    ) {
+        for (descset, (image_infos, &image_type)) in
+            desc_sets.iter().zip(image_infos.iter().zip(desc_types))
+        {
+            for (i, image_info) in image_infos.iter().enumerate() {
+                unsafe {
+                    device.update_descriptor_sets(
+                        &[*vk::WriteDescriptorSet::builder()
+                            .dst_set(*descset)
+                            .dst_binding(i as _)
+                            .dst_array_element(0)
+                            .descriptor_type(image_type)
+                            .image_info(&[*image_info])],
+                        &[],
+                    )
+                };
+            }
+        }
     }
 
     pub fn render(&mut self, push_constant: &[u8]) -> VkResult<()> {
@@ -659,7 +666,7 @@ impl<'a> PilkaRender<'a> {
 
         let viewport = self.viewport;
         let scissors = self.scissors;
-        let descriptor_sets = &self.descriptor_sets;
+        let descriptor_sets = &self.descriptor_sets_render;
         let present_image = self.swapchain.images[present_index as usize];
         let prev_frame = self.previous_frame.image.image;
         let extent = vk::Extent3D {
@@ -993,33 +1000,21 @@ impl<'a> PilkaRender<'a> {
         ];
         let desc_types = &[vk::DescriptorType::SAMPLED_IMAGE];
 
-        for (descset, &desc_type) in self.descriptor_sets.iter().zip(desc_types) {
-            for (i, image_info) in image_infos.iter().enumerate() {
-                let desc_sets_write = [vk::WriteDescriptorSet::builder()
-                    .dst_set(*descset)
-                    .dst_binding(i as _)
-                    .dst_array_element(0)
-                    .descriptor_type(desc_type)
-                    .image_info(&[*image_info])
-                    .build()];
-                unsafe { self.device.update_descriptor_sets(&desc_sets_write, &[]) };
-            }
-        }
+        PilkaRender::update_image_bindings(
+            &self.device,
+            &[&image_infos],
+            desc_types,
+            &self.descriptor_sets_render,
+        );
 
         let desc_types = &[vk::DescriptorType::STORAGE_IMAGE];
 
-        for (descset, &desc_type) in self.descriptor_sets_compute.iter().zip(desc_types) {
-            for (i, image_info) in image_infos.iter().enumerate() {
-                let desc_sets_write = [vk::WriteDescriptorSet::builder()
-                    .dst_set(*descset)
-                    .dst_binding(i as _)
-                    .dst_array_element(0)
-                    .descriptor_type(desc_type)
-                    .image_info(&[*image_info])
-                    .build()];
-                unsafe { self.device.update_descriptor_sets(&desc_sets_write, &[]) };
-            }
-        }
+        PilkaRender::update_image_bindings(
+            &self.device,
+            &[&image_infos],
+            desc_types,
+            &self.descriptor_sets_compute,
+        );
 
         let extent = Extent3D {
             width,
