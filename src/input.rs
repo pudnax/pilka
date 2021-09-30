@@ -1,4 +1,4 @@
-use pilka_ash::*;
+use super::PushConstant;
 use winit::event::{ElementState, VirtualKeyCode};
 
 #[derive(Debug, Default)]
