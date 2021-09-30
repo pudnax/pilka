@@ -22,16 +22,18 @@ use color_eyre::Result;
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
+    fmt::Display,
     hash::Hash,
-    ops::{Deref, DerefMut},
+    iter::from_fn,
+    ops::{Deref, DerefMut, Index},
     path::{Path, PathBuf},
 };
 
 use raw_window_handle::HasRawWindowHandle;
 use wgpu::{
-    BindGroup, BindGroupLayout, BindGroupLayoutDescriptor, ComputePipeline, Device, PipelineLayout,
-    PrimitiveState, PrimitiveTopology, Queue, RenderPipeline, Surface, SurfaceConfiguration,
-    TextureFormat, TextureUsages,
+    Adapter, BindGroup, BindGroupLayout, BindGroupLayoutDescriptor, ComputePipeline, Device,
+    PipelineLayout, PrimitiveState, PrimitiveTopology, Queue, RenderPipeline, Surface,
+    SurfaceConfiguration, Texture, TextureFormat, TextureUsages, TextureView,
 };
 
 use naga::{
@@ -490,7 +492,90 @@ impl<'a> Descriptor<'a, { ComputePipelineLayoutInfo::N }> for ComputePipelineLay
     const DESC: [BindGroupLayoutDescriptor<'a>; ComputePipelineLayoutInfo::N] = Self::DESC;
 }
 
+enum Binding {
+    Texture,
+    Sampler,
+    #[allow(dead_code)]
+    Fft,
+}
+
+impl<const N: usize> Index<Binding> for [BindGroupLayout; N] {
+    type Output = BindGroupLayout;
+
+    fn index(&self, index: Binding) -> &Self::Output {
+        match index {
+            Binding::Texture => &self[0],
+            Binding::Sampler => &self[1],
+            Binding::Fft => &self[2],
+        }
+    }
+}
+
+fn create_textures(
+    device: &Device,
+    extent: wgpu::Extent3d,
+) -> (Vec<Texture>, Vec<TextureView>, BindGroup, BindGroup) {
+    let make_texture = |label, format| {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: extent,
+            usage: wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::STORAGE_BINDING,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+        })
+    };
+    let textures: Vec<_> = [
+        ("Previous Frame Texture", wgpu::TextureFormat::Rgba8Unorm),
+        ("Generic Frame Texture", wgpu::TextureFormat::Rgba8Unorm),
+        ("Dummy Frame Texture", wgpu::TextureFormat::Rgba8Unorm),
+        ("Float Texture 1", wgpu::TextureFormat::Rgba32Float),
+        ("Float Texture 2", wgpu::TextureFormat::Rgba32Float),
+    ]
+    .iter()
+    .map(|(label, format)| make_texture(label, *format))
+    .collect();
+
+    let texture_views: Vec<_> = textures
+        .iter()
+        .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default()))
+        .collect();
+
+    let entries: Vec<_> = texture_views
+        .iter()
+        .enumerate()
+        .map(|(i, view)| wgpu::BindGroupEntry {
+            binding: i as _,
+            resource: wgpu::BindingResource::TextureView(&view),
+        })
+        .collect();
+
+    let sampled_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("Render Bind Group"),
+        layout: &RenderPipelineLayoutInfo::binding_group(&device)[Binding::Texture],
+        entries: &entries,
+    });
+
+    let storage_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("Compute Bind Group"),
+        layout: &ComputePipelineLayoutInfo::binding_group(&device)[Binding::Texture],
+        entries: &entries,
+    });
+
+    (
+        textures,
+        texture_views,
+        sampled_texture_bind_group,
+        storage_texture_bind_group,
+    )
+}
+
 pub struct State {
+    adapter: Adapter,
     device: Device,
     surface: Surface,
     queue: Queue,
@@ -500,24 +585,81 @@ pub struct State {
     format: TextureFormat,
     push_constant_ranges: u32,
 
-    previous_frame: wgpu::Texture,
-    generic_texture: wgpu::Texture,
-    dummy_texture: wgpu::Texture,
-    float_texture1: wgpu::Texture,
-    float_texture2: wgpu::Texture,
-
-    sampler: wgpu::Sampler,
-
     extent: wgpu::Extent3d,
 
+    textures: Vec<Texture>,
+    texture_views: Vec<TextureView>,
+    sampler: wgpu::Sampler,
+
     sampled_texture_bind_group: BindGroup,
-    sampler_bind_group: BindGroup,
     storage_texture_bind_group: BindGroup,
+    sampler_bind_group: BindGroup,
 
     shader_compiler: ShaderCompiler,
+
+    paused: bool,
+}
+
+#[derive(Debug)]
+pub struct RendererInfo {
+    pub device_name: String,
+    pub device_type: String,
+    pub vendor_name: String,
+    pub backend: String,
+}
+
+impl Display for RendererInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Vendor name: {}", self.vendor_name)?;
+        writeln!(f, "Device name: {}", self.device_name)?;
+        writeln!(f, "Device type: {}", self.device_type)?;
+        writeln!(f, "Backend: {}", self.backend)?;
+        Ok(())
+    }
 }
 
 impl State {
+    pub fn get_info(&self) -> RendererInfo {
+        let info = self.adapter.get_info();
+        RendererInfo {
+            device_name: info.name,
+            device_type: self.get_device_type().to_string(),
+            vendor_name: self.get_vendor_name().to_string(),
+            backend: self.get_backend().to_string(),
+        }
+    }
+    fn get_vendor_name(&self) -> &str {
+        match self.adapter.get_info().vendor {
+            0x1002 => "AMD",
+            0x1010 => "ImgTec",
+            0x10DE => "NVIDIA Corporation",
+            0x13B5 => "ARM",
+            0x5143 => "Qualcomm",
+            0x8086 => "INTEL Corporation",
+            _ => "Unknown vendor",
+        }
+    }
+    fn get_backend(&self) -> &str {
+        match self.adapter.get_info().backend {
+            wgpu::Backend::Empty => "Empty",
+            wgpu::Backend::Vulkan => "Vulkan",
+            wgpu::Backend::Metal => "Metal",
+            wgpu::Backend::Dx12 => "Dx12",
+            wgpu::Backend::Dx11 => "Dx11",
+            wgpu::Backend::Gl => "GL",
+            wgpu::Backend::BrowserWebGpu => "Browser WGPU",
+        }
+    }
+    fn get_device_type(&self) -> &str {
+        match self.adapter.get_info().device_type {
+            wgpu::DeviceType::Other => "Other",
+            wgpu::DeviceType::IntegratedGpu => "Integrated GPU",
+            wgpu::DeviceType::DiscreteGpu => "Discrete GPU",
+            wgpu::DeviceType::VirtualGpu => "Virtual GPU",
+            wgpu::DeviceType::Cpu => "CPU",
+        }
+    }
+
     pub async fn new(window: &impl HasRawWindowHandle, push_constant_ranges: u32) -> Result<Self> {
         let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
 
@@ -564,27 +706,8 @@ impl State {
             },
         );
 
-        let make_texture = |label, format| {
-            device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(label),
-                size: extent,
-                usage: wgpu::TextureUsages::COPY_SRC
-                    | wgpu::TextureUsages::COPY_DST
-                    | wgpu::TextureUsages::TEXTURE_BINDING
-                    | wgpu::TextureUsages::STORAGE_BINDING,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-            })
-        };
-
-        let previous_frame =
-            make_texture("Previous Frame Texxture", wgpu::TextureFormat::Rgba8Unorm);
-        let generic_texture = make_texture("Generic Texture", wgpu::TextureFormat::Rgba8Unorm);
-        let dummy_texture = make_texture("Dummy Texture", wgpu::TextureFormat::Rgba8Unorm);
-        let float_texture1 = make_texture("Float Texture 1", wgpu::TextureFormat::Rgba32Float);
-        let float_texture2 = make_texture("Float Texture 2", wgpu::TextureFormat::Rgba32Float);
+        let (textures, texture_views, sampled_texture_bind_group, storage_texture_bind_group) =
+            create_textures(&device, extent);
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Sampler"),
@@ -597,93 +720,19 @@ impl State {
             compare: Some(wgpu::CompareFunction::Always),
             ..Default::default()
         });
-
-        let sampled_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Render Bind Group"),
-            layout: &RenderPipelineLayoutInfo::binding_group(&device)[0],
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        &previous_frame.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(
-                        &generic_texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(
-                        &dummy_texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(
-                        &float_texture1.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(
-                        &float_texture2.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-            ],
-        });
-
         let sampler_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Render Bind Group"),
-            layout: &RenderPipelineLayoutInfo::binding_group(&device)[1],
+            layout: &RenderPipelineLayoutInfo::binding_group(&device)[Binding::Sampler],
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::Sampler(&sampler),
             }],
         });
 
-        let storage_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Compute Bind Group"),
-            layout: &ComputePipelineLayoutInfo::binding_group(&device)[0],
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        &previous_frame.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(
-                        &generic_texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(
-                        &dummy_texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(
-                        &float_texture1.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(
-                        &float_texture2.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
-            ],
-        });
-
         let shader_compiler = ShaderCompiler::default();
 
         Ok(Self {
+            adapter,
             device,
             surface,
             pipelines: Vec::new(),
@@ -693,21 +742,19 @@ impl State {
             format,
             push_constant_ranges,
 
-            previous_frame,
-            generic_texture,
-            dummy_texture,
-            float_texture1,
-            float_texture2,
-
+            textures,
+            texture_views,
             sampler,
 
             extent,
 
             sampled_texture_bind_group,
-            sampler_bind_group,
             storage_texture_bind_group,
+            sampler_bind_group,
 
             shader_compiler,
+
+            paused: false,
         })
     }
 
@@ -748,108 +795,13 @@ impl State {
                 })
             };
 
-            self.previous_frame =
-                make_texture("Previous Frame Texxture", wgpu::TextureFormat::Rgba8Unorm);
-            self.generic_texture = make_texture("Generic Texture", wgpu::TextureFormat::Rgba8Unorm);
-            self.dummy_texture = make_texture("Dummy Texture", wgpu::TextureFormat::Rgba8Unorm);
-            self.float_texture1 = make_texture("Float Texture 1", wgpu::TextureFormat::Rgba32Float);
-            self.float_texture2 = make_texture("Float Texture 2", wgpu::TextureFormat::Rgba32Float);
+            let (textures, texture_views, sampled_texture_bind_group, storage_texture_bind_group) =
+                create_textures(&self.device, self.extent);
 
-            self.sampled_texture_bind_group =
-                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Render Bind Group"),
-                    layout: &RenderPipelineLayoutInfo::binding_group(&self.device)[0],
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(
-                                &self
-                                    .previous_frame
-                                    .create_view(&wgpu::TextureViewDescriptor::default()),
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::TextureView(
-                                &self
-                                    .generic_texture
-                                    .create_view(&wgpu::TextureViewDescriptor::default()),
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: wgpu::BindingResource::TextureView(
-                                &self
-                                    .dummy_texture
-                                    .create_view(&wgpu::TextureViewDescriptor::default()),
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 3,
-                            resource: wgpu::BindingResource::TextureView(
-                                &self
-                                    .float_texture1
-                                    .create_view(&wgpu::TextureViewDescriptor::default()),
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 4,
-                            resource: wgpu::BindingResource::TextureView(
-                                &self
-                                    .float_texture2
-                                    .create_view(&wgpu::TextureViewDescriptor::default()),
-                            ),
-                        },
-                    ],
-                });
-
-            self.storage_texture_bind_group =
-                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Compute Bind Group"),
-                    layout: &ComputePipelineLayoutInfo::binding_group(&self.device)[0],
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(
-                                &self
-                                    .previous_frame
-                                    .create_view(&wgpu::TextureViewDescriptor::default()),
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::TextureView(
-                                &self
-                                    .generic_texture
-                                    .create_view(&wgpu::TextureViewDescriptor::default()),
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: wgpu::BindingResource::TextureView(
-                                &self
-                                    .dummy_texture
-                                    .create_view(&wgpu::TextureViewDescriptor::default()),
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 3,
-                            resource: wgpu::BindingResource::TextureView(
-                                &self
-                                    .float_texture1
-                                    .create_view(&wgpu::TextureViewDescriptor::default()),
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 4,
-                            resource: wgpu::BindingResource::TextureView(
-                                &self
-                                    .float_texture2
-                                    .create_view(&wgpu::TextureViewDescriptor::default()),
-                            ),
-                        },
-                    ],
-                });
+            self.textures = textures;
+            self.texture_views = texture_views;
+            self.sampled_texture_bind_group = sampled_texture_bind_group;
+            self.storage_texture_bind_group = storage_texture_bind_group;
         }
     }
 
@@ -957,6 +909,7 @@ impl State {
                 }],
             });
 
+        // TODO: Provide entry point
         let pipeline = self
             .device
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -1021,7 +974,7 @@ impl State {
 
         encoder.copy_texture_to_texture(
             frame.texture.as_image_copy(),
-            self.previous_frame.as_image_copy(),
+            self.textures[0].as_image_copy(),
             self.extent,
         );
 
@@ -1036,9 +989,9 @@ impl State {
                             resolve_target: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: 0.1,
-                                    g: 0.2,
-                                    b: 0.3,
+                                    r: 0.0,
+                                    g: 0.0,
+                                    b: 0.0,
                                     a: 1.0,
                                 }),
                                 store: true,
@@ -1056,7 +1009,7 @@ impl State {
                     render_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
                     render_pass.draw(0..3, 0..1);
                 }
-                PipelineKind::Compute { ref pipeline, .. } => {
+                PipelineKind::Compute { ref pipeline, .. } if !self.paused => {
                     let mut compute_pass =
                         encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                             label: Some(&format!("Compute Pass {}", i)),
@@ -1066,6 +1019,7 @@ impl State {
                     compute_pass.set_bind_group(0, &self.storage_texture_bind_group, &[]);
                     compute_pass.dispatch(0, 0, 0);
                 }
+                PipelineKind::Compute { .. } => {}
             }
         }
 
