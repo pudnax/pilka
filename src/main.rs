@@ -1,6 +1,7 @@
 mod default_shaders;
 mod input;
 mod recorder;
+mod render_interface;
 mod utils;
 
 #[allow(dead_code)]
