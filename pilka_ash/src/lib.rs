@@ -2,7 +2,7 @@
 #![feature(crate_visibility_modifier)]
 
 mod renderer;
-pub use renderer::{ImageDimentions, PilkaRender, PushConstant};
+pub use renderer::{ImageDimentions, PilkaRender};
 
 mod pvk;
 pub use ash::*;

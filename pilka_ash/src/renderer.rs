@@ -3,10 +3,7 @@ mod screenshot;
 
 pub use screenshot::ImageDimentions;
 
-use crate::pvk::{
-    utils::{any_as_u8_slice, return_aligned},
-    *,
-};
+use crate::pvk::{utils::return_aligned, *};
 use ash::{
     prelude::VkResult,
     vk::{self, Extent3D, PhysicalDeviceType, SubresourceLayout},
@@ -164,7 +161,7 @@ impl<K, V> DerefMut for ContiniousHashMap<K, V> {
 
 impl<K: Eq + Hash, V: Eq + Hash> ContiniousHashMap<K, V> {
     fn push_value(&mut self, key: K, value: V) {
-        self.0.entry(key).or_insert(HashSet::new()).insert(value);
+        self.0.entry(key).or_insert_with(HashSet::new).insert(value);
     }
 }
 
@@ -192,7 +189,7 @@ pub struct PilkaRender<'a> {
     sampler: vk::Sampler,
 
     pub screenshot_ctx: ScreenshotCtx<'a>,
-    pub push_constant: PushConstant,
+    pub push_constants_range: u32,
 
     pub scissors: vk::Rect2D,
     pub viewport: vk::Viewport,
@@ -218,37 +215,6 @@ pub struct PilkaRender<'a> {
 
     pub queues: VkQueues,
     pub device: VkDevice,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct PushConstant {
-    pub pos: [f32; 3],
-    pub time: f32,
-    pub wh: [f32; 2],
-    pub mouse: [f32; 2],
-    pub mouse_pressed: vk::Bool32,
-    pub frame: u32,
-    pub time_delta: f32,
-    pub record_period: f32,
-}
-
-impl PushConstant {
-    unsafe fn as_slice(&self) -> &[u8] {
-        unsafe { any_as_u8_slice(self) }
-    }
-}
-
-// TODO: Make proper ms -> sec converion
-impl std::fmt::Display for PushConstant {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "position:\t{:?}\ntime:\t\t{:.2}\ntime delta:\t{:.3} ms, fps: {:.2}\nwidth, height:\t{:?}\nmouse:\t\t{:.2?}\nframe:\t\t{}\nrecord_period:\t{}\n",
-            self.pos, self.time, self.time_delta * 1000., 1. / self.time_delta,
-            self.wh, self.mouse, self.frame, self.record_period
-        )
-    }
 }
 
 impl<'a> PilkaRender<'a> {
@@ -286,7 +252,10 @@ impl<'a> PilkaRender<'a> {
         }
     }
 
-    pub fn new<W: HasRawWindowHandle>(window: &W) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new<W: HasRawWindowHandle>(
+        window: &W,
+        push_constants_range: u32,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let validation_layers = if cfg!(debug_assertions) {
             vec!["VK_LAYER_KHRONOS_validation\0"]
         } else {
@@ -370,17 +339,6 @@ impl<'a> PilkaRender<'a> {
         };
 
         let compiler = shaderc::Compiler::new().unwrap();
-
-        let push_constant = PushConstant {
-            pos: [0.; 3],
-            wh: surface.resolution_slice(&device)?,
-            mouse: [0.; 2],
-            time: 0.,
-            time_delta: 0.166666,
-            mouse_pressed: false as _,
-            frame: 0,
-            record_period: 10.,
-        };
 
         let pipeline_cache_create_info = vk::PipelineCacheCreateInfo::builder();
         let pipeline_cache =
@@ -651,7 +609,7 @@ impl<'a> PilkaRender<'a> {
             scissors,
             resolution: extent,
 
-            push_constant,
+            push_constants_range,
             screenshot_ctx,
 
             sampler,
@@ -672,7 +630,7 @@ impl<'a> PilkaRender<'a> {
         })
     }
 
-    pub fn render(&mut self) -> VkResult<()> {
+    pub fn render(&mut self, push_constant: &[u8]) -> VkResult<()> {
         let (present_index, is_suboptimal) = match unsafe {
             self.swapchain.swapchain_loader.acquire_next_image(
                 self.swapchain.swapchain,
@@ -701,7 +659,6 @@ impl<'a> PilkaRender<'a> {
 
         let viewport = self.viewport;
         let scissors = self.scissors;
-        let push_constant = self.push_constant;
         let descriptor_sets = &self.descriptor_sets;
         let present_image = self.swapchain.images[present_index as usize];
         let prev_frame = self.previous_frame.image.image;
@@ -751,7 +708,7 @@ impl<'a> PilkaRender<'a> {
                                 pipeline.pipeline_layout,
                                 vk::ShaderStageFlags::COMPUTE,
                                 0,
-                                push_constant.as_slice(),
+                                push_constant,
                             );
                             self.device.cmd_bind_descriptor_sets(
                                 cmd_buf,
@@ -850,7 +807,7 @@ impl<'a> PilkaRender<'a> {
                                     pipeline_layout,
                                     vk::ShaderStageFlags::ALL_GRAPHICS,
                                     0,
-                                    push_constant.as_slice(),
+                                    push_constant,
                                 );
 
                                 // Or draw without the index buffer
@@ -889,8 +846,6 @@ impl<'a> PilkaRender<'a> {
             Ok(_) => {}
             Err(e) => panic!("Unexpected error on presenting image: {}", e),
         }
-
-        self.push_constant.frame += 1;
 
         Ok(())
     }
@@ -1299,7 +1254,7 @@ impl<'a> PilkaRender<'a> {
         let push_constant_ranges = [vk::PushConstantRange::builder()
             .offset(0)
             .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS)
-            .size(std::mem::size_of::<PushConstant>() as u32)
+            .size(self.push_constants_range)
             .build()];
 
         let descriptor_set_layouts = graphics_desc_set_leyout(&self.device)?;
@@ -1322,7 +1277,7 @@ impl<'a> PilkaRender<'a> {
         let push_constant_ranges = [vk::PushConstantRange::builder()
             .offset(0)
             .stage_flags(vk::ShaderStageFlags::COMPUTE)
-            .size(std::mem::size_of::<PushConstant>() as u32)
+            .size(self.push_constants_range)
             .build()];
 
         let descriptor_set_layouts = compute_desc_set_leyout(&self.device)?;
