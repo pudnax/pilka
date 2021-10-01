@@ -37,14 +37,6 @@ pub enum ShaderStage {
     Compute,
 }
 
-#[derive(Hash, Debug, Clone)]
-pub struct ShaderData {
-    pub source: String,
-    pub entry_point: String,
-    pub ty: ShaderType,
-    pub stage: ShaderStage,
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct ImageDimentions {
     pub width: usize,
