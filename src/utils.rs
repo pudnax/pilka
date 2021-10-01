@@ -1,7 +1,7 @@
 use color_eyre::*;
 
 use crate::{SCREENSHOTS_FOLDER, SHADER_DUMP_FOLDER, SHADER_PATH};
-use pilka_ash::{ImageDimentions, PilkaRender};
+use pilka_types::ImageDimentions;
 
 use std::{
     fs::File,
@@ -74,7 +74,7 @@ pub fn print_help() {
 }
 
 pub fn save_screenshot(
-    frame: &'static [u8],
+    frame: Vec<u8>,
     image_dimentions: ImageDimentions,
 ) -> std::thread::JoinHandle<Result<()>> {
     std::thread::spawn(move || {
@@ -106,7 +106,7 @@ pub fn save_screenshot(
     })
 }
 
-pub fn save_shaders(pilka: &PilkaRender) -> Result<()> {
+pub fn save_shaders<P: AsRef<Path>>(paths: &[P]) -> Result<()> {
     let dump_folder = std::path::Path::new(SHADER_DUMP_FOLDER);
     create_folder(dump_folder)?;
     let dump_folder =
@@ -115,8 +115,11 @@ pub fn save_shaders(pilka: &PilkaRender) -> Result<()> {
     let dump_folder = dump_folder.join(SHADER_PATH);
     create_folder(&dump_folder)?;
 
-    for path in pilka.shader_set.keys() {
-        let to = dump_folder.join(path.strip_prefix(Path::new(SHADER_PATH).canonicalize()?)?);
+    for path in paths {
+        let to = dump_folder.join(
+            path.as_ref()
+                .strip_prefix(Path::new(SHADER_PATH).canonicalize()?)?,
+        );
         if !to.exists() {
             std::fs::create_dir_all(&to.parent().unwrap().canonicalize()?)?;
             std::fs::File::create(&to)?;
@@ -126,4 +129,70 @@ pub fn save_shaders(pilka: &PilkaRender) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct PushConstant {
+    pub pos: [f32; 3],
+    pub time: f32,
+    pub wh: [f32; 2],
+    pub mouse: [f32; 2],
+    pub mouse_pressed: u32,
+    pub frame: u32,
+    pub time_delta: f32,
+    pub record_period: f32,
+}
+
+impl PushConstant {
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe { any_as_u8_slice(self) }
+    }
+
+    pub fn size() -> u32 {
+        std::mem::size_of::<Self>() as _
+    }
+}
+
+/// # Safety
+/// Until you're using it on not ZST or DST it's fine
+pub unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+    std::slice::from_raw_parts((p as *const T) as *const _, std::mem::size_of::<T>())
+}
+
+impl Default for PushConstant {
+    fn default() -> Self {
+        Self {
+            pos: [0.; 3],
+            time: 0.,
+            wh: [1920.0, 780.],
+            mouse: [0.; 2],
+            mouse_pressed: false as _,
+            frame: 0,
+            time_delta: 1. / 60.,
+            record_period: 10.,
+        }
+    }
+}
+
+// TODO: Make proper ms -> sec converion
+impl std::fmt::Display for PushConstant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "position:\t{:?}\n\
+             time:\t\t{:.2}\n\
+             time delta:\t{:.3} ms, fps: {:.2}\n\
+             width, height:\t{:?}\nmouse:\t\t{:.2?}\n\
+             frame:\t\t{}\nrecord_period:\t{}\n",
+            self.pos,
+            self.time,
+            self.time_delta * 1000.,
+            1. / self.time_delta,
+            self.wh,
+            self.mouse,
+            self.frame,
+            self.record_period
+        )
+    }
 }

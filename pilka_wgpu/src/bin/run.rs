@@ -1,9 +1,7 @@
 use color_eyre::*;
 use notify::Config;
-use notify::{
-    event::{EventKind, ModifyKind},
-    RecommendedWatcher, RecursiveMode, Watcher,
-};
+use notify::{event::EventKind, RecursiveMode, Watcher};
+use pilka_types::ShaderInfo;
 use std::mem::size_of;
 use std::path::{Path, PathBuf};
 use winit::dpi::PhysicalSize;
@@ -24,13 +22,18 @@ async fn run() -> Result<()> {
         .with_title("Pilka")
         .build(&event_loop)?;
 
+    let PhysicalSize { width, height } = window.inner_size();
     let mut state =
-        pilka_wgpu::State::new(&window, std::mem::size_of::<PushConstant>() as _).await?;
+        pilka_wgpu::WgpuRender::new(&window, PushConstant::size(), width, height).await?;
 
     let shader_f = PathBuf::new().join("shaders").join("shader_f.wgsl");
     let shader_v = PathBuf::new().join("shaders").join("shader_v.wgsl");
 
-    state.push_render_pipeline(shader_f, shader_v, &[])?;
+    state.push_render_pipeline(
+        ShaderInfo::new(shader_f, "main".into()),
+        ShaderInfo::new(shader_v, "main".into()),
+        &[],
+    )?;
 
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -49,7 +52,7 @@ async fn run() -> Result<()> {
 
         match event {
             Event::NewEvents(_) => {
-                for (i, rx_event) in rx.try_iter().enumerate() {
+                for rx_event in rx.try_iter() {
                     if let notify::Event {
                         kind:
                             EventKind::Access(notify::event::AccessKind::Close(
@@ -65,7 +68,7 @@ async fn run() -> Result<()> {
                     }
                 }
             }
-            Event::DeviceEvent { device_id, event } => {}
+            // Event::DeviceEvent { device_id, event } => {}
             Event::WindowEvent { window_id, event } if window_id == window.id() => match event {
                 WindowEvent::CloseRequested
                 | WindowEvent::KeyboardInput {

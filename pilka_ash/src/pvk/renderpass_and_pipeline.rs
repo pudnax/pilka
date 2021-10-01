@@ -1,8 +1,10 @@
-use super::{device::RawDevice, shader_module::ShaderInfo};
+use super::device::RawDevice;
 use ash::{prelude::VkResult, vk};
 use std::sync::Arc;
 
 use super::instance::VkQueues;
+
+use pilka_types::ShaderInfo;
 
 #[derive(Debug)]
 pub enum Pipeline {

@@ -24,3 +24,4 @@ ash-window = "0.7.0"
 ktx = "0.3.2"
 raw-window-handle = "0.3.3"
 shaderc = "0.7.3"
+pilka_types = { version = "0.1.0", path = "../pilka_types" }

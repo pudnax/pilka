@@ -19,12 +19,12 @@
 #![warn(trivial_casts, trivial_numeric_casts, unused_extern_crates)]
 
 use color_eyre::Result;
+use pilka_types::ShaderInfo;
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
     fmt::Display,
     hash::Hash,
-    iter::from_fn,
     ops::{Deref, DerefMut, Index},
     path::{Path, PathBuf},
 };
@@ -33,7 +33,7 @@ use raw_window_handle::HasRawWindowHandle;
 use wgpu::{
     Adapter, BindGroup, BindGroupLayout, BindGroupLayoutDescriptor, ComputePipeline, Device,
     PipelineLayout, PrimitiveState, PrimitiveTopology, Queue, RenderPipeline, Surface,
-    SurfaceConfiguration, Texture, TextureFormat, TextureUsages, TextureView,
+    SurfaceConfiguration, Texture, TextureFormat, TextureView,
 };
 
 use naga::{
@@ -43,7 +43,7 @@ use naga::{
     Module,
 };
 
-struct ContiniousHashMap<K, V>(HashMap<K, HashSet<V>>);
+pub struct ContiniousHashMap<K, V>(HashMap<K, HashSet<V>>);
 
 impl<K, V> Deref for ContiniousHashMap<K, V> {
     type Target = HashMap<K, HashSet<V>>;
@@ -58,8 +58,14 @@ impl<K, V> DerefMut for ContiniousHashMap<K, V> {
     }
 }
 
+impl<K, V> ContiniousHashMap<K, V> {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+}
+
 impl<K: Eq + Hash, V: Eq + Hash> ContiniousHashMap<K, V> {
-    fn push_value(&mut self, key: K, value: V) {
+    pub fn push_value(&mut self, key: K, value: V) {
         self.0.entry(key).or_insert_with(HashSet::new).insert(value);
     }
 }
@@ -90,18 +96,23 @@ impl ShaderCompiler {
         &mut self,
         path: impl AsRef<Path>,
         stage: naga::ShaderStage,
-    ) -> Option<Cow<[u32]>> {
+    ) -> Option<Cow<str>> {
+        dbg!("Hello?");
         let file = || std::fs::read_to_string(&path).unwrap();
-        match path.as_ref().extension() {
+        let module = match path.as_ref().extension() {
             Some(ext) => match ext.to_str() {
                 Some("wgsl") => self.parse_wgsl(file(), stage),
-                Some("glsl" | "frag" | "vert") => self.parse_glsl(file(), stage),
+                Some("glsl" | "frag" | "vert" | "comp") => self.parse_glsl(file(), stage),
                 Some("spv") => self.parse_spv(file().as_bytes(), stage),
                 _ => None,
             },
             None => None,
         }
-        .map(|x| x.into())
+        .unwrap();
+        let module_info = self.validator.validate(&module).unwrap();
+        Some(std::borrow::Cow::Owned(
+            naga::back::wgsl::write_string(&module, &module_info).unwrap(),
+        ))
     }
 
     fn wgsl_to_wgsl(&mut self, source: impl AsRef<str>) -> Option<std::borrow::Cow<str>> {
@@ -142,44 +153,45 @@ impl ShaderCompiler {
         &mut self,
         source: impl AsRef<str>,
         stage: naga::ShaderStage,
-    ) -> Option<&[u32]> {
-        let module = match self.wgsl.parse(source.as_ref()) {
-            Ok(m) => m,
+    ) -> Option<Module> {
+        match self.wgsl.parse(source.as_ref()) {
+            Ok(m) => Some(m),
             Err(e) => {
+                dbg!(&e);
                 e.emit_to_stderr(source.as_ref());
                 return None;
             }
-        };
-        Some(self.compile(module, stage))
+        }
     }
     pub fn parse_glsl(
         &mut self,
         source: impl AsRef<str>,
         stage: naga::ShaderStage,
-    ) -> Option<&[u32]> {
-        let module = match self
+    ) -> Option<Module> {
+        dbg!("boop");
+        match self
             .glsl
             .parse(&glsl::Options::from(stage), source.as_ref())
         {
-            Ok(m) => m,
+            Ok(m) => Some(m),
             Err(span) => {
+                println!("Got here");
+                dbg!(&span);
                 for e in span {
                     eprintln!("Glsl error: {e}");
                 }
                 return None;
             }
-        };
-        Some(self.compile(module, stage))
+        }
     }
-    pub fn parse_spv(&mut self, data: &[u8], stage: naga::ShaderStage) -> Option<&[u32]> {
-        let module = match naga::front::spv::parse_u8_slice(data, &front::spv::Options::default()) {
-            Ok(m) => m,
+    pub fn parse_spv(&mut self, data: &[u8], stage: naga::ShaderStage) -> Option<Module> {
+        match naga::front::spv::parse_u8_slice(data, &front::spv::Options::default()) {
+            Ok(m) => Some(m),
             Err(e) => {
                 eprintln!("Spir-V error {e}");
                 return None;
             }
-        };
-        Some(self.compile(module, stage))
+        }
     }
 }
 
@@ -195,7 +207,7 @@ impl Default for ShaderCompiler {
     }
 }
 
-enum ShaderInfo {
+enum ShaderInfo_Duuuuuh {
     Glsl(PathBuf),
     Wgsl(PathBuf),
     SpirV(Vec<u32>),
@@ -205,13 +217,13 @@ enum ShaderInfo {
 enum PipelineKind {
     Render {
         pipeline: RenderPipeline,
-        vs: PathBuf,
-        fs: PathBuf,
+        vs: ShaderInfo,
+        fs: ShaderInfo,
         target_format: wgpu::TextureFormat,
     },
     Compute {
         pipeline: ComputePipeline,
-        cs: PathBuf,
+        cs: ShaderInfo,
     },
 }
 
@@ -234,11 +246,10 @@ impl Pipeline {
                 layout,
             } => {
                 let fs_module = {
-                    let m =
-                        match shader_compiler.wgsl_to_wgsl(std::fs::read_to_string(&fs).unwrap()) {
-                            Some(f) => f,
-                            None => color_eyre::eyre::bail!("Duh"),
-                        };
+                    let m = match shader_compiler.from_path(&fs.path, naga::ShaderStage::Fragment) {
+                        Some(f) => f,
+                        None => color_eyre::eyre::bail!("Duh"),
+                    };
 
                     device.create_shader_module(&wgpu::ShaderModuleDescriptor {
                         label: Some("FS"),
@@ -247,11 +258,10 @@ impl Pipeline {
                 };
 
                 let vs_module = {
-                    let m =
-                        match shader_compiler.wgsl_to_wgsl(std::fs::read_to_string(&vs).unwrap()) {
-                            Some(f) => f,
-                            None => color_eyre::eyre::bail!("Duh"),
-                        };
+                    let m = match shader_compiler.from_path(&vs.path, naga::ShaderStage::Vertex) {
+                        Some(f) => f,
+                        None => color_eyre::eyre::bail!("Duh"),
+                    };
                     device.create_shader_module(&wgpu::ShaderModuleDescriptor {
                         label: Some("VS"),
                         source: wgpu::ShaderSource::Wgsl(m),
@@ -262,7 +272,7 @@ impl Pipeline {
                     layout: Some(layout),
                     vertex: wgpu::VertexState {
                         module: &vs_module,
-                        entry_point: "main",
+                        entry_point: vs.entry_point.to_str()?,
                         buffers: &[],
                     },
                     primitive: PrimitiveState {
@@ -283,7 +293,7 @@ impl Pipeline {
 
                     fragment: Some(wgpu::FragmentState {
                         module: &fs_module,
-                        entry_point: "main",
+                        entry_point: fs.entry_point.to_str()?,
                         targets: &[wgpu::ColorTargetState {
                             format: *target_format,
                             blend: Some(wgpu::BlendState::REPLACE),
@@ -298,7 +308,7 @@ impl Pipeline {
             } => {
                 let cs_module = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
                     label: Some("VS"),
-                    source: wgpu::ShaderSource::Wgsl(std::fs::read_to_string(&cs)?.into()),
+                    source: wgpu::ShaderSource::Wgsl(std::fs::read_to_string(&cs.path)?.into()),
                 });
                 *pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                     label: Some("Somepute Pipeline"),
@@ -550,19 +560,19 @@ fn create_textures(
         .enumerate()
         .map(|(i, view)| wgpu::BindGroupEntry {
             binding: i as _,
-            resource: wgpu::BindingResource::TextureView(&view),
+            resource: wgpu::BindingResource::TextureView(view),
         })
         .collect();
 
     let sampled_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("Render Bind Group"),
-        layout: &RenderPipelineLayoutInfo::binding_group(&device)[Binding::Texture],
+        layout: &RenderPipelineLayoutInfo::binding_group(device)[Binding::Texture],
         entries: &entries,
     });
 
     let storage_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("Compute Bind Group"),
-        layout: &ComputePipelineLayoutInfo::binding_group(&device)[Binding::Texture],
+        layout: &ComputePipelineLayoutInfo::binding_group(device)[Binding::Texture],
         entries: &entries,
     });
 
@@ -574,14 +584,14 @@ fn create_textures(
     )
 }
 
-pub struct State {
+pub struct WgpuRender {
     adapter: Adapter,
-    device: Device,
-    surface: Surface,
+    pub device: Device,
+    pub surface: Surface,
     queue: Queue,
     pipelines: Vec<Pipeline>,
     pipeline_descriptors: Vec<Pipeline>,
-    shader_set: ContiniousHashMap<PathBuf, usize>,
+    pub shader_set: ContiniousHashMap<PathBuf, usize>,
     format: TextureFormat,
     push_constant_ranges: u32,
 
@@ -597,7 +607,7 @@ pub struct State {
 
     shader_compiler: ShaderCompiler,
 
-    paused: bool,
+    pub paused: bool,
 }
 
 #[derive(Debug)]
@@ -618,7 +628,7 @@ impl Display for RendererInfo {
     }
 }
 
-impl State {
+impl WgpuRender {
     pub fn get_info(&self) -> RendererInfo {
         let info = self.adapter.get_info();
         RendererInfo {
@@ -660,7 +670,12 @@ impl State {
         }
     }
 
-    pub async fn new(window: &impl HasRawWindowHandle, push_constant_ranges: u32) -> Result<Self> {
+    pub async fn new(
+        window: &impl HasRawWindowHandle,
+        push_constant_ranges: u32,
+        width: u32,
+        height: u32,
+    ) -> Result<Self> {
         let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
 
         let surface = unsafe { instance.create_surface(window) };
@@ -689,8 +704,8 @@ impl State {
             .await?;
 
         let extent = wgpu::Extent3d {
-            width: 1920,
-            height: 720,
+            width,
+            height,
             depth_or_array_layers: 1,
         };
 
@@ -737,7 +752,7 @@ impl State {
             surface,
             pipelines: Vec::new(),
             pipeline_descriptors: Vec::new(),
-            shader_set: ContiniousHashMap(HashMap::new()),
+            shader_set: ContiniousHashMap::new(),
             queue,
             format,
             push_constant_ranges,
@@ -775,26 +790,6 @@ impl State {
                     present_mode: wgpu::PresentMode::Fifo,
                 },
             );
-
-            let make_texture = |label, format| {
-                self.device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some(label),
-                    size: wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                    usage: wgpu::TextureUsages::COPY_SRC
-                        | wgpu::TextureUsages::COPY_DST
-                        | wgpu::TextureUsages::TEXTURE_BINDING
-                        | wgpu::TextureUsages::STORAGE_BINDING,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format,
-                })
-            };
-
             let (textures, texture_views, sampled_texture_bind_group, storage_texture_bind_group) =
                 create_textures(&self.device, self.extent);
 
@@ -805,11 +800,11 @@ impl State {
         }
     }
 
-    pub fn push_compute_pipeline(&mut self, cs: PathBuf, includes: &[PathBuf]) -> Result<()> {
-        let cs = cs.canonicalize()?;
+    pub fn push_compute_pipeline(&mut self, cs: ShaderInfo, includes: &[PathBuf]) -> Result<()> {
+        let cs_path = cs.path.canonicalize()?;
         let pipeline_number = self.pipelines.len();
 
-        self.shader_set.push_value(cs.clone(), pipeline_number);
+        self.shader_set.push_value(cs_path.clone(), pipeline_number);
 
         for deps in includes {
             self.shader_set
@@ -822,7 +817,7 @@ impl State {
                 label: Some("CS"),
                 source: wgpu::ShaderSource::Wgsl(
                     self.shader_compiler
-                        .wgsl_to_wgsl(std::fs::read_to_string(&cs).unwrap())
+                        .from_path(&cs_path, naga::ShaderStage::Compute)
                         .unwrap(),
                 ),
             });
@@ -858,17 +853,17 @@ impl State {
 
     pub fn push_render_pipeline(
         &mut self,
-        fs: PathBuf,
-        vs: PathBuf,
+        fs: ShaderInfo,
+        vs: ShaderInfo,
         includes: &[PathBuf],
     ) -> Result<()> {
-        let fs = fs.canonicalize()?;
-        let vs = vs.canonicalize()?;
+        let fs_path = fs.path.canonicalize()?;
+        let vs_path = vs.path.canonicalize()?;
 
         let pipeline_number = self.pipelines.len();
 
-        self.shader_set.push_value(fs.clone(), pipeline_number);
-        self.shader_set.push_value(vs.clone(), pipeline_number);
+        self.shader_set.push_value(fs_path.clone(), pipeline_number);
+        self.shader_set.push_value(vs_path.clone(), pipeline_number);
 
         for deps in includes {
             self.shader_set
@@ -881,7 +876,7 @@ impl State {
                 label: Some("FS"),
                 source: wgpu::ShaderSource::Wgsl(
                     self.shader_compiler
-                        .wgsl_to_wgsl(std::fs::read_to_string(&fs).unwrap())
+                        .from_path(&fs_path, naga::ShaderStage::Fragment)
                         .unwrap(),
                 ),
             });
@@ -892,7 +887,7 @@ impl State {
                 label: Some("VS"),
                 source: wgpu::ShaderSource::Wgsl(
                     self.shader_compiler
-                        .wgsl_to_wgsl(std::fs::read_to_string(&vs).unwrap())
+                        .from_path(&vs_path, naga::ShaderStage::Vertex)
                         .unwrap(),
                 ),
             });
@@ -1032,7 +1027,6 @@ impl State {
     pub fn rebuild_pipelines(&mut self, paths: &[PathBuf]) -> Result<()> {
         for path in paths {
             if let Some(pipeline_indexes) = self.shader_set.get(path) {
-                dbg!(&pipeline_indexes);
                 for &pipeline_index in pipeline_indexes {
                     match self.pipelines[pipeline_index]
                         .rebuild(&self.device, &mut self.shader_compiler)
@@ -1048,5 +1042,9 @@ impl State {
             }
         }
         Ok(())
+    }
+
+    pub fn wait_idle(&self) {
+        self.device.poll(wgpu::Maintain::Wait)
     }
 }
