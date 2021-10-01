@@ -12,7 +12,7 @@ use std::{
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-use pilka_ash::ImageDimentions;
+use pilka_types::ImageDimentions;
 
 use super::utils::create_folder;
 use crate::VIDEO_FOLDER;

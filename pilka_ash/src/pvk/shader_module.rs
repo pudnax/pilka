@@ -1,8 +1,9 @@
 use super::device::VkDevice;
 use ash::{prelude::VkResult, vk};
 
-use std::ffi::CString;
 use std::path::{Path, PathBuf};
+
+use pilka_types::ShaderInfo;
 
 // FIXME: Make them changeable in runtime
 pub const SHADER_PATH: &str = "shaders";
@@ -11,21 +12,6 @@ pub const SHADER_ENTRY_POINT: &str = "main";
 pub enum ShaderSet {
     Graphics { vert: ShaderInfo, frag: ShaderInfo },
     Compute(ShaderInfo),
-}
-
-#[derive(Hash, Debug, Clone)]
-pub struct ShaderInfo {
-    pub name: PathBuf,
-    pub entry_point: CString,
-}
-
-impl ShaderInfo {
-    pub fn new(path: PathBuf, entry_point: String) -> Result<ShaderInfo, std::ffi::NulError> {
-        Ok(ShaderInfo {
-            name: path,
-            entry_point: CString::new(entry_point)?,
-        })
-    }
 }
 
 #[derive(Debug)]
@@ -40,7 +26,7 @@ pub fn create_shader_module(
     compiler: &mut shaderc::Compiler,
     device: &VkDevice,
 ) -> VkResult<vk::ShaderModule> {
-    let shader_text = std::fs::read_to_string(&path.name).unwrap();
+    let shader_text = std::fs::read_to_string(&path.path).unwrap();
     let mut compile_options = shaderc::CompileOptions::new().unwrap();
     // compile_options.set_warnings_as_errors();
     compile_options.set_target_env(
@@ -90,14 +76,14 @@ pub fn create_shader_module(
     let shader_data = match compiler.compile_into_spirv(
         &shader_text,
         shader_type,
-        path.name.to_str().unwrap(),
+        path.path.to_str().unwrap(),
         path.entry_point.to_str().unwrap(),
         Some(&compile_options),
     ) {
         Ok(compilation_artifact) => {
             if compilation_artifact.get_num_warnings() > 0 {
                 eprintln!(
-                    "[WARNINGS] In shader {:?}:\n{}",
+                    "[WARNING] In shader {:?}:\n{}",
                     path,
                     compilation_artifact.get_warning_messages()
                 );

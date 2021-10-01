@@ -1,16 +1,18 @@
 mod images;
 mod screenshot;
 
-pub use screenshot::ImageDimentions;
+pub use pilka_types::{Frame, ImageDimentions, ShaderInfo};
 
 use crate::pvk::{utils::return_aligned, *};
 use ash::{
     prelude::VkResult,
-    vk::{self, Extent3D, PhysicalDeviceType, SubresourceLayout},
+    vk::{self, Extent3D, SubresourceLayout},
 };
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     ffi::CStr,
+    fmt::Display,
     hash::Hash,
     io::Write,
     ops::{Deref, DerefMut},
@@ -18,7 +20,7 @@ use std::{
 };
 
 use images::{FftTexture, VkTexture};
-use screenshot::{Frame, ScreenshotCtx};
+use screenshot::ScreenshotCtx;
 
 fn graphics_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetLayout>> {
     let descriptor_set_layout = {
@@ -159,6 +161,12 @@ impl<K, V> DerefMut for ContiniousHashMap<K, V> {
     }
 }
 
+impl<K, V> ContiniousHashMap<K, V> {
+    fn new() -> Self {
+        Self(HashMap::new())
+    }
+}
+
 impl<K: Eq + Hash, V: Eq + Hash> ContiniousHashMap<K, V> {
     fn push_value(&mut self, key: K, value: V) {
         self.0.entry(key).or_insert_with(HashSet::new).insert(value);
@@ -169,7 +177,7 @@ impl<K: Eq + Hash, V: Eq + Hash> ContiniousHashMap<K, V> {
 ///
 /// Rust documentation states for FIFO drop order for struct fields.
 /// Or in the other words it's the same order that they're declared.
-pub struct PilkaRender<'a> {
+pub struct AshRender<'a> {
     pub paused: bool,
 
     descriptor_pool: vk::DescriptorPool,
@@ -217,12 +225,44 @@ pub struct PilkaRender<'a> {
     pub device: VkDevice,
 }
 
-impl<'a> PilkaRender<'a> {
+#[derive(Debug)]
+pub struct RendererInfo {
+    pub device_name: String,
+    pub device_type: String,
+    pub vendor_name: String,
+    pub vulkan_version_name: String,
+}
+
+impl Display for RendererInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Vendor name: {}", self.vendor_name)?;
+        writeln!(f, "Device name: {}", self.device_name)?;
+        writeln!(f, "Device type: {}", self.device_type)?;
+        writeln!(f, "Vulkan version: {}", self.vulkan_version_name)?;
+        Ok(())
+    }
+}
+
+impl<'a> AshRender<'a> {
+    pub fn get_info(&self) -> RendererInfo {
+        RendererInfo {
+            device_name: self.get_device_name().unwrap().to_string(),
+            device_type: self.get_device_type().to_string(),
+            vendor_name: self.get_device_name().unwrap().to_string(),
+            vulkan_version_name: self.get_vulkan_version_name().unwrap().to_string(),
+        }
+    }
     pub fn get_device_name(&self) -> Result<&str, std::str::Utf8Error> {
         unsafe { CStr::from_ptr(self.device_properties.properties.device_name.as_ptr()) }.to_str()
     }
-    pub fn get_device_type(&self) -> PhysicalDeviceType {
-        self.device_properties.properties.device_type
+    pub fn get_device_type(&self) -> &str {
+        match self.device_properties.properties.device_type {
+            vk::PhysicalDeviceType::CPU => "CPU",
+            vk::PhysicalDeviceType::INTEGRATED_GPU => "INTEGRATED_GPU",
+            vk::PhysicalDeviceType::DISCRETE_GPU => "DISCRETE_GPU",
+            vk::PhysicalDeviceType::VIRTUAL_GPU => "VIRTUAL_GPU",
+            _ => "OTHER",
+        }
     }
     pub fn get_vendor_name(&self) -> &str {
         match self.device_properties.properties.vendor_id {
@@ -235,8 +275,8 @@ impl<'a> PilkaRender<'a> {
             _ => "Unknown vendor",
         }
     }
-    pub fn get_vulkan_version_name(&self) -> VkResult<String> {
-        match self
+    pub fn get_vulkan_version_name(&self) -> VkResult<Cow<str>> {
+        let name = match self
             .device
             .instance
             .entry
@@ -246,10 +286,11 @@ impl<'a> PilkaRender<'a> {
                 let major = version >> 22;
                 let minor = (version >> 12) & 0x3ff;
                 let patch = version & 0xfff;
-                Ok(format!("{}.{}.{}", major, minor, patch))
+                format!("{}.{}.{}", major, minor, patch).into()
             }
-            None => Ok("1.0.0".to_string()),
-        }
+            None => "1.0.0".into(),
+        };
+        Ok(name)
     }
 
     pub fn new<W: HasRawWindowHandle>(
@@ -543,12 +584,7 @@ impl<'a> PilkaRender<'a> {
             vk::DescriptorType::SAMPLED_IMAGE,
         ];
 
-        PilkaRender::update_image_bindings(
-            &device,
-            image_infos,
-            desc_types,
-            &descriptor_sets_render,
-        );
+        AshRender::update_image_bindings(&device, image_infos, desc_types, &descriptor_sets_render);
 
         let image_infos = &[image_infos[0], image_infos[2]];
         let desc_types = &[
@@ -556,7 +592,7 @@ impl<'a> PilkaRender<'a> {
             vk::DescriptorType::STORAGE_IMAGE,
         ];
 
-        PilkaRender::update_image_bindings(
+        AshRender::update_image_bindings(
             &device,
             image_infos,
             desc_types,
@@ -584,7 +620,7 @@ impl<'a> PilkaRender<'a> {
             present_complete_semaphore,
             rendering_complete_semaphore,
 
-            shader_set: ContiniousHashMap(HashMap::new()),
+            shader_set: ContiniousHashMap::new(),
             compiler,
 
             viewport,
@@ -1000,7 +1036,7 @@ impl<'a> PilkaRender<'a> {
         ];
         let desc_types = &[vk::DescriptorType::SAMPLED_IMAGE];
 
-        PilkaRender::update_image_bindings(
+        AshRender::update_image_bindings(
             &self.device,
             &[&image_infos],
             desc_types,
@@ -1009,7 +1045,7 @@ impl<'a> PilkaRender<'a> {
 
         let desc_types = &[vk::DescriptorType::STORAGE_IMAGE];
 
-        PilkaRender::update_image_bindings(
+        AshRender::update_image_bindings(
             &self.device,
             &[&image_infos],
             desc_types,
@@ -1030,12 +1066,12 @@ impl<'a> PilkaRender<'a> {
     pub fn push_compute_pipeline(
         &mut self,
         comp_info: ShaderInfo,
-        dependencies: &[PathBuf],
+        includes: &[PathBuf],
     ) -> VkResult<()> {
         let pipeline_number = self.pipelines.len();
         self.shader_set
-            .push_value(comp_info.name.canonicalize().unwrap(), pipeline_number);
-        for deps in dependencies {
+            .push_value(comp_info.path.canonicalize().unwrap(), pipeline_number);
+        for deps in includes {
             self.shader_set
                 .push_value(deps.canonicalize().unwrap(), pipeline_number);
         }
@@ -1050,14 +1086,14 @@ impl<'a> PilkaRender<'a> {
         &mut self,
         vert_info: ShaderInfo,
         frag_info: ShaderInfo,
-        dependencies: &[PathBuf],
+        includes: &[PathBuf],
     ) -> VkResult<()> {
         let pipeline_number = self.pipelines.len();
         self.shader_set
-            .push_value(vert_info.name.canonicalize().unwrap(), pipeline_number);
+            .push_value(vert_info.path.canonicalize().unwrap(), pipeline_number);
         self.shader_set
-            .push_value(frag_info.name.canonicalize().unwrap(), pipeline_number);
-        for deps in dependencies {
+            .push_value(frag_info.path.canonicalize().unwrap(), pipeline_number);
+        for deps in includes {
             self.shader_set
                 .push_value(deps.canonicalize().unwrap(), pipeline_number);
         }
@@ -1314,7 +1350,7 @@ impl<'a> PilkaRender<'a> {
     }
 }
 
-impl<'a> Drop for PilkaRender<'a> {
+impl<'a> Drop for AshRender<'a> {
     fn drop(&mut self) {
         unsafe {
             for layout in &self.descriptor_set_layouts {
