@@ -1670,10 +1670,14 @@ dependencies = [
  "color-eyre",
  "cpal",
  "crossbeam-channel",
+ "env_logger",
  "eyre",
  "notify",
  "pilka_ash",
+ "pilka_types",
+ "pilka_wgpu",
  "png",
+ "pollster",
  "rustfft",
  "winit",
 ]
@@ -1686,9 +1690,14 @@ dependencies = [
  "ash-molten",
  "ash-window",
  "ktx",
+ "pilka_types",
  "raw-window-handle",
  "shaderc",
 ]
+
+[[package]]
+name = "pilka_types"
+version = "0.1.0"
 
 [[package]]
 name = "pilka_wgpu"
@@ -1700,6 +1709,7 @@ dependencies = [
  "futures",
  "naga 0.6.0",
  "notify",
+ "pilka_types",
  "raw-window-handle",
  "wgpu",
  "winit",
@@ -1748,6 +1758,12 @@ dependencies = [
  "deflate",
  "miniz_oxide",
 ]
+
+[[package]]
+name = "pollster"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb20dcc30536a1508e75d47dd0e399bb2fe7354dcf35cda9127f2bf1ed92e30e"
 
 [[package]]
 name = "pp-rs"

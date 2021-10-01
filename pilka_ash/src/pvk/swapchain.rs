@@ -26,7 +26,14 @@ impl VkSwapchain {
         device: &VkDevice,
     ) -> VkResult<()> {
         self.info.image_extent = vk::Extent2D { width, height };
-        self.info.old_swapchain = self.swapchain;
+        // I have to destroy old swapchaing to be able switch between
+        // different backends
+        //
+        // self.info.old_swapchain = self.swapchain;
+        unsafe {
+            self.swapchain_loader
+                .destroy_swapchain(self.swapchain, None);
+        }
         for &image_view in self.image_views.iter() {
             unsafe { self.device.destroy_image_view(image_view, None) };
         }

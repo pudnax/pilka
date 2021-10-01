@@ -9,8 +9,7 @@ use ash::{
     prelude::VkResult,
     vk::{self, SubresourceLayout},
 };
-
-pub type Frame<'a> = (&'a [u8], ImageDimentions);
+use pilka_types::{Frame, ImageDimentions};
 
 pub struct ScreenshotCtx<'a> {
     fence: vk::Fence,
@@ -371,28 +370,5 @@ impl<'a> ScreenshotCtx<'a> {
             )
         };
         (subresource_layout, image_dimentions)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ImageDimentions {
-    pub width: usize,
-    pub height: usize,
-    pub padded_bytes_per_row: usize,
-    pub unpadded_bytes_per_row: usize,
-}
-
-impl ImageDimentions {
-    fn new(width: usize, height: usize, align: usize) -> Self {
-        let bytes_per_pixel = size_of::<[u8; 4]>();
-        let unpadded_bytes_per_row = width * bytes_per_pixel;
-        let padded_bytes_per_row_padding = (align - unpadded_bytes_per_row % align) % align;
-        let padded_bytes_per_row = unpadded_bytes_per_row + padded_bytes_per_row_padding;
-        Self {
-            width,
-            height,
-            unpadded_bytes_per_row,
-            padded_bytes_per_row,
-        }
     }
 }
