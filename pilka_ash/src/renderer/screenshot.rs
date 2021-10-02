@@ -1,5 +1,3 @@
-use std::mem::size_of;
-
 use super::images::VkImage;
 use crate::{
     pvk::{utils::return_aligned, VkCommandPool, VkDevice, VkDeviceProperties},

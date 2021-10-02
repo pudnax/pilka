@@ -1,23 +1,14 @@
 mod images;
 mod screenshot;
 
-pub use pilka_types::{Frame, ImageDimentions, ShaderInfo};
+use pilka_types::{Frame, ImageDimentions, ShaderCreateInfo};
 
 use crate::pvk::{utils::return_aligned, *};
 use ash::{
     prelude::VkResult,
     vk::{self, Extent3D, SubresourceLayout},
 };
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-    ffi::CStr,
-    fmt::Display,
-    hash::Hash,
-    io::Write,
-    ops::{Deref, DerefMut},
-    path::PathBuf,
-};
+use std::{borrow::Cow, ffi::CStr, fmt::Display};
 
 use images::{FftTexture, VkTexture};
 use screenshot::ScreenshotCtx;
@@ -146,33 +137,6 @@ fn compute_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetL
     Ok(vec![descriptor_set_layout, fft_descriptor_set_layout])
 }
 
-pub struct ContiniousHashMap<K, V>(HashMap<K, HashSet<V>>);
-
-impl<K, V> Deref for ContiniousHashMap<K, V> {
-    type Target = HashMap<K, HashSet<V>>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<K, V> DerefMut for ContiniousHashMap<K, V> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl<K, V> ContiniousHashMap<K, V> {
-    fn new() -> Self {
-        Self(HashMap::new())
-    }
-}
-
-impl<K: Eq + Hash, V: Eq + Hash> ContiniousHashMap<K, V> {
-    fn push_value(&mut self, key: K, value: V) {
-        self.0.entry(key).or_insert_with(HashSet::new).insert(value);
-    }
-}
-
 /// The main struct that holds all render primitives
 ///
 /// Rust documentation states for FIFO drop order for struct fields.
@@ -202,9 +166,6 @@ pub struct AshRender<'a> {
     pub scissors: vk::Rect2D,
     pub viewport: vk::Viewport,
     pub resolution: vk::Extent2D,
-
-    pub shader_set: ContiniousHashMap<PathBuf, usize>,
-    pub compiler: shaderc::Compiler,
 
     pub rendering_complete_semaphore: vk::Semaphore,
     pub present_complete_semaphore: vk::Semaphore,
@@ -378,8 +339,6 @@ impl<'a> AshRender<'a> {
                 surface_resolution,
             )
         };
-
-        let compiler = shaderc::Compiler::new().unwrap();
 
         let pipeline_cache_create_info = vk::PipelineCacheCreateInfo::builder();
         let pipeline_cache =
@@ -619,9 +578,6 @@ impl<'a> AshRender<'a> {
             command_pool,
             present_complete_semaphore,
             rendering_complete_semaphore,
-
-            shader_set: ContiniousHashMap::new(),
-            compiler,
 
             viewport,
             scissors,
@@ -1063,218 +1019,114 @@ impl<'a> AshRender<'a> {
         Ok(())
     }
 
-    pub fn push_compute_pipeline(
-        &mut self,
-        comp_info: ShaderInfo,
-        includes: &[PathBuf],
-    ) -> VkResult<()> {
-        let pipeline_number = self.pipelines.len();
-        self.shader_set
-            .push_value(comp_info.path.canonicalize().unwrap(), pipeline_number);
-        for deps in includes {
-            self.shader_set
-                .push_value(deps.canonicalize().unwrap(), pipeline_number);
+    pub fn create_compute_pipeline(&self, shader: ShaderCreateInfo) -> VkResult<Pipeline> {
+        let shader_info = vk::ShaderModuleCreateInfo::builder().code(shader.data);
+
+        let comp_module = unsafe { self.device.create_shader_module(&shader_info, None) }?;
+
+        let shader_stage = vk::PipelineShaderStageCreateInfo {
+            module: comp_module,
+            p_name: shader.entry_point.as_ptr(),
+            stage: vk::ShaderStageFlags::COMPUTE,
+            ..Default::default()
+        };
+        let (pipeline_layout, descriptor_set_layout) = self.create_compute_pipeline_layout()?;
+
+        let new_pipeline = VkComputePipeline::new(
+            &self.device,
+            &self.queues,
+            pipeline_layout,
+            descriptor_set_layout,
+            shader_stage,
+        )?;
+
+        unsafe {
+            self.device.destroy_shader_module(comp_module, None);
         }
 
-        let new_pipeline = self.make_pipeline_from_shaders(&ShaderSet::Compute(comp_info))?;
-        self.pipelines.push(new_pipeline);
+        Ok(Pipeline::Compute(new_pipeline))
+    }
+
+    pub fn create_render_pipeline(
+        &self,
+        vert_code: ShaderCreateInfo,
+        frag_code: ShaderCreateInfo,
+    ) -> VkResult<Pipeline> {
+        let vert_module = {
+            let shader_info = vk::ShaderModuleCreateInfo::builder().code(vert_code.data);
+            unsafe { self.device.create_shader_module(&shader_info, None) }
+        }?;
+        let frag_module = match {
+            let shader_info = vk::ShaderModuleCreateInfo::builder().code(frag_code.data);
+            unsafe { self.device.create_shader_module(&shader_info, None) }
+        } {
+            Ok(module) => module,
+            Err(e) => {
+                unsafe { self.device.destroy_shader_module(vert_module, None) };
+                return Err(e);
+            }
+        };
+
+        let (pipeline_layout, descriptor_set_layout) = self.create_graphics_pipeline_layout()?;
+
+        let desc = PipelineDescriptor::new(
+            vert_module,
+            vert_code.entry_point.to_owned(),
+            frag_module,
+            frag_code.entry_point.to_owned(),
+        );
+
+        let new_pipeline = VkGraphicsPipeline::new(
+            self.pipeline_cache,
+            pipeline_layout,
+            descriptor_set_layout,
+            desc,
+            &self.render_pass,
+            &self.device,
+        )?;
+
+        unsafe {
+            self.device.destroy_shader_module(vert_module, None);
+            self.device.destroy_shader_module(frag_module, None);
+        }
+
+        Ok(Pipeline::Graphics(new_pipeline))
+    }
+
+    pub fn push_compute_pipeline(&mut self, comp: ShaderCreateInfo) -> VkResult<()> {
+        self.pipelines.push(self.create_compute_pipeline(comp)?);
 
         Ok(())
     }
 
     pub fn push_render_pipeline(
         &mut self,
-        vert_info: ShaderInfo,
-        frag_info: ShaderInfo,
-        includes: &[PathBuf],
+        vert: ShaderCreateInfo,
+        frag: ShaderCreateInfo,
     ) -> VkResult<()> {
-        let pipeline_number = self.pipelines.len();
-        self.shader_set
-            .push_value(vert_info.path.canonicalize().unwrap(), pipeline_number);
-        self.shader_set
-            .push_value(frag_info.path.canonicalize().unwrap(), pipeline_number);
-        for deps in includes {
-            self.shader_set
-                .push_value(deps.canonicalize().unwrap(), pipeline_number);
-        }
-
-        let new_pipeline = self.make_pipeline_from_shaders(&ShaderSet::Graphics {
-            vert: vert_info,
-            frag: frag_info,
-        })?;
-        self.pipelines.push(new_pipeline);
+        self.pipelines
+            .push(self.create_render_pipeline(vert, frag)?);
 
         Ok(())
     }
 
-    pub fn make_pipeline_from_shaders(&mut self, shader_set: &ShaderSet) -> VkResult<Pipeline> {
-        match shader_set {
-            ShaderSet::Graphics {
-                vert: vert_info,
-                frag: frag_info,
-            } => {
-                let vert_module = create_shader_module(
-                    vert_info,
-                    shaderc::ShaderKind::Vertex,
-                    &mut self.compiler,
-                    &self.device,
-                )?;
-                let frag_module = match create_shader_module(
-                    frag_info,
-                    shaderc::ShaderKind::Fragment,
-                    &mut self.compiler,
-                    &self.device,
-                ) {
-                    Ok(module) => module,
-                    Err(e) => {
-                        unsafe { self.device.destroy_shader_module(vert_module, None) };
-                        return Err(e);
-                    }
-                };
-                let shader_set = Box::new([
-                    vk::PipelineShaderStageCreateInfo {
-                        module: vert_module,
-                        p_name: vert_info.entry_point.as_ptr(),
-                        stage: vk::ShaderStageFlags::VERTEX,
-                        ..Default::default()
-                    },
-                    vk::PipelineShaderStageCreateInfo {
-                        module: frag_module,
-                        p_name: frag_info.entry_point.as_ptr(),
-                        stage: vk::ShaderStageFlags::FRAGMENT,
-                        ..Default::default()
-                    },
-                ]);
-
-                let new_pipeline = self.new_graphics_pipeline(
-                    self.pipeline_cache,
-                    shader_set,
-                    vert_info,
-                    frag_info,
-                )?;
-
-                unsafe {
-                    self.device.destroy_shader_module(vert_module, None);
-                    self.device.destroy_shader_module(frag_module, None);
-                }
-
-                Ok(Pipeline::Graphics(new_pipeline))
-            }
-            ShaderSet::Compute(comp_info) => {
-                let comp_module = create_shader_module(
-                    comp_info,
-                    shaderc::ShaderKind::Compute,
-                    &mut self.compiler,
-                    &self.device,
-                )?;
-
-                let shader_stage = vk::PipelineShaderStageCreateInfo {
-                    module: comp_module,
-                    p_name: comp_info.entry_point.as_ptr(),
-                    stage: vk::ShaderStageFlags::COMPUTE,
-                    ..Default::default()
-                };
-                let new_pipeline = self.new_compute_pipeline(shader_stage, comp_info)?;
-                self.device
-                    .name_semaphore(new_pipeline.semaphore, "Compute Semaphore")?;
-
-                unsafe {
-                    self.device.destroy_shader_module(comp_module, None);
-                }
-
-                Ok(Pipeline::Compute(new_pipeline))
-            }
-        }
-    }
-
-    pub fn new_graphics_pipeline(
-        &self,
-        pipeline_cache: vk::PipelineCache,
-        shader_set: Box<[vk::PipelineShaderStageCreateInfo]>,
-        vs_info: &ShaderInfo,
-        fs_info: &ShaderInfo,
-    ) -> VkResult<VkGraphicsPipeline> {
-        let device = self.device.device.clone();
-        let (pipeline_layout, descriptor_set_layout) = self.create_graphics_pipeline_layout()?;
-
-        let desc = PipelineDescriptor::new(shader_set);
-
-        VkGraphicsPipeline::new(
-            pipeline_cache,
-            pipeline_layout,
-            descriptor_set_layout,
-            desc,
-            &self.render_pass,
-            vs_info.clone(),
-            fs_info.clone(),
-            device,
-        )
-    }
-
-    pub fn new_compute_pipeline(
-        &self,
-        shader_set: vk::PipelineShaderStageCreateInfo,
-        cs_info: &ShaderInfo,
-    ) -> VkResult<VkComputePipeline> {
-        let device = self.device.device.clone();
-        let (pipeline_layout, descriptor_set_layout) = self.create_compute_pipeline_layout()?;
-
-        VkComputePipeline::new(
-            pipeline_layout,
-            descriptor_set_layout,
-            shader_set,
-            cs_info.clone(),
-            device,
-            &self.queues,
-        )
-    }
-
-    pub fn rebuild_pipelines(&mut self, paths: &[PathBuf]) -> VkResult<()> {
-        unsafe { self.device.device_wait_idle() }.unwrap();
-        for path in paths {
-            if let Some(pipeline_indexes) = self.shader_set.get(path) {
-                for pipeline_index in pipeline_indexes.clone() {
-                    match self.rebuild_pipeline(pipeline_index) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            eprintln!("Shader compilation error:\n{}", e);
-                        }
-                    }
-                }
-            }
-        }
+    pub fn rebuild_compute_pipeline(
+        &mut self,
+        index: usize,
+        comp: ShaderCreateInfo,
+    ) -> VkResult<()> {
+        self.pipelines[index] = self.create_compute_pipeline(comp)?;
 
         Ok(())
     }
 
-    pub fn rebuild_pipeline(&mut self, index: usize) -> VkResult<()> {
-        let shader_set = {
-            let current_pipeline = &self.pipelines[index];
-            match current_pipeline {
-                Pipeline::Graphics(pipeline) => ShaderSet::Graphics {
-                    vert: pipeline.vs_info.clone(),
-                    frag: pipeline.fs_info.clone(),
-                },
-                Pipeline::Compute(pipeline) => ShaderSet::Compute(pipeline.cs_info.clone()),
-            }
-        };
-        let new_pipeline = match self.make_pipeline_from_shaders(&shader_set) {
-            Ok(res) => {
-                const ESC: &str = "\x1B[";
-                const RESET: &str = "\x1B[0m";
-                eprint!("\r{}42m{}K{}\r", ESC, ESC, RESET);
-                std::io::stdout().flush().unwrap();
-                std::thread::spawn(|| {
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                    eprint!("\r{}40m{}K{}\r", ESC, ESC, RESET);
-                    std::io::stdout().flush().unwrap();
-                });
-                res
-            }
-            Err(ash::vk::Result::ERROR_UNKNOWN) => return Ok(()),
-            Err(e) => return Err(e),
-        };
-        self.pipelines[index] = new_pipeline;
+    pub fn rebuild_render_pipeline(
+        &mut self,
+        index: usize,
+        vert: ShaderCreateInfo,
+        frag: ShaderCreateInfo,
+    ) -> VkResult<()> {
+        self.pipelines[index] = self.create_render_pipeline(vert, frag)?;
 
         Ok(())
     }

@@ -1,26 +1,47 @@
-use std::path::PathBuf;
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+};
+
+use crate::shader_module;
 
 use color_eyre::Result;
 use pilka_ash::{AshRender, HasRawWindowHandle};
-use pilka_types::{Frame, ImageDimentions, PipelineInfo};
+use pilka_types::{Frame, ImageDimentions, PipelineInfo, ShaderCreateInfo};
 use pilka_wgpu::WgpuRender;
+use shaderc::Compiler;
+
+pub struct ContiniousHashMap<K, V>(HashMap<K, HashSet<V>>);
+
+impl<K, V> Deref for ContiniousHashMap<K, V> {
+    type Target = HashMap<K, HashSet<V>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<K, V> DerefMut for ContiniousHashMap<K, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<K, V> ContiniousHashMap<K, V> {
+    fn new() -> Self {
+        Self(HashMap::new())
+    }
+}
+
+impl<K: Eq + Hash, V: Eq + Hash> ContiniousHashMap<K, V> {
+    fn push_value(&mut self, key: K, value: V) {
+        self.0.entry(key).or_insert_with(HashSet::new).insert(value);
+    }
+}
 
 pub trait Renderer {
     fn get_info(&self) -> String;
-
-    fn update(&mut self);
-
-    fn input(&mut self);
-
-    fn shader_list(&self) -> Vec<PathBuf>;
-
-    fn push_pipeline(&mut self, pipeline: PipelineInfo, includes: &[PathBuf]) -> Result<()>;
-
-    fn rebuild_pipelines(&mut self, paths: &[PathBuf]) -> Result<()>;
-
-    fn rebuild_all_pipelines(&mut self) -> Result<()> {
-        self.rebuild_pipelines(&self.shader_list())
-    }
 
     fn pause(&mut self);
 
@@ -42,6 +63,7 @@ pub enum RendererType<'a> {
 
 pub struct RenderBundleStatic<'a> {
     kind: Option<RendererType<'a>>,
+    shader_set: ContiniousHashMap<PathBuf, usize>,
     pipelines: Vec<PipelineInfo>,
     includes: Vec<Vec<PathBuf>>,
     push_constant_range: u32,
@@ -54,16 +76,139 @@ impl<'a> RenderBundleStatic<'a> {
         push_constant_range: u32,
         (width, height): (u32, u32),
     ) -> Result<RenderBundleStatic<'a>> {
-        // let wgpu = WgpuRender::new(window, push_constant_range).await.unwrap();
-        let ash = AshRender::new(window, push_constant_range).unwrap();
+        let kind = match true {
+            true => RendererType::Wgpu(
+                WgpuRender::new(window, push_constant_range, width, height)
+                    .await
+                    .unwrap(),
+            ),
+            false => RendererType::Ash(AshRender::new(window, push_constant_range).unwrap()),
+        };
         Ok(Self {
-            kind: Some(RendererType::Ash(ash)),
+            kind: Some(kind),
+            shader_set: ContiniousHashMap::new(),
             pipelines: vec![],
             includes: vec![],
             push_constant_range,
             wh: (width, height),
         })
     }
+
+    pub fn push_pipeline(
+        &mut self,
+        pipeline: PipelineInfo,
+        includes: &[PathBuf],
+        shader_compiler: &mut Compiler,
+    ) -> Result<()> {
+        let pipeline_number = self.pipelines.len();
+        dbg!("Error on compilation?");
+        match pipeline {
+            PipelineInfo::Rendering { ref vert, ref frag } => {
+                self.shader_set
+                    .push_value(frag.path.clone(), pipeline_number);
+                self.shader_set
+                    .push_value(vert.path.clone(), pipeline_number);
+
+                let vert_artifact = shader_module::create_shader_module(
+                    vert,
+                    shaderc::ShaderKind::Vertex,
+                    shader_compiler,
+                )?;
+                let vert = ShaderCreateInfo::new(vert_artifact.as_binary(), &vert.entry_point);
+
+                let frag_arifact = shader_module::create_shader_module(
+                    frag,
+                    shaderc::ShaderKind::Fragment,
+                    shader_compiler,
+                )?;
+                let frag = ShaderCreateInfo::new(frag_arifact.as_binary(), &frag.entry_point);
+
+                match self.kind.as_mut().unwrap() {
+                    RendererType::Ash(ash) => ash.push_render_pipeline(vert, frag)?,
+                    RendererType::Wgpu(wgpu) => wgpu.push_render_pipeline(vert, frag)?,
+                }
+            }
+            PipelineInfo::Compute { ref comp } => {
+                self.shader_set
+                    .push_value(comp.path.clone(), pipeline_number);
+
+                let comp_artifact = shader_module::create_shader_module(
+                    comp,
+                    shaderc::ShaderKind::Compute,
+                    shader_compiler,
+                )?;
+                let comp = ShaderCreateInfo::new(comp_artifact.as_binary(), &comp.entry_point);
+
+                match self.kind.as_mut().unwrap() {
+                    RendererType::Ash(ash) => ash.push_compute_pipeline(comp)?,
+                    RendererType::Wgpu(wgpu) => wgpu.push_compute_pipeline(comp)?,
+                }
+            }
+        }
+        for include in includes {
+            self.shader_set.push_value(include.clone(), pipeline_number);
+        }
+        self.pipelines.push(pipeline.clone());
+        self.includes.push(includes.to_vec());
+
+        Ok(())
+    }
+
+    pub fn register_shader_change(
+        &mut self,
+        paths: &[PathBuf],
+        shader_compiler: &mut Compiler,
+    ) -> Result<()> {
+        for path in paths {
+            if let Some(pipeline_indices) = self.shader_set.get(path) {
+                for &index in pipeline_indices {
+                    match &self.pipelines[index] {
+                        PipelineInfo::Rendering { vert, frag } => {
+                            let vert_artifact = shader_module::create_shader_module(
+                                vert,
+                                shaderc::ShaderKind::Vertex,
+                                shader_compiler,
+                            )?;
+                            let vert =
+                                ShaderCreateInfo::new(vert_artifact.as_binary(), &vert.entry_point);
+
+                            let frag_arifact = shader_module::create_shader_module(
+                                frag,
+                                shaderc::ShaderKind::Fragment,
+                                shader_compiler,
+                            )?;
+                            let frag =
+                                ShaderCreateInfo::new(frag_arifact.as_binary(), &frag.entry_point);
+
+                            match self.kind.as_mut().unwrap() {
+                                RendererType::Ash(ash) => ash.push_render_pipeline(vert, frag)?,
+                                RendererType::Wgpu(wgpu) => {
+                                    wgpu.push_render_pipeline(vert, frag)?
+                                }
+                            }
+                        }
+
+                        PipelineInfo::Compute { comp } => {
+                            let comp_artifact = shader_module::create_shader_module(
+                                comp,
+                                shaderc::ShaderKind::Compute,
+                                shader_compiler,
+                            )?;
+                            let comp =
+                                ShaderCreateInfo::new(comp_artifact.as_binary(), &comp.entry_point);
+
+                            match self.kind.as_mut().unwrap() {
+                                RendererType::Ash(ash) => ash.push_compute_pipeline(comp)?,
+                                RendererType::Wgpu(wgpu) => wgpu.push_compute_pipeline(comp)?,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn get_active(&self) -> &dyn Renderer {
         match self.kind.as_ref().unwrap() {
             RendererType::Ash(ash) => ash,
@@ -76,7 +221,14 @@ impl<'a> RenderBundleStatic<'a> {
             RendererType::Wgpu(wgpu) => wgpu,
         }
     }
-    pub async fn switch(&mut self, window: &impl HasRawWindowHandle) -> Result<()> {
+    pub fn shader_list(&self) -> Vec<PathBuf> {
+        self.shader_set.keys().cloned().collect()
+    }
+    pub async fn switch(
+        &mut self,
+        window: &impl HasRawWindowHandle,
+        shader_compiler: &mut Compiler,
+    ) -> Result<()> {
         self.wait_idle();
         enum Kind {
             Ash,
@@ -100,19 +252,44 @@ impl<'a> RenderBundleStatic<'a> {
                 AshRender::new(window, self.push_constant_range).unwrap(),
             )),
         };
-        match &mut self.kind {
-            Some(RendererType::Ash(ash)) => {
-                for (pipeline, include) in self.pipelines.iter().zip(&self.includes) {
-                    ash.push_pipeline(pipeline.clone(), include)?;
+
+        for pipeline in &self.pipelines {
+            match pipeline {
+                PipelineInfo::Rendering { vert, frag } => {
+                    let vert_artifact = shader_module::create_shader_module(
+                        vert,
+                        shaderc::ShaderKind::Vertex,
+                        shader_compiler,
+                    )?;
+                    let vert = ShaderCreateInfo::new(vert_artifact.as_binary(), &vert.entry_point);
+
+                    let frag_arifact = shader_module::create_shader_module(
+                        frag,
+                        shaderc::ShaderKind::Fragment,
+                        shader_compiler,
+                    )?;
+                    let frag = ShaderCreateInfo::new(frag_arifact.as_binary(), &frag.entry_point);
+
+                    match self.kind.as_mut().unwrap() {
+                        RendererType::Ash(ash) => ash.push_render_pipeline(vert, frag)?,
+                        RendererType::Wgpu(wgpu) => wgpu.push_render_pipeline(vert, frag)?,
+                    }
+                }
+                PipelineInfo::Compute { comp } => {
+                    let comp_artifact = shader_module::create_shader_module(
+                        comp,
+                        shaderc::ShaderKind::Compute,
+                        shader_compiler,
+                    )?;
+                    let comp = ShaderCreateInfo::new(comp_artifact.as_binary(), &comp.entry_point);
+                    match self.kind.as_mut().unwrap() {
+                        RendererType::Ash(ash) => ash.push_compute_pipeline(comp)?,
+                        RendererType::Wgpu(wgpu) => wgpu.push_compute_pipeline(comp)?,
+                    }
                 }
             }
-            Some(RendererType::Wgpu(wgpu)) => {
-                for (pipeline, include) in self.pipelines.iter().zip(&self.includes) {
-                    wgpu.push_pipeline(pipeline.clone(), include)?;
-                }
-            }
-            _ => unreachable!(),
         }
+
         Ok(())
     }
 }
@@ -121,22 +298,7 @@ impl Renderer for RenderBundleStatic<'_> {
     fn get_info(&self) -> String {
         self.get_active().get_info()
     }
-    fn update(&mut self) {
-        self.get_active_mut().update()
-    }
-    fn input(&mut self) {
-        self.get_active_mut().input()
-    }
 
-    fn push_pipeline(&mut self, pipeline: PipelineInfo, includes: &[PathBuf]) -> Result<()> {
-        self.pipelines.push(pipeline.clone());
-        self.includes.push(includes.to_vec());
-        self.get_active_mut().push_pipeline(pipeline, includes)
-    }
-
-    fn rebuild_pipelines(&mut self, paths: &[PathBuf]) -> Result<()> {
-        self.get_active_mut().rebuild_pipelines(paths)
-    }
     fn pause(&mut self) {
         self.get_active_mut().pause()
     }
@@ -155,9 +317,6 @@ impl Renderer for RenderBundleStatic<'_> {
     fn captured_frame_dimentions(&self) -> ImageDimentions {
         self.get_active().captured_frame_dimentions()
     }
-    fn shader_list(&self) -> Vec<PathBuf> {
-        self.get_active().shader_list()
-    }
 
     fn wait_idle(&self) {
         self.get_active().wait_idle()
@@ -167,50 +326,9 @@ impl Renderer for RenderBundleStatic<'_> {
     }
 }
 
-// FIXME: Can't have several renderers with the same surface
-struct RenderBundleDyn {
-    list: Vec<Box<dyn Renderer>>,
-    active: usize,
-}
-
-impl RenderBundleDyn {
-    fn get_active(&self) -> &dyn Renderer {
-        &*self.list[self.active]
-    }
-    fn get_active_mut(&mut self) -> &mut dyn Renderer {
-        &mut *self.list[self.active]
-    }
-    fn next(&mut self) -> Result<()> {
-        self.active = (self.active + 1) % self.list.len();
-        self.get_active_mut().rebuild_all_pipelines()
-    }
-}
-
 impl Renderer for AshRender<'_> {
     fn get_info(&self) -> String {
         self.get_info().to_string()
-    }
-
-    fn update(&mut self) {
-        todo!()
-    }
-
-    fn input(&mut self) {
-        todo!()
-    }
-
-    fn push_pipeline(&mut self, pipeline: PipelineInfo, includes: &[PathBuf]) -> Result<()> {
-        match pipeline {
-            PipelineInfo::Rendering { vert, frag } => {
-                self.push_render_pipeline(vert, frag, includes)?
-            }
-            PipelineInfo::Compute { comp } => self.push_compute_pipeline(comp, includes)?,
-        }
-        Ok(())
-    }
-
-    fn rebuild_pipelines(&mut self, paths: &[PathBuf]) -> Result<()> {
-        Ok(self.rebuild_pipelines(paths)?)
     }
 
     fn pause(&mut self) {
@@ -232,10 +350,6 @@ impl Renderer for AshRender<'_> {
         self.screenshot_dimentions()
     }
 
-    fn shader_list(&self) -> Vec<PathBuf> {
-        self.shader_set.keys().cloned().collect()
-    }
-
     fn wait_idle(&self) {
         unsafe { self.device.device_wait_idle().unwrap() }
     }
@@ -247,31 +361,6 @@ impl Renderer for AshRender<'_> {
 impl Renderer for pilka_wgpu::WgpuRender {
     fn get_info(&self) -> String {
         self.get_info().to_string()
-    }
-
-    fn update(&mut self) {
-        todo!()
-    }
-
-    fn input(&mut self) {
-        todo!()
-    }
-
-    fn shader_list(&self) -> Vec<PathBuf> {
-        self.shader_set.keys().cloned().collect()
-    }
-
-    fn push_pipeline(&mut self, pipeline: PipelineInfo, includes: &[PathBuf]) -> Result<()> {
-        match pipeline {
-            PipelineInfo::Rendering { vert, frag } => {
-                self.push_render_pipeline(vert, frag, includes)
-            }
-            PipelineInfo::Compute { comp } => self.push_compute_pipeline(comp, includes),
-        }
-    }
-
-    fn rebuild_pipelines(&mut self, paths: &[PathBuf]) -> Result<()> {
-        self.rebuild_pipelines(paths)
     }
 
     fn pause(&mut self) {
@@ -292,7 +381,7 @@ impl Renderer for pilka_wgpu::WgpuRender {
     }
 
     fn captured_frame_dimentions(&self) -> ImageDimentions {
-        todo!()
+        ImageDimentions::new(0, 0, 1)
     }
 
     fn wait_idle(&self) {

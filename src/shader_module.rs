@@ -1,33 +1,19 @@
-use super::device::VkDevice;
-use ash::{prelude::VkResult, vk};
-
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use pilka_types::ShaderInfo;
 
-// FIXME: Make them changeable in runtime
+// TODO: Make them configurable
 pub const SHADER_PATH: &str = "shaders";
 pub const SHADER_ENTRY_POINT: &str = "main";
-
-pub enum ShaderSet {
-    Graphics { vert: ShaderInfo, frag: ShaderInfo },
-    Compute(ShaderInfo),
-}
-
-#[derive(Debug)]
-pub struct VkShaderModule {
-    pub path: PathBuf,
-    pub module: vk::ShaderModule,
-}
 
 pub fn create_shader_module(
     path: &ShaderInfo,
     shader_type: shaderc::ShaderKind,
     compiler: &mut shaderc::Compiler,
-    device: &VkDevice,
-) -> VkResult<vk::ShaderModule> {
+) -> shaderc::Result<shaderc::CompilationArtifact> {
     let shader_text = std::fs::read_to_string(&path.path).unwrap();
-    let mut compile_options = shaderc::CompileOptions::new().unwrap();
+    let mut compile_options =
+        shaderc::CompileOptions::new().expect("Failed to create shader compiler options");
     // compile_options.set_warnings_as_errors();
     compile_options.set_target_env(
         shaderc::TargetEnv::Vulkan,
@@ -73,7 +59,7 @@ pub fn create_shader_module(
         }
     });
 
-    let shader_data = match compiler.compile_into_spirv(
+    match compiler.compile_into_spirv(
         &shader_text,
         shader_type,
         path.path.to_str().unwrap(),
@@ -88,16 +74,11 @@ pub fn create_shader_module(
                     compilation_artifact.get_warning_messages()
                 );
             }
-            compilation_artifact
+            Ok(compilation_artifact)
         }
         Err(e) => {
             eprintln!("{}", e);
-            return Err(ash::vk::Result::ERROR_UNKNOWN);
+            Err(e)
         }
-    };
-    let shader_data = shader_data.as_binary_u8();
-    let shader_code = super::utils::make_spirv(shader_data);
-    let shader_info = vk::ShaderModuleCreateInfo::builder().code(&shader_code);
-
-    unsafe { device.create_shader_module(&shader_info, None) }
+    }
 }

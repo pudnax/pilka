@@ -1,6 +1,26 @@
-use std::{ffi::CString, path::PathBuf};
+use std::{
+    ffi::{CStr, CString},
+    path::PathBuf,
+};
 
 pub type Frame<'a> = (&'a [u8], ImageDimentions);
+
+pub enum ShaderData {
+    Render { vert: Vec<u32>, frag: Vec<u32> },
+    Compute(Vec<u32>),
+}
+
+#[derive(Debug, Clone)]
+pub struct ShaderCreateInfo<'a> {
+    pub data: &'a [u32],
+    pub entry_point: &'a CStr,
+}
+
+impl<'a> ShaderCreateInfo<'a> {
+    pub fn new(data: &'a [u32], entry_point: &'a CStr) -> Self {
+        Self { data, entry_point }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum PipelineInfo {
