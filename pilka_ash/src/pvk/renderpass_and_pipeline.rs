@@ -1,10 +1,13 @@
+use crate::VkDevice;
+
 use super::device::RawDevice;
-use ash::{prelude::VkResult, vk};
-use std::sync::Arc;
+use ash::{
+    prelude::VkResult,
+    vk::{self, ShaderModule},
+};
+use std::{ffi::CString, sync::Arc};
 
 use super::instance::VkQueues;
-
-use pilka_types::ShaderInfo;
 
 #[derive(Debug)]
 pub enum Pipeline {
@@ -41,7 +44,10 @@ pub struct PipelineDescriptor {
     pub color_blend_attachments: Box<[vk::PipelineColorBlendAttachmentState]>,
     pub dynamic_state_info: vk::PipelineDynamicStateCreateInfo,
     pub dynamic_state: Box<[vk::DynamicState]>,
-    pub shader_stages: Box<[vk::PipelineShaderStageCreateInfo]>,
+    pub vertex_module: ShaderModule,
+    pub vertex_entry_point: CString,
+    pub fragment_module: ShaderModule,
+    pub fragment_entry_point: CString,
     pub vertex_input: vk::PipelineVertexInputStateCreateInfo,
     pub input_assembly: vk::PipelineInputAssemblyStateCreateInfo,
     pub rasterization: vk::PipelineRasterizationStateCreateInfo,
@@ -51,7 +57,12 @@ pub struct PipelineDescriptor {
 }
 
 impl PipelineDescriptor {
-    pub fn new(shader_stages: Box<[vk::PipelineShaderStageCreateInfo]>) -> Self {
+    pub fn new(
+        vertex_module: ShaderModule,
+        vertex_entry_point: CString,
+        fragment_module: ShaderModule,
+        fragment_entry_point: CString,
+    ) -> Self {
         let noop_stencil_state = vk::StencilOpState {
             fail_op: vk::StencilOp::KEEP,
             pass_op: vk::StencilOp::KEEP,
@@ -121,7 +132,10 @@ impl PipelineDescriptor {
             color_blend_attachments,
             dynamic_state_info,
             dynamic_state,
-            shader_stages,
+            vertex_module,
+            vertex_entry_point,
+            fragment_module,
+            fragment_entry_point,
             vertex_input,
             input_assembly,
             rasterization,
@@ -139,8 +153,6 @@ pub struct VkGraphicsPipeline {
     pub dynamic_state: Box<[vk::DynamicState]>,
     pub descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
     pub device: Arc<RawDevice>,
-    pub vs_info: ShaderInfo,
-    pub fs_info: ShaderInfo,
 }
 
 impl VkGraphicsPipeline {
@@ -151,17 +163,27 @@ impl VkGraphicsPipeline {
         descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
         desc: PipelineDescriptor,
         render_pass: &VkRenderPass,
-        vs_info: ShaderInfo,
-        fs_info: ShaderInfo,
-        device: Arc<RawDevice>,
+        device: &VkDevice,
     ) -> VkResult<Self> {
         let viewport = vk::PipelineViewportStateCreateInfo::builder()
             .viewports(&[vk::Viewport::default()])
             .scissors(&[vk::Rect2D::default()])
             .build();
 
+        let vertex_stage = vk::PipelineShaderStageCreateInfo::builder()
+            .module(desc.vertex_module)
+            .stage(vk::ShaderStageFlags::VERTEX)
+            .name(desc.vertex_entry_point.as_c_str())
+            .build();
+        let fragment_stage = vk::PipelineShaderStageCreateInfo::builder()
+            .module(desc.fragment_module)
+            .stage(vk::ShaderStageFlags::FRAGMENT)
+            .name(desc.fragment_entry_point.as_c_str())
+            .build();
+        let stages = [vertex_stage, fragment_stage];
+
         let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
-            .stages(&desc.shader_stages)
+            .stages(&stages)
             .vertex_input_state(&desc.vertex_input)
             .input_assembly_state(&desc.input_assembly)
             .rasterization_state(&desc.rasterization)
@@ -185,9 +207,7 @@ impl VkGraphicsPipeline {
             pipeline_layout,
             dynamic_state: desc.dynamic_state,
             descriptor_set_layouts,
-            device,
-            vs_info,
-            fs_info,
+            device: device.device.clone(),
         })
     }
 }
@@ -216,18 +236,17 @@ pub struct VkComputePipeline {
     pub command_pool: vk::CommandPool,
     pub command_buffer: vk::CommandBuffer,
     pub semaphore: vk::Semaphore,
-    pub cs_info: ShaderInfo,
+    // pub cs_info: ShaderInfo,
     pub device: Arc<RawDevice>,
 }
 
 impl VkComputePipeline {
     pub fn new(
+        device: &VkDevice,
+        queues: &VkQueues,
         pipeline_layout: vk::PipelineLayout,
         descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
         shader_stage: vk::PipelineShaderStageCreateInfo,
-        cs_info: ShaderInfo,
-        device: Arc<RawDevice>,
-        queues: &VkQueues,
     ) -> VkResult<Self> {
         let pipeline_info = vk::ComputePipelineCreateInfo::builder()
             .stage(shader_stage)
@@ -256,8 +275,8 @@ impl VkComputePipeline {
         let command_buffer =
             unsafe { device.allocate_command_buffers(&command_buffer_create_info) }?[0];
 
-        let semaphore_info = vk::SemaphoreCreateInfo::default();
-        let semaphore = unsafe { device.create_semaphore(&semaphore_info, None) }?;
+        let semaphore = device.create_semaphore()?;
+        device.name_semaphore(semaphore, "Compute Semaphore")?;
 
         // let signal_semaphores = [semaphore];
         // let submits = [vk::SubmitInfo::builder()
@@ -273,8 +292,8 @@ impl VkComputePipeline {
             command_pool,
             command_buffer,
             semaphore,
-            cs_info,
-            device,
+            // cs_info,
+            device: device.device.clone(),
         })
     }
 }

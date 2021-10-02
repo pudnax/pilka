@@ -2,6 +2,7 @@ mod default_shaders;
 mod input;
 mod recorder;
 mod render_interface;
+mod shader_module;
 mod utils;
 
 #[allow(dead_code)]
@@ -9,14 +10,15 @@ mod audio;
 
 use std::{
     error::Error,
+    io::Write,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
-use pilka_ash::{SHADER_ENTRY_POINT, SHADER_PATH};
 use pilka_types::{PipelineInfo, ShaderInfo};
 use recorder::{RecordEvent, RecordTimer};
 use render_interface::{RenderBundleStatic, Renderer};
+use shader_module::{SHADER_ENTRY_POINT, SHADER_PATH};
 use utils::{parse_args, print_help, save_screenshot, save_shaders, Args, PushConstant};
 
 use eyre::*;
@@ -80,12 +82,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         default_shaders::create_default_shaders(&shader_dir)?;
     }
 
+    let mut compiler = shaderc::Compiler::new().expect("Failed to create shader compiler");
+
     // Compute pipeline have to go first
     render.push_pipeline(
         PipelineInfo::Compute {
             comp: ShaderInfo::new(shader_dir.join("shader.comp"), SHADER_ENTRY_POINT.into()),
         },
-        &[],
+        &[shader_dir.join("prelude.glsl")],
+        &mut compiler,
     )?;
 
     render.push_pipeline(
@@ -94,6 +99,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             frag: ShaderInfo::new(shader_dir.join("shader.frag"), SHADER_ENTRY_POINT.into()),
         },
         &[shader_dir.join("prelude.glsl")],
+        &mut compiler,
     )?;
 
     let (ffmpeg_version, has_ffmpeg) = recorder::ffmpeg_version()?;
@@ -155,7 +161,23 @@ fn main() -> Result<(), Box<dyn Error>> {
                         ..
                     } = rx_event
                     {
-                        render.rebuild_pipelines(rx_event.paths.as_ref()).unwrap();
+                        match render.register_shader_change(rx_event.paths.as_ref(), &mut compiler)
+                        {
+                            Ok(_) => {
+                                const ESC: &str = "\x1B[";
+                                const RESET: &str = "\x1B[0m";
+                                eprint!("\r{}42m{}K{}\r", ESC, ESC, RESET);
+                                std::io::stdout().flush().unwrap();
+                                std::thread::spawn(|| {
+                                    std::thread::sleep(std::time::Duration::from_millis(50));
+                                    eprint!("\r{}40m{}K{}\r", ESC, ESC, RESET);
+                                    std::io::stdout().flush().unwrap();
+                                });
+                            }
+                            Err(e) => {
+                                eprintln!("Compilation error:\n{}", e)
+                            }
+                        };
                     }
                 }
 
@@ -260,7 +282,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         if VirtualKeyCode::F8 == keycode {
-                            pollster::block_on(render.switch(&window)).unwrap();
+                            pollster::block_on(render.switch(&window, &mut compiler)).unwrap();
                         }
 
                         if VirtualKeyCode::F10 == keycode {
