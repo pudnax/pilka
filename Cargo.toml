@@ -34,6 +34,7 @@ rustfft = "6.0.1"
 crossbeam-channel = "0.5.1"
 pollster = "0.2.4"
 env_logger = "0.9.0"
+shaderc = "0.7.3"
 
 [profile.release]
 lto = true

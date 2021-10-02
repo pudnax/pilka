@@ -5,7 +5,6 @@ mod device;
 mod image;
 mod instance;
 mod renderpass_and_pipeline;
-mod shader_module;
 mod surface;
 mod swapchain;
 mod texture;
@@ -17,9 +16,7 @@ pub use instance::{VkInstance, VkQueue, VkQueues};
 pub use renderpass_and_pipeline::{
     Pipeline, PipelineDescriptor, VkComputePipeline, VkGraphicsPipeline, VkRenderPass,
 };
-pub use shader_module::{
-    create_shader_module, ShaderSet, VkShaderModule, SHADER_ENTRY_POINT, SHADER_PATH,
-};
+
 pub use surface::VkSurface;
 pub use swapchain::VkSwapchain;
 
