@@ -1,3 +1,6 @@
+// #![feature(type_alias_impl_trait)]
+
+mod bridge;
 mod default_shaders;
 mod input;
 mod recorder;
@@ -8,11 +11,14 @@ mod audio;
 
 use std::{
     error::Error,
+    mem::size_of,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
-use pilka_ash::{vk, PilkaRender, ShaderInfo, SHADER_ENTRY_POINT, SHADER_PATH};
+use bridge::Renderer;
+use pilka_ash::{utils::any_as_u8_slice, vk, PilkaRender, SHADER_ENTRY_POINT, SHADER_PATH};
+use pilka_types::{PushConstant, ShaderInfo};
 use recorder::{RecordEvent, RecordTimer};
 use utils::{parse_args, print_help, save_screenshot, save_shaders, Args};
 
@@ -63,7 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         window_builder.build(&event_loop)?
     };
 
-    let mut pilka = PilkaRender::new(&window)?;
+    let mut pilka = PilkaRender::new(&window, PushConstant::size())?;
 
     let shader_dir = PathBuf::new().join(SHADER_PATH);
 
@@ -72,22 +78,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     pilka.push_render_pipeline(
-        ShaderInfo::new(shader_dir.join("shader.vert"), SHADER_ENTRY_POINT.into())?,
-        ShaderInfo::new(shader_dir.join("shader.frag"), SHADER_ENTRY_POINT.into())?,
+        ShaderInfo::new(shader_dir.join("shader.vert"), SHADER_ENTRY_POINT.into()),
+        ShaderInfo::new(shader_dir.join("shader.frag"), SHADER_ENTRY_POINT.into()),
         &[shader_dir.join("prelude.glsl")],
     )?;
 
     pilka.push_compute_pipeline(
-        ShaderInfo::new(shader_dir.join("shader.comp"), SHADER_ENTRY_POINT.into())?,
+        ShaderInfo::new(shader_dir.join("shader.comp"), SHADER_ENTRY_POINT.into()),
         &[],
     )?;
 
     let (ffmpeg_version, has_ffmpeg) = recorder::ffmpeg_version()?;
 
-    println!("Vendor name: {}", pilka.get_vendor_name());
-    println!("Device name: {}", pilka.get_device_name()?);
-    println!("Device type: {:?}", pilka.get_device_type());
-    println!("Vulkan version: {}", pilka.get_vulkan_version_name()?);
+    println!("{}", pilka.get_info());
     // println!("Audio host: {:?}", audio_context.host_id);
     // println!(
     //     "Sample rate: {}, channels: {}",
@@ -127,9 +130,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut backup_time = timeline.elapsed();
     let mut dt = Duration::from_secs_f32(1. / 60.);
 
+    let mut push_constant = PushConstant::default();
+
     let (mut timer, start_event) = RecordTimer::new(record_time, video_tx.clone());
     if let Some(period) = record_time {
-        pilka.push_constant.record_period = period.as_secs_f32();
+        push_constant.record_period = period.as_secs_f32();
     }
 
     event_loop.run(move |event, _, control_flow| {
@@ -142,23 +147,24 @@ fn main() -> Result<(), Box<dyn Error>> {
                         ..
                     } = rx_event
                     {
-                        pilka.rebuild_pipelines(&rx_event.paths).unwrap();
+                        pilka.rebuild_pipelines(rx_event.paths.as_ref()).unwrap();
                     }
                 }
 
-                pilka.paused = !pause;
+                // pilka.paused = !pause;
+                pilka.pause();
 
-                pilka.push_constant.time = if pause {
+                push_constant.time = if pause {
                     backup_time.as_secs_f32()
+                } else if let Some(recording_time) = timer.counter {
+                    recording_time.elapsed().as_secs_f32()
                 } else {
-                    if let Some(recording_time) = timer.counter {
-                        recording_time.elapsed().as_secs_f32()
-                    } else {
-                        timeline.elapsed().as_secs_f32()
-                    }
+                    timeline.elapsed().as_secs_f32()
                 };
 
-                input.process_position(&mut pilka.push_constant);
+                push_constant.wh = window.inner_size().into();
+
+                input.process_position(&mut push_constant);
 
                 if !pause {
                     // let mut tmp_buf = [0f32; audio::FFT_SIZE];
@@ -166,38 +172,23 @@ fn main() -> Result<(), Box<dyn Error>> {
                     // pilka.update_fft_texture(&tmp_buf).unwrap();
 
                     dt = timeline.elapsed().saturating_sub(prev_time);
-                    pilka.push_constant.time_delta = dt.as_secs_f32();
+                    push_constant.time_delta = dt.as_secs_f32();
 
                     prev_time = timeline.elapsed();
                 }
-                pilka.push_constant.wh = pilka.surface.resolution_slice(&pilka.device).unwrap();
 
                 timer
-                    .update(&mut video_recording, pilka.screenshot_dimentions())
+                    .update(&mut video_recording, pilka.captured_frame_dimentions())
                     .unwrap();
             }
 
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                WindowEvent::Resized(PhysicalSize { .. }) => {
-                    let vk::Extent2D { width, height } =
-                        pilka.surface.resolution(&pilka.device).unwrap();
-                    let vk::Extent2D {
-                        width: old_width,
-                        height: old_height,
-                    } = pilka.resolution;
-
-                    if width == old_width && height == old_height {
-                        return;
-                    }
-
-                    pilka.resize().unwrap();
+                WindowEvent::Resized(PhysicalSize { width, height }) => {
+                    Renderer::resize(&mut pilka, width, height).unwrap();
 
                     if video_recording {
-                        println!(
-                            "Stop recording. Resolution has been changed {}×{} => {}×{}.",
-                            width, height, old_width, old_height
-                        );
+                        println!("Stop recording. Resolution has been changed.",);
                         video_recording = false;
                         video_tx.send(RecordEvent::Finish).unwrap();
                     }
@@ -249,28 +240,28 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         if VirtualKeyCode::F5 == keycode {
-                            pilka.push_constant.pos = [0.; 3];
-                            pilka.push_constant.time = 0.;
-                            pilka.push_constant.frame = 0;
+                            push_constant.pos = [0.; 3];
+                            push_constant.time = 0.;
+                            push_constant.frame = 0;
                             timeline = Instant::now();
                             backup_time = timeline.elapsed();
                         }
 
                         if VirtualKeyCode::F6 == keycode {
-                            eprintln!("{}", pilka.push_constant);
+                            eprintln!("{}", push_constant);
                         }
 
                         if VirtualKeyCode::F10 == keycode {
-                            save_shaders(&pilka).unwrap();
+                            save_shaders(&pilka.shader_list()).unwrap();
                         }
 
                         if VirtualKeyCode::F11 == keycode {
                             let now = Instant::now();
-                            let (_, image_dimentions) = pilka.capture_frame().unwrap();
+                            let (frame, image_dimentions) = pilka.capture_frame().unwrap();
                             eprintln!("Capture image: {:#?}", now.elapsed());
-                            let frame = &pilka.screenshot_ctx.data
-                                [..image_dimentions.padded_bytes_per_row * image_dimentions.height];
-                            save_screenshot(frame, image_dimentions);
+                            // let frame = &pilka.screenshot_ctx.data
+                            //     [..image_dimentions.padded_bytes_per_row * image_dimentions.height];
+                            save_screenshot(frame.to_vec(), image_dimentions); // .join().unwrap();
                         }
 
                         if has_ffmpeg && VirtualKeyCode::F12 == keycode {
@@ -290,10 +281,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                     ..
                 } => {
                     if !pause {
-                        let vk::Extent2D { width, height } = pilka.resolution;
+                        let PhysicalSize { width, height } = window.inner_size();
                         let x = (x as f32 / width as f32 - 0.5) * 2.;
                         let y = -(y as f32 / height as f32 - 0.5) * 2.;
-                        pilka.push_constant.mouse = [x, y];
+                        push_constant.mouse = [x, y];
                     }
                 }
                 WindowEvent::MouseInput {
@@ -301,23 +292,26 @@ fn main() -> Result<(), Box<dyn Error>> {
                     state,
                     ..
                 } => match state {
-                    ElementState::Pressed => pilka.push_constant.mouse_pressed = true as _,
-                    ElementState::Released => pilka.push_constant.mouse_pressed = false as _,
+                    ElementState::Pressed => push_constant.mouse_pressed = true as _,
+                    ElementState::Released => push_constant.mouse_pressed = false as _,
                 },
                 _ => {}
             },
 
             Event::MainEventsCleared => {
-                pilka.render().unwrap();
+                pilka
+                    .render(unsafe { any_as_u8_slice(&push_constant) })
+                    .unwrap();
                 start_event.try_send(()).ok();
                 if video_recording {
                     let (frame, _image_dimentions) = pilka.capture_frame().unwrap();
                     video_tx.send(RecordEvent::Record(frame.to_vec())).unwrap()
                 }
+                push_constant.frame += 1;
             }
             Event::LoopDestroyed => {
+                pilka.shut_down();
                 println!("// End from the loop. Bye bye~⏎ ");
-                unsafe { pilka.device.device_wait_idle() }.unwrap();
             }
             _ => {}
         }
