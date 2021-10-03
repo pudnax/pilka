@@ -13,6 +13,7 @@ use pilka_types::{Frame, ImageDimentions, PipelineInfo, ShaderCreateInfo};
 use pilka_wgpu::WgpuRender;
 use shaderc::Compiler;
 
+#[derive(Debug)]
 pub struct ContiniousHashMap<K, V>(HashMap<K, HashSet<V>>);
 
 impl<K, V> Deref for ContiniousHashMap<K, V> {
@@ -101,13 +102,12 @@ impl<'a> RenderBundleStatic<'a> {
         shader_compiler: &mut Compiler,
     ) -> Result<()> {
         let pipeline_number = self.pipelines.len();
-        dbg!("Error on compilation?");
         match pipeline {
             PipelineInfo::Rendering { ref vert, ref frag } => {
                 self.shader_set
-                    .push_value(frag.path.clone(), pipeline_number);
+                    .push_value(frag.path.canonicalize()?, pipeline_number);
                 self.shader_set
-                    .push_value(vert.path.clone(), pipeline_number);
+                    .push_value(vert.path.canonicalize()?, pipeline_number);
 
                 let vert_artifact = shader_module::create_shader_module(
                     vert,
@@ -130,7 +130,7 @@ impl<'a> RenderBundleStatic<'a> {
             }
             PipelineInfo::Compute { ref comp } => {
                 self.shader_set
-                    .push_value(comp.path.clone(), pipeline_number);
+                    .push_value(comp.path.canonicalize()?, pipeline_number);
 
                 let comp_artifact = shader_module::create_shader_module(
                     comp,
