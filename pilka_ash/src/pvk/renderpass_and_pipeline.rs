@@ -1,4 +1,6 @@
-use super::{device::RawDevice, shader_module::ShaderInfo};
+use pilka_types::ShaderInfo;
+
+use super::device::RawDevice;
 use ash::{prelude::VkResult, vk};
 use std::sync::Arc;
 
