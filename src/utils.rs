@@ -1,8 +1,7 @@
 use color_eyre::*;
 
 use crate::{SCREENSHOTS_FOLDER, SHADER_DUMP_FOLDER, SHADER_PATH};
-use pilka_ash::PilkaRender;
-use pilka_types::ImageDimentions;
+use pilka_ash::{ImageDimentions, PilkaRender};
 
 use std::{
     fs::File,
@@ -75,7 +74,7 @@ pub fn print_help() {
 }
 
 pub fn save_screenshot(
-    frame: Vec<u8>,
+    frame: &'static [u8],
     image_dimentions: ImageDimentions,
 ) -> std::thread::JoinHandle<Result<()>> {
     std::thread::spawn(move || {
@@ -90,11 +89,11 @@ pub fn save_screenshot(
         let w = BufWriter::new(file);
         let mut encoder =
             png::Encoder::new(w, image_dimentions.width as _, image_dimentions.height as _);
-        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_color(png::ColorType::RGBA);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder
             .write_header()?
-            .into_stream_writer_with_size(image_dimentions.unpadded_bytes_per_row)?;
+            .into_stream_writer_with_size(image_dimentions.unpadded_bytes_per_row);
         for chunk in frame
             .chunks(image_dimentions.padded_bytes_per_row)
             .map(|chunk| &chunk[..image_dimentions.unpadded_bytes_per_row])
@@ -107,7 +106,7 @@ pub fn save_screenshot(
     })
 }
 
-pub fn save_shaders<P: AsRef<Path>>(paths: &[P]) -> Result<()> {
+pub fn save_shaders(pilka: &PilkaRender) -> Result<()> {
     let dump_folder = std::path::Path::new(SHADER_DUMP_FOLDER);
     create_folder(dump_folder)?;
     let dump_folder =
@@ -116,11 +115,8 @@ pub fn save_shaders<P: AsRef<Path>>(paths: &[P]) -> Result<()> {
     let dump_folder = dump_folder.join(SHADER_PATH);
     create_folder(&dump_folder)?;
 
-    for path in paths {
-        let to = dump_folder.join(
-            path.as_ref()
-                .strip_prefix(Path::new(SHADER_PATH).canonicalize()?)?,
-        );
+    for path in pilka.shader_set.keys() {
+        let to = dump_folder.join(path.strip_prefix(Path::new(SHADER_PATH).canonicalize()?)?);
         if !to.exists() {
             std::fs::create_dir_all(&to.parent().unwrap().canonicalize()?)?;
             std::fs::File::create(&to)?;
@@ -130,4 +126,33 @@ pub fn save_shaders<P: AsRef<Path>>(paths: &[P]) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use pilka_ash::{vk, VkInstance};
+
+    #[test]
+    #[allow(unused_variables)]
+    fn check_init() {
+        let validation_layers = if cfg!(debug_assertions) {
+            vec!["VK_LAYER_KHRONOS_validation\0"]
+        } else {
+            vec![]
+        };
+        let extention_names = vec![];
+        let instance = VkInstance::new(&validation_layers, &extention_names).unwrap();
+
+        let (device, device_properties, queues) = instance.create_device_and_queues(None).unwrap();
+
+        let swapchain_loader = instance.create_swapchain_loader(&device);
+
+        let present_complete_semaphore = device.create_semaphore();
+
+        let rendering_complete_semaphore = device.create_semaphore();
+
+        let pipeline_cache_create_info = vk::PipelineCacheCreateInfo::builder();
+        // let pipeline_cache =
+        //     unsafe { device.create_pipeline_cache(&pipeline_cache_create_info, None) }.unwrap();
+    }
 }

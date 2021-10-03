@@ -1,8 +1,7 @@
-use pilka_types::ShaderInfo;
-
 use super::device::VkDevice;
 use ash::{prelude::VkResult, vk};
 
+use std::ffi::CString;
 use std::path::{Path, PathBuf};
 
 // FIXME: Make them changeable in runtime
@@ -12,6 +11,21 @@ pub const SHADER_ENTRY_POINT: &str = "main";
 pub enum ShaderSet {
     Graphics { vert: ShaderInfo, frag: ShaderInfo },
     Compute(ShaderInfo),
+}
+
+#[derive(Hash, Debug, Clone)]
+pub struct ShaderInfo {
+    pub name: PathBuf,
+    pub entry_point: CString,
+}
+
+impl ShaderInfo {
+    pub fn new(path: PathBuf, entry_point: String) -> Result<ShaderInfo, std::ffi::NulError> {
+        Ok(ShaderInfo {
+            name: path,
+            entry_point: CString::new(entry_point)?,
+        })
+    }
 }
 
 #[derive(Debug)]
