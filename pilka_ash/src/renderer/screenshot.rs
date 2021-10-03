@@ -1,5 +1,3 @@
-use std::mem::size_of;
-
 use super::images::VkImage;
 use crate::{
     pvk::{utils::return_aligned, VkCommandPool, VkDevice, VkDeviceProperties},
@@ -9,8 +7,7 @@ use ash::{
     prelude::VkResult,
     vk::{self, SubresourceLayout},
 };
-
-pub type Frame<'a> = (&'a [u8], ImageDimentions);
+use pilka_types::{Frame, ImageDimentions};
 
 pub struct ScreenshotCtx<'a> {
     fence: vk::Fence,
@@ -255,18 +252,15 @@ impl<'a> ScreenshotCtx<'a> {
         };
 
         use vk::ImageLayout;
-        transport_barrier(
-            present_image,
-            ImageLayout::PRESENT_SRC_KHR,
-            ImageLayout::TRANSFER_SRC_OPTIMAL,
-        );
-        transport_barrier(
-            copy_image,
-            ImageLayout::UNDEFINED,
-            ImageLayout::TRANSFER_DST_OPTIMAL,
-        );
 
-        device.blit_image(copybuffer, present_image, copy_image, extent, self.extent);
+        device.blit_image(
+            copybuffer,
+            present_image,
+            vk::ImageLayout::PRESENT_SRC_KHR,
+            copy_image,
+            vk::ImageLayout::GENERAL,
+            extent,
+        );
 
         if let Some(ref blit_image) = self.blit_image {
             transport_barrier(
@@ -292,12 +286,6 @@ impl<'a> ScreenshotCtx<'a> {
             },
             ImageLayout::TRANSFER_DST_OPTIMAL,
             ImageLayout::GENERAL,
-        );
-
-        transport_barrier(
-            present_image,
-            ImageLayout::TRANSFER_SRC_OPTIMAL,
-            ImageLayout::PRESENT_SRC_KHR,
         );
 
         unsafe { device.end_command_buffer(copybuffer) }?;
@@ -336,28 +324,5 @@ impl<'a> ScreenshotCtx<'a> {
             )
         };
         (subresource_layout, image_dimentions)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ImageDimentions {
-    pub width: usize,
-    pub height: usize,
-    pub padded_bytes_per_row: usize,
-    pub unpadded_bytes_per_row: usize,
-}
-
-impl ImageDimentions {
-    fn new(width: usize, height: usize, align: usize) -> Self {
-        let bytes_per_pixel = size_of::<[u8; 4]>();
-        let unpadded_bytes_per_row = width * bytes_per_pixel;
-        let padded_bytes_per_row_padding = (align - unpadded_bytes_per_row % align) % align;
-        let padded_bytes_per_row = unpadded_bytes_per_row + padded_bytes_per_row_padding;
-        Self {
-            width,
-            height,
-            unpadded_bytes_per_row,
-            padded_bytes_per_row,
-        }
     }
 }

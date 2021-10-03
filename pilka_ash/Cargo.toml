@@ -2,7 +2,7 @@
 name = "pilka_ash"
 version = "0.5.10"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "GPL-2.0-or-later"
 description = "Homebrew and probably-not-so-great vulkan renderer"
 repository = "https://github.com/pudnax/pilka/"
@@ -23,4 +23,5 @@ ash-molten = "0.9.0"
 ash-window = "0.7.0"
 ktx = "0.3.2"
 raw-window-handle = "0.3.3"
-shaderc = "0.7.2"
+shaderc = "0.7.3"
+pilka_types = { version = "0.1.0", path = "../pilka_types" }

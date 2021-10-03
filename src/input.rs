@@ -57,7 +57,7 @@ impl Input {
         }
     }
 
-    pub fn process_position(&self, push_constant: &mut PushConstant) {
+    pub fn process_position(&self, push_constant: &mut pilka_types::PushConstant) {
         let dx = 0.01;
         if self.left_pressed {
             push_constant.pos[0] -= dx;
