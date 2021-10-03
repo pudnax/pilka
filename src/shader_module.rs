@@ -7,11 +7,11 @@ pub const SHADER_PATH: &str = "shaders";
 pub const SHADER_ENTRY_POINT: &str = "main";
 
 pub fn create_shader_module(
-    path: &ShaderInfo,
+    shader_info: &ShaderInfo,
     shader_type: shaderc::ShaderKind,
     compiler: &mut shaderc::Compiler,
 ) -> shaderc::Result<shaderc::CompilationArtifact> {
-    let shader_text = std::fs::read_to_string(&path.path).unwrap();
+    let shader_text = std::fs::read_to_string(&shader_info.path).unwrap();
     let mut compile_options =
         shaderc::CompileOptions::new().expect("Failed to create shader compiler options");
     // compile_options.set_warnings_as_errors();
@@ -62,23 +62,20 @@ pub fn create_shader_module(
     match compiler.compile_into_spirv(
         &shader_text,
         shader_type,
-        path.path.to_str().unwrap(),
-        path.entry_point.to_str().unwrap(),
+        shader_info.path.to_str().unwrap(),
+        shader_info.entry_point.to_str().unwrap(),
         Some(&compile_options),
     ) {
         Ok(compilation_artifact) => {
             if compilation_artifact.get_num_warnings() > 0 {
                 eprintln!(
-                    "[WARNING] In shader {:?}:\n{}",
-                    path,
+                    "[WARNING] In shader {}:\n{}",
+                    shader_info.path.display(),
                     compilation_artifact.get_warning_messages()
                 );
             }
             Ok(compilation_artifact)
         }
-        Err(e) => {
-            eprintln!("{}", e);
-            Err(e)
-        }
+        Err(e) => Err(e),
     }
 }
