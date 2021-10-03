@@ -77,11 +77,9 @@ impl<'a> RenderBundleStatic<'a> {
         push_constant_range: u32,
         (width, height): (u32, u32),
     ) -> Result<RenderBundleStatic<'a>> {
-        let kind = match true {
+        let kind = match false {
             true => RendererType::Wgpu(
-                WgpuRender::new(window, push_constant_range, width, height)
-                    .await
-                    .unwrap(),
+                WgpuRender::new(window, push_constant_range, width, height).await?,
             ),
             false => RendererType::Ash(AshRender::new(window, push_constant_range).unwrap()),
         };
@@ -159,6 +157,7 @@ impl<'a> RenderBundleStatic<'a> {
         paths: &[PathBuf],
         shader_compiler: &mut Compiler,
     ) -> Result<()> {
+        self.wait_idle();
         for path in paths {
             if let Some(pipeline_indices) = self.shader_set.get(path) {
                 for &index in pipeline_indices {
@@ -181,9 +180,11 @@ impl<'a> RenderBundleStatic<'a> {
                                 ShaderCreateInfo::new(frag_arifact.as_binary(), &frag.entry_point);
 
                             match self.kind.as_mut().unwrap() {
-                                RendererType::Ash(ash) => ash.push_render_pipeline(vert, frag)?,
+                                RendererType::Ash(ash) => {
+                                    ash.rebuild_render_pipeline(index, vert, frag)?
+                                }
                                 RendererType::Wgpu(wgpu) => {
-                                    wgpu.push_render_pipeline(vert, frag)?
+                                    wgpu.rebuild_render_pipeline(index, vert, frag)?
                                 }
                             }
                         }
@@ -198,8 +199,12 @@ impl<'a> RenderBundleStatic<'a> {
                                 ShaderCreateInfo::new(comp_artifact.as_binary(), &comp.entry_point);
 
                             match self.kind.as_mut().unwrap() {
-                                RendererType::Ash(ash) => ash.push_compute_pipeline(comp)?,
-                                RendererType::Wgpu(wgpu) => wgpu.push_compute_pipeline(comp)?,
+                                RendererType::Ash(ash) => {
+                                    ash.rebuild_compute_pipeline(index, comp)?
+                                }
+                                RendererType::Wgpu(wgpu) => {
+                                    wgpu.rebuild_compute_pipeline(index, comp)?
+                                }
                             }
                         }
                     }
