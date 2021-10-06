@@ -65,6 +65,7 @@ pub fn size_of_slice<T: Sized>(slice: &[T]) -> usize {
     std::mem::size_of::<T>() * slice.len()
 }
 
+// FIXME: Add license from wgpu project or delete this function
 pub fn make_spirv(data: &[u8]) -> std::borrow::Cow<[u32]> {
     const MAGIC_NUMBER: u32 = 0x723_0203;
 
