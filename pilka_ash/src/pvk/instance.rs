@@ -54,7 +54,6 @@ impl VkInstance {
             None => vk::make_api_version(1, 0, 0, 0),
         };
 
-        // Find approciate validation layers from available.
         let available_layers = entry.enumerate_instance_layer_properties()?;
         let validation_layers = validation_layers
             .iter()
@@ -74,7 +73,6 @@ impl VkInstance {
             })
             .collect::<Vec<_>>();
 
-        // Find approciate extensions from available.
         let available_exts = entry.enumerate_instance_extension_properties()?;
         let extensions = [DebugUtils::name()]
             .iter()
