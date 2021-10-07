@@ -57,13 +57,13 @@ pub trait Renderer {
     fn shut_down(&self) {}
 }
 
-pub enum RendererType<'a> {
+pub enum Backend<'a> {
     Ash(AshRender<'a>),
     Wgpu(WgpuRender),
 }
 
 pub struct RenderBundleStatic<'a> {
-    kind: Option<RendererType<'a>>,
+    kind: Option<Backend<'a>>,
     shader_set: ContiniousHashMap<PathBuf, usize>,
     pipelines: Vec<PipelineInfo>,
     includes: Vec<Vec<PathBuf>>,
@@ -78,10 +78,10 @@ impl<'a> RenderBundleStatic<'a> {
         (width, height): (u32, u32),
     ) -> Result<RenderBundleStatic<'a>> {
         let kind = match false {
-            true => RendererType::Wgpu(
-                WgpuRender::new(window, push_constant_range, width, height).await?,
-            ),
-            false => RendererType::Ash(AshRender::new(window, push_constant_range).unwrap()),
+            true => {
+                Backend::Wgpu(WgpuRender::new(window, push_constant_range, width, height).await?)
+            }
+            false => Backend::Ash(AshRender::new(window, push_constant_range).unwrap()),
         };
         Ok(Self {
             kind: Some(kind),
@@ -122,8 +122,8 @@ impl<'a> RenderBundleStatic<'a> {
                 let frag = ShaderCreateInfo::new(frag_arifact.as_binary(), &frag.entry_point);
 
                 match self.kind.as_mut().unwrap() {
-                    RendererType::Ash(ash) => ash.push_render_pipeline(vert, frag)?,
-                    RendererType::Wgpu(wgpu) => wgpu.push_render_pipeline(vert, frag)?,
+                    Backend::Ash(ash) => ash.push_render_pipeline(vert, frag)?,
+                    Backend::Wgpu(wgpu) => wgpu.push_render_pipeline(vert, frag)?,
                 }
             }
             PipelineInfo::Compute { ref comp } => {
@@ -138,8 +138,8 @@ impl<'a> RenderBundleStatic<'a> {
                 let comp = ShaderCreateInfo::new(comp_artifact.as_binary(), &comp.entry_point);
 
                 match self.kind.as_mut().unwrap() {
-                    RendererType::Ash(ash) => ash.push_compute_pipeline(comp)?,
-                    RendererType::Wgpu(wgpu) => wgpu.push_compute_pipeline(comp)?,
+                    Backend::Ash(ash) => ash.push_compute_pipeline(comp)?,
+                    Backend::Wgpu(wgpu) => wgpu.push_compute_pipeline(comp)?,
                 }
             }
         }
@@ -180,10 +180,10 @@ impl<'a> RenderBundleStatic<'a> {
                                 ShaderCreateInfo::new(frag_arifact.as_binary(), &frag.entry_point);
 
                             match self.kind.as_mut().unwrap() {
-                                RendererType::Ash(ash) => {
+                                Backend::Ash(ash) => {
                                     ash.rebuild_render_pipeline(index, vert, frag)?
                                 }
-                                RendererType::Wgpu(wgpu) => {
+                                Backend::Wgpu(wgpu) => {
                                     wgpu.rebuild_render_pipeline(index, vert, frag)?
                                 }
                             }
@@ -199,10 +199,8 @@ impl<'a> RenderBundleStatic<'a> {
                                 ShaderCreateInfo::new(comp_artifact.as_binary(), &comp.entry_point);
 
                             match self.kind.as_mut().unwrap() {
-                                RendererType::Ash(ash) => {
-                                    ash.rebuild_compute_pipeline(index, comp)?
-                                }
-                                RendererType::Wgpu(wgpu) => {
+                                Backend::Ash(ash) => ash.rebuild_compute_pipeline(index, comp)?,
+                                Backend::Wgpu(wgpu) => {
                                     wgpu.rebuild_compute_pipeline(index, comp)?
                                 }
                             }
@@ -216,14 +214,14 @@ impl<'a> RenderBundleStatic<'a> {
 
     fn get_active(&self) -> &dyn Renderer {
         match self.kind.as_ref().unwrap() {
-            RendererType::Ash(ash) => ash,
-            RendererType::Wgpu(wgpu) => wgpu,
+            Backend::Ash(ash) => ash,
+            Backend::Wgpu(wgpu) => wgpu,
         }
     }
     fn get_active_mut(&mut self) -> &mut dyn Renderer {
         match self.kind.as_mut().unwrap() {
-            RendererType::Ash(ash) => ash,
-            RendererType::Wgpu(wgpu) => wgpu,
+            Backend::Ash(ash) => ash,
+            Backend::Wgpu(wgpu) => wgpu,
         }
     }
     pub fn shader_list(&self) -> Vec<PathBuf> {
@@ -235,25 +233,26 @@ impl<'a> RenderBundleStatic<'a> {
         shader_compiler: &mut Compiler,
     ) -> Result<()> {
         self.wait_idle();
+        #[derive(Debug)]
         enum Kind {
             Ash,
             Wgpu,
         }
         let kind = match &self.kind {
-            Some(RendererType::Ash(_)) => Kind::Ash,
-            Some(RendererType::Wgpu(_)) => Kind::Wgpu,
+            Some(Backend::Ash(_)) => Kind::Ash,
+            Some(Backend::Wgpu(_)) => Kind::Wgpu,
             _ => unreachable!(),
         };
         let old = self.kind.take();
         drop(old);
 
         self.kind = match kind {
-            Kind::Ash => Some(RendererType::Wgpu(
+            Kind::Ash => Some(Backend::Wgpu(
                 WgpuRender::new(window, self.push_constant_range, self.wh.0, self.wh.1)
                     .await
                     .unwrap(),
             )),
-            Kind::Wgpu => Some(RendererType::Ash(
+            Kind::Wgpu => Some(Backend::Ash(
                 AshRender::new(window, self.push_constant_range).unwrap(),
             )),
         };
@@ -276,8 +275,8 @@ impl<'a> RenderBundleStatic<'a> {
                     let frag = ShaderCreateInfo::new(frag_arifact.as_binary(), &frag.entry_point);
 
                     match self.kind.as_mut().unwrap() {
-                        RendererType::Ash(ash) => ash.push_render_pipeline(vert, frag)?,
-                        RendererType::Wgpu(wgpu) => wgpu.push_render_pipeline(vert, frag)?,
+                        Backend::Ash(ash) => ash.push_render_pipeline(vert, frag)?,
+                        Backend::Wgpu(wgpu) => wgpu.push_render_pipeline(vert, frag)?,
                     }
                 }
                 PipelineInfo::Compute { comp } => {
@@ -288,12 +287,20 @@ impl<'a> RenderBundleStatic<'a> {
                     )?;
                     let comp = ShaderCreateInfo::new(comp_artifact.as_binary(), &comp.entry_point);
                     match self.kind.as_mut().unwrap() {
-                        RendererType::Ash(ash) => ash.push_compute_pipeline(comp)?,
-                        RendererType::Wgpu(wgpu) => wgpu.push_compute_pipeline(comp)?,
+                        Backend::Ash(ash) => ash.push_compute_pipeline(comp)?,
+                        Backend::Wgpu(wgpu) => wgpu.push_compute_pipeline(comp)?,
                     }
                 }
             }
         }
+
+        println!(
+            "Switched to: {}",
+            match kind {
+                Kind::Ash => "Wgpu",
+                Kind::Wgpu => "Ash",
+            }
+        );
 
         Ok(())
     }
@@ -382,11 +389,12 @@ impl Renderer for pilka_wgpu::WgpuRender {
     }
 
     fn capture_frame(&mut self) -> Result<Frame> {
-        todo!()
+        let (data, dim) = self.capture_frame()?;
+        Ok((&data, dim))
     }
 
     fn captured_frame_dimentions(&self) -> ImageDimentions {
-        ImageDimentions::new(0, 0, 1)
+        self.screenshot_dimentions()
     }
 
     fn wait_idle(&self) {

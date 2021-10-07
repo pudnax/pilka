@@ -359,7 +359,7 @@ impl<'a> AshRender<'a> {
         if !blit_linear && blit_optimal {
             need2steps = true
         }
-        let screenshot_ctx = ScreenshotCtx::init(
+        let screenshot_ctx = ScreenshotCtx::new(
             &device,
             &device_properties.memory,
             &command_pool,

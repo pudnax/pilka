@@ -20,7 +20,7 @@ pub struct ScreenshotCtx<'a> {
 }
 
 impl<'a> ScreenshotCtx<'a> {
-    pub fn init(
+    pub fn new(
         device: &VkDevice,
         memory_properties: &vk::PhysicalDeviceMemoryProperties,
         command_pool: &VkCommandPool,
