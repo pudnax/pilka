@@ -1,5 +1,10 @@
+#![allow(clippy::new_without_default)]
+
 use std::{
+    collections::{HashMap, HashSet},
     ffi::{CStr, CString},
+    hash::Hash,
+    ops::{Deref, DerefMut},
     path::PathBuf,
 };
 
@@ -59,15 +64,15 @@ pub enum ShaderStage {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ImageDimentions {
-    pub width: usize,
-    pub height: usize,
-    pub padded_bytes_per_row: usize,
-    pub unpadded_bytes_per_row: usize,
+    pub width: u32,
+    pub height: u32,
+    pub unpadded_bytes_per_row: u32,
+    pub padded_bytes_per_row: u32,
 }
 
 impl ImageDimentions {
-    pub fn new(width: usize, height: usize, align: usize) -> Self {
-        let bytes_per_pixel = std::mem::size_of::<[u8; 4]>();
+    pub fn new(width: u32, height: u32, align: u32) -> Self {
+        let bytes_per_pixel = std::mem::size_of::<[u8; 4]>() as u32;
         let unpadded_bytes_per_row = width * bytes_per_pixel;
         let padded_bytes_per_row_padding = (align - unpadded_bytes_per_row % align) % align;
         let padded_bytes_per_row = unpadded_bytes_per_row + padded_bytes_per_row_padding;
@@ -77,5 +82,36 @@ impl ImageDimentions {
             unpadded_bytes_per_row,
             padded_bytes_per_row,
         }
+    }
+
+    pub fn linear_size(&self) -> u64 {
+        self.padded_bytes_per_row as u64 * self.height as u64
+    }
+}
+
+pub struct ContiniousHashMap<K, V>(HashMap<K, HashSet<V>>);
+
+impl<K, V> Deref for ContiniousHashMap<K, V> {
+    type Target = HashMap<K, HashSet<V>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<K, V> DerefMut for ContiniousHashMap<K, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<K, V> ContiniousHashMap<K, V> {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+}
+
+impl<K: Eq + Hash, V: Eq + Hash> ContiniousHashMap<K, V> {
+    pub fn push_value(&mut self, key: K, value: V) {
+        self.0.entry(key).or_insert_with(HashSet::new).insert(value);
     }
 }

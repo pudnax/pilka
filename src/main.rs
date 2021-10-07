@@ -1,7 +1,7 @@
 mod default_shaders;
 mod input;
 mod recorder;
-mod render_interface;
+mod render_trait;
 mod shader_module;
 mod utils;
 
@@ -17,7 +17,7 @@ use std::{
 
 use pilka_types::{PipelineInfo, ShaderInfo};
 use recorder::{RecordEvent, RecordTimer};
-use render_interface::{RenderBundleStatic, Renderer};
+use render_trait::{RenderBundleStatic, Renderer};
 use shader_module::{SHADER_ENTRY_POINT, SHADER_PATH};
 use utils::{parse_args, print_help, save_screenshot, save_shaders, Args, PushConstant};
 
@@ -281,7 +281,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             eprintln!("{}", push_constant);
                         }
 
-                        if VirtualKeyCode::F8 == keycode {
+                        if VirtualKeyCode::F7 == keycode {
                             pollster::block_on(render.switch(&window, &mut compiler)).unwrap();
                         }
 

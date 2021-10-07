@@ -19,7 +19,10 @@ pub fn create_shader_module(
         shaderc::TargetEnv::Vulkan,
         shaderc::EnvVersion::Vulkan1_2 as u32,
     );
-    compile_options.set_optimization_level(shaderc::OptimizationLevel::Performance);
+
+    // Wgpu validation doesn't like this
+    // compile_options.set_optimization_level(shaderc::OptimizationLevel::Performance);
+
     compile_options.set_generate_debug_info();
 
     match shader_type {
