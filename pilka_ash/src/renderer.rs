@@ -1,9 +1,9 @@
 mod images;
 mod screenshot;
 
-use pilka_types::{Frame, ImageDimentions, ShaderCreateInfo};
+use pilka_types::{dispatch_optimal_size, Frame, ImageDimentions, ShaderCreateInfo};
 
-use crate::pvk::{utils::return_aligned, *};
+use crate::pvk::*;
 use ash::{
     prelude::VkResult,
     vk::{self, Extent3D, SubresourceLayout},
@@ -209,7 +209,7 @@ impl<'a> AshRender<'a> {
         RendererInfo {
             device_name: self.get_device_name().unwrap().to_string(),
             device_type: self.get_device_type().to_string(),
-            vendor_name: self.get_device_name().unwrap().to_string(),
+            vendor_name: self.get_vendor_name().to_string(),
             vulkan_version_name: self.get_vulkan_version_name().unwrap().to_string(),
         }
     }
@@ -718,11 +718,11 @@ impl<'a> AshRender<'a> {
                                 &[],
                             );
 
-                            const ALIGN: u32 = 16;
+                            const SUBGROUP_SIZE: u32 = 16;
                             self.device.cmd_dispatch(
                                 cmd_buf,
-                                return_aligned(extent.width, ALIGN) / ALIGN,
-                                return_aligned(extent.height, ALIGN) / ALIGN,
+                                dispatch_optimal_size(extent.width, SUBGROUP_SIZE),
+                                dispatch_optimal_size(extent.height, SUBGROUP_SIZE),
                                 1,
                             );
                         }

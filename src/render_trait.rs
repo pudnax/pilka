@@ -321,9 +321,7 @@ impl Renderer for RenderBundleStatic<'_> {
     fn render(&mut self, push_constant: &[u8]) -> Result<()> {
         self.get_active_mut().render(push_constant)
     }
-    fn capture_frame(
-        &mut self,
-    ) -> std::result::Result<(&[u8], pilka_types::ImageDimentions), eyre::Report> {
+    fn capture_frame(&mut self) -> Result<Frame> {
         self.get_active_mut().capture_frame()
     }
     fn captured_frame_dimentions(&self) -> ImageDimentions {
@@ -389,8 +387,7 @@ impl Renderer for pilka_wgpu::WgpuRender {
     }
 
     fn capture_frame(&mut self) -> Result<Frame> {
-        let (data, dim) = self.capture_frame()?;
-        Ok((&data, dim))
+        Ok(self.capture_frame()?)
     }
 
     fn captured_frame_dimentions(&self) -> ImageDimentions {

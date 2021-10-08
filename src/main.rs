@@ -295,7 +295,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             eprintln!("Capture image: {:#?}", now.elapsed());
                             // let frame = &pilka.screenshot_ctx.data
                             //     [..image_dimentions.padded_bytes_per_row * image_dimentions.height];
-                            save_screenshot(frame.to_vec(), image_dimentions); // .join().unwrap();
+                            save_screenshot(frame, image_dimentions); // .join().unwrap();
                         }
 
                         if has_ffmpeg && VirtualKeyCode::F12 == keycode {
@@ -337,7 +337,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 start_event.try_send(()).ok();
                 if video_recording {
                     let (frame, _image_dimentions) = render.capture_frame().unwrap();
-                    video_tx.send(RecordEvent::Record(frame.to_vec())).unwrap()
+                    video_tx.send(RecordEvent::Record(frame)).unwrap()
                 }
                 push_constant.frame += 1;
             }
