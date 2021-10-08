@@ -378,6 +378,7 @@ impl WgpuRender {
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
+                force_fallback_adapter: false,
                 compatible_surface: Some(&surface),
             })
             .await
@@ -633,7 +634,15 @@ impl WgpuRender {
     }
 
     pub fn render(&self, push_constant: &[u8]) -> Result<(), wgpu::SurfaceError> {
-        let frame = self.surface.get_current_frame()?.output;
+        let frame = match self.surface.get_current_texture() {
+            Ok(frame) => frame,
+            Err(_) => {
+                self.surface.configure(&self.device, &self.surface_config);
+                self.surface
+                    .get_current_texture()
+                    .expect("Failed to acquire next surface texture")
+            }
+        };
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -705,8 +714,11 @@ impl WgpuRender {
         self.screenshot_ctx.image_dimentions
     }
 
-    pub fn capture_frame(&mut self) -> Result<(BufferView, ImageDimentions), wgpu::SurfaceError> {
-        let src_texture = self.surface.get_current_frame()?.output;
+    pub fn capture_frame(&mut self) -> Result<Frame, wgpu::SurfaceError> {
+        let src_texture = self.surface.get_current_texture()?;
+        let src_texture_view = src_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
         Ok(self
             .screenshot_ctx
             .capture_frame(&self.device, &self.queue, &src_texture.texture))
