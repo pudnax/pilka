@@ -286,6 +286,9 @@ fn create_textures(
 }
 
 pub struct WgpuRender {
+    // FIXME: I get validation error if this field below adapter
+    screenshot_ctx: ScreenshotCtx,
+
     adapter: Adapter,
     pub device: Device,
     pub surface: Surface,
@@ -304,8 +307,6 @@ pub struct WgpuRender {
     sampled_texture_bind_group: BindGroup,
     storage_texture_bind_group: BindGroup,
     sampler_bind_group: BindGroup,
-
-    screenshot_ctx: ScreenshotCtx,
 
     pub paused: bool,
 }
@@ -446,6 +447,8 @@ impl WgpuRender {
         let screenshot_ctx = ScreenshotCtx::new(&device, width, height);
 
         Ok(Self {
+            screenshot_ctx,
+
             adapter,
             device,
             surface,
@@ -464,8 +467,6 @@ impl WgpuRender {
             sampled_texture_bind_group,
             storage_texture_bind_group,
             sampler_bind_group,
-
-            screenshot_ctx,
 
             paused: false,
         })
@@ -567,20 +568,18 @@ impl WgpuRender {
         vs: ShaderCreateInfo,
         fs: ShaderCreateInfo,
     ) -> Result<Pipeline> {
-        let vs_module = unsafe {
-            self.device
-                .create_shader_module_spirv(&wgpu::ShaderModuleDescriptorSpirV {
-                    label: Some("VS"),
-                    source: vs.data.into(),
-                })
-        };
-        let fs_module = unsafe {
-            self.device
-                .create_shader_module_spirv(&wgpu::ShaderModuleDescriptorSpirV {
-                    label: Some("FS"),
-                    source: fs.data.into(),
-                })
-        };
+        let fs_module = self
+            .device
+            .create_shader_module(&wgpu::ShaderModuleDescriptor {
+                label: Some("FS"),
+                source: wgpu::ShaderSource::SpirV(fs.data.into()),
+            });
+        let vs_module = self
+            .device
+            .create_shader_module(&wgpu::ShaderModuleDescriptor {
+                label: Some("VS"),
+                source: wgpu::ShaderSource::SpirV(vs.data.into()),
+            });
 
         let pipeline_layout = self
             .device
@@ -619,7 +618,6 @@ impl WgpuRender {
                     mask: !0,
                     alpha_to_coverage_enabled: false,
                 },
-
                 fragment: Some(wgpu::FragmentState {
                     module: &fs_module,
                     entry_point: fs.entry_point.to_str().unwrap(),
@@ -710,6 +708,8 @@ impl WgpuRender {
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
+
+        frame.present();
 
         Ok(())
     }

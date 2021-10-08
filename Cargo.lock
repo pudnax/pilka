@@ -1305,25 +1305,6 @@ dependencies = [
 
 [[package]]
 name = "naga"
-version = "0.6.0"
-source = "git+https://github.com/gfx-rs/naga?branch=master#2e73e486570e62171058bbfe88a69f2de50997ad"
-dependencies = [
- "bit-set",
- "bitflags",
- "codespan-reporting",
- "fxhash",
- "hexf-parse",
- "indexmap",
- "log",
- "num-traits",
- "petgraph",
- "pp-rs",
- "spirv",
- "thiserror",
-]
-
-[[package]]
-name = "naga"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "032288733590c094012e5f1dec15848be90015bb9b3fd16743d84ea582c4154a"
@@ -1712,7 +1693,6 @@ dependencies = [
  "color-eyre",
  "env_logger",
  "futures",
- "naga 0.6.0",
  "notify",
  "pilka_types",
  "raw-window-handle",
@@ -1769,15 +1749,6 @@ name = "pollster"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb20dcc30536a1508e75d47dd0e399bb2fe7354dcf35cda9127f2bf1ed92e30e"
-
-[[package]]
-name = "pp-rs"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb458bb7f6e250e6eb79d5026badc10a3ebb8f9a15d1fff0f13d17c71f4d6dee"
-dependencies = [
- "unicode-xid",
-]
 
 [[package]]
 name = "primal-check"
@@ -2419,7 +2390,7 @@ dependencies = [
  "arrayvec",
  "js-sys",
  "log",
- "naga 0.7.0",
+ "naga",
  "parking_lot",
  "raw-window-handle",
  "smallvec",
@@ -2443,7 +2414,7 @@ dependencies = [
  "copyless",
  "fxhash",
  "log",
- "naga 0.7.0",
+ "naga",
  "parking_lot",
  "profiling",
  "raw-window-handle",
@@ -2477,7 +2448,7 @@ dependencies = [
  "libloading 0.7.0",
  "log",
  "metal",
- "naga 0.7.0",
+ "naga",
  "objc",
  "parking_lot",
  "profiling",
