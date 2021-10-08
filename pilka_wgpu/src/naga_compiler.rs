@@ -32,7 +32,6 @@ impl ShaderCompiler {
         path: impl AsRef<Path>,
         stage: naga::ShaderStage,
     ) -> Option<Cow<str>> {
-        dbg!("Hello?");
         let file = || std::fs::read_to_string(&path).unwrap();
         let module = match path.as_ref().extension() {
             Some(ext) => match ext.to_str() {
@@ -92,7 +91,6 @@ impl ShaderCompiler {
         match self.wgsl.parse(source.as_ref()) {
             Ok(m) => Some(m),
             Err(e) => {
-                dbg!(&e);
                 e.emit_to_stderr(source.as_ref());
                 return None;
             }
@@ -103,7 +101,6 @@ impl ShaderCompiler {
         source: impl AsRef<str>,
         stage: naga::ShaderStage,
     ) -> Option<Module> {
-        dbg!("boop");
         match self
             .glsl
             .parse(&glsl::Options::from(stage), source.as_ref())

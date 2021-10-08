@@ -12,19 +12,17 @@ categories = ["graphics", "rendering"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[[bin]]
-name = "run"
-path = "src/bin/run.rs"
-
 [dependencies]
 wgpu = { version =  "0.11.0", features = ["spirv"] }
 raw-window-handle = "0.3.3"
-winit = "0.25.0"
 bytemuck = { version = "1.7.2", features = ["derive"] }
 color-eyre = "0.5.11"
 env_logger = "0.9.0"
-naga = { git = "https://github.com/gfx-rs/naga", branch = "master", features = ["glsl-in",
-    "wgsl-in", "spv-in", "span", "spv-out", "wgsl-out", "glsl-validate"] }
+# naga = { git = "https://github.com/gfx-rs/naga", branch = "master", features = ["glsl-in",
+#     "wgsl-in", "spv-in", "span", "spv-out", "wgsl-out", "glsl-validate"] }
+pilka_types = { version = "0.1.0", path = "../pilka_types" }
+
+[dev-dependencies]
+winit = "0.25.0"
 notify = "5.0.0-pre.13"
 futures = "0.3.17"
-pilka_types = { version = "0.1.0", path = "../pilka_types" }
