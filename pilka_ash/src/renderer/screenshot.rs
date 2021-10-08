@@ -1,6 +1,6 @@
 use super::images::VkImage;
 use crate::{
-    pvk::{utils::return_aligned, VkCommandPool, VkDevice, VkDeviceProperties},
+    pvk::{VkCommandPool, VkDevice, VkDeviceProperties},
     VkQueue,
 };
 use ash::{
@@ -36,7 +36,7 @@ impl<'a> ScreenshotCtx<'a> {
         let fence = device.create_fence(false)?;
         let extent = vk::Extent3D {
             width: extent.width,
-            height: return_aligned(extent.height, 2),
+            height: extent.height + extent.height % 2,
             depth: 1,
         };
 
@@ -138,7 +138,7 @@ impl<'a> ScreenshotCtx<'a> {
         mut extent: vk::Extent3D,
     ) -> VkResult<()> {
         if self.extent != extent {
-            extent.height = return_aligned(extent.height, 2);
+            extent.height = extent.height + extent.height % 2;
             self.extent = extent;
 
             unsafe { device.destroy_image(self.image.image, None) };
@@ -343,7 +343,10 @@ impl<'a> ScreenshotCtx<'a> {
 
         let (subresource_layout, image_dimentions) = self.image_dimentions(device);
 
-        Ok((&self.data[..subresource_layout.size as _], image_dimentions))
+        Ok((
+            self.data[..subresource_layout.size as _].to_vec(),
+            image_dimentions,
+        ))
     }
 
     pub fn image_dimentions(&self, device: &VkDevice) -> (SubresourceLayout, ImageDimentions) {

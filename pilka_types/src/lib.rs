@@ -8,7 +8,12 @@ use std::{
     path::PathBuf,
 };
 
-pub type Frame<'a> = (&'a [u8], ImageDimentions);
+pub fn dispatch_optimal_size(len: u32, subgroup_size: u32) -> u32 {
+    let padded_size = (subgroup_size - len % subgroup_size) % subgroup_size;
+    (len + padded_size) / subgroup_size
+}
+
+pub type Frame = (Vec<u8>, ImageDimentions);
 
 pub enum ShaderData {
     Render { vert: Vec<u32>, frag: Vec<u32> },

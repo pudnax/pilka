@@ -1,18 +1,22 @@
-mod capturer;
+mod screenshot;
 
 use std::{fmt::Display, ops::Index, path::PathBuf};
 
-use pilka_types::{ContiniousHashMap, ImageDimentions, ShaderCreateInfo};
+use pilka_types::{
+    dispatch_optimal_size, ContiniousHashMap, Frame, ImageDimentions, ShaderCreateInfo,
+};
 
 use color_eyre::Result;
 use raw_window_handle::HasRawWindowHandle;
 use wgpu::{
-    Adapter, BindGroup, BindGroupLayout, BindGroupLayoutDescriptor, BufferView, ComputePipeline,
-    Device, PrimitiveState, PrimitiveTopology, Queue, RenderPipeline, Surface,
-    SurfaceConfiguration, Texture, TextureFormat, TextureView,
+    Adapter, BindGroup, BindGroupLayout, BindGroupLayoutDescriptor, ComputePipeline, Device,
+    PrimitiveState, PrimitiveTopology, Queue, RenderPipeline, Surface, Texture, TextureFormat,
+    TextureView,
 };
 
-use self::capturer::ScreenshotCtx;
+use screenshot::ScreenshotCtx;
+
+pub(crate) const SUBGROUP_SIZE: u32 = 16;
 
 pub enum Pipeline {
     Render(RenderPipeline),
@@ -285,6 +289,7 @@ pub struct WgpuRender {
     adapter: Adapter,
     pub device: Device,
     pub surface: Surface,
+    surface_config: wgpu::SurfaceConfiguration,
     queue: Queue,
     pipelines: Vec<Pipeline>,
     pub shader_set: ContiniousHashMap<PathBuf, usize>,
@@ -406,16 +411,14 @@ impl WgpuRender {
         };
 
         // FIXME: `configure` Doesn't mutate surface?
-        surface.configure(
-            &device,
-            &SurfaceConfiguration {
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-                format,
-                width: extent.width,
-                height: extent.height,
-                present_mode: wgpu::PresentMode::Fifo,
-            },
-        );
+        let surface_config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            format,
+            width: extent.width,
+            height: extent.height,
+            present_mode: wgpu::PresentMode::Fifo,
+        };
+        surface.configure(&device, &surface_config);
 
         let (textures, texture_views, sampled_texture_bind_group, storage_texture_bind_group) =
             create_textures(&device, extent);
@@ -446,6 +449,7 @@ impl WgpuRender {
             adapter,
             device,
             surface,
+            surface_config,
             pipelines: Vec::new(),
             shader_set: ContiniousHashMap::new(),
             queue,
@@ -468,30 +472,27 @@ impl WgpuRender {
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        if width > 0 && height > 0 {
-            self.extent = wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            };
-            self.surface.configure(
-                &self.device,
-                &wgpu::SurfaceConfiguration {
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-                    format: self.format,
-                    width,
-                    height,
-                    present_mode: wgpu::PresentMode::Fifo,
-                },
-            );
-            let (textures, texture_views, sampled_texture_bind_group, storage_texture_bind_group) =
-                create_textures(&self.device, self.extent);
-
-            self.textures = textures;
-            self.texture_views = texture_views;
-            self.sampled_texture_bind_group = sampled_texture_bind_group;
-            self.storage_texture_bind_group = storage_texture_bind_group;
+        if self.extent.width == width && self.extent.height == height {
+            return;
         }
+
+        self.extent = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        self.surface_config.width = width;
+        self.surface_config.height = height;
+        self.surface.configure(&self.device, &self.surface_config);
+        let (textures, texture_views, sampled_texture_bind_group, storage_texture_bind_group) =
+            create_textures(&self.device, self.extent);
+
+        self.textures = textures;
+        self.texture_views = texture_views;
+        self.sampled_texture_bind_group = sampled_texture_bind_group;
+        self.storage_texture_bind_group = storage_texture_bind_group;
+
+        self.screenshot_ctx.resize(&self.device, width, height);
     }
 
     pub fn push_compute_pipeline(&mut self, comp: ShaderCreateInfo) -> Result<()> {
@@ -698,8 +699,11 @@ impl WgpuRender {
                     compute_pass.set_pipeline(pipeline);
                     compute_pass.set_push_constants(0, push_constant);
                     compute_pass.set_bind_group(0, &self.storage_texture_bind_group, &[]);
-                    // FIXME
-                    compute_pass.dispatch(0, 0, 0);
+                    compute_pass.dispatch(
+                        dispatch_optimal_size(self.extent.width, SUBGROUP_SIZE),
+                        dispatch_optimal_size(self.extent.height, SUBGROUP_SIZE),
+                        1,
+                    );
                 }
                 Pipeline::Compute { .. } => {}
             }
@@ -721,7 +725,7 @@ impl WgpuRender {
             .create_view(&wgpu::TextureViewDescriptor::default());
         Ok(self
             .screenshot_ctx
-            .capture_frame(&self.device, &self.queue, &src_texture.texture))
+            .capture_frame(&self.device, &self.queue, &src_texture_view))
     }
 
     pub fn wait_idle(&self) {
