@@ -2,6 +2,7 @@ mod screenshot;
 
 use std::{fmt::Display, ops::Index, path::PathBuf};
 
+use futures::executor::block_on;
 use pilka_types::{
     dispatch_optimal_size, ContiniousHashMap, Frame, ImageDimentions, ShaderCreateInfo,
 };
@@ -371,7 +372,7 @@ impl WgpuRender {
         }
     }
 
-    pub async fn new(
+    pub fn new(
         window: &impl HasRawWindowHandle,
         push_constant_ranges: u32,
         width: u32,
@@ -381,29 +382,26 @@ impl WgpuRender {
 
         let surface = unsafe { instance.create_surface(window) };
 
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                force_fallback_adapter: false,
-                compatible_surface: Some(&surface),
-            })
-            .await
-            .unwrap();
+        let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: Some(&surface),
+        }))
+        .unwrap();
 
         let format = surface.get_preferred_format(&adapter).unwrap();
         // let format = wgpu::TextureFormat::Bgra8Unorm;
         let limits = adapter.limits();
         let features = adapter.features();
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("Device"),
-                    limits,
-                    features,
-                },
-                None,
-            )
-            .await?;
+        let trace_dir = std::env::var("WGPU_TRACE");
+        let (device, queue) = block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("Device"),
+                limits,
+                features,
+            },
+            trace_dir.ok().as_ref().map(std::path::Path::new),
+        ))?;
 
         let extent = wgpu::Extent3d {
             width,
@@ -420,7 +418,6 @@ impl WgpuRender {
             height: extent.height,
             present_mode: wgpu::PresentMode::Fifo,
         };
-        surface.configure(&device, &surface_config);
 
         let (textures, texture_views, sampled_texture_bind_group, storage_texture_bind_group) =
             create_textures(&device, extent);

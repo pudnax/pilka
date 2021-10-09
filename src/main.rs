@@ -30,7 +30,6 @@ use winit::{
     dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
-    platform::unix::WindowBuilderExtUnix,
     window::WindowBuilder,
 };
 
@@ -56,6 +55,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut window_builder = WindowBuilder::new().with_title("Pilka");
         #[cfg(unix)]
         {
+            use winit::platform::unix::WindowBuilderExtUnix;
             window_builder =
                 window_builder.with_resize_increments(LogicalSize::<u32>::from((8, 2)));
         }
@@ -70,11 +70,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let PhysicalSize { width, height } = window.inner_size();
-    let mut render = pollster::block_on(RenderBundleStatic::new(
-        &window,
-        PushConstant::size(),
-        (width, height),
-    ))?;
+    let mut render = RenderBundleStatic::new(&window, PushConstant::size(), (width, height))?;
 
     let shader_dir = PathBuf::new().join(SHADER_PATH);
 
@@ -151,9 +147,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         push_constant.record_period = period.as_secs_f32();
     }
 
+    let mut last_update_inst = Instant::now();
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
         match event {
+            Event::RedrawEventsCleared => {
+                let target_frametime = Duration::from_secs_f64(1.0 / 60.0);
+                let time_since_last_frame = last_update_inst.elapsed();
+                if time_since_last_frame >= target_frametime {
+                    window.request_redraw();
+                    last_update_inst = Instant::now();
+                } else {
+                    *control_flow = ControlFlow::WaitUntil(
+                        Instant::now() + target_frametime - time_since_last_frame,
+                    );
+                }
+            }
             Event::NewEvents(_) => {
                 if let Ok(rx_event) = rx.try_recv() {
                     if let notify::Event {
@@ -211,18 +221,40 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .update(&mut video_recording, render.captured_frame_dimentions())
                     .unwrap();
             }
+            Event::WindowEvent {
+                event:
+                    WindowEvent::Resized(size)
+                    | WindowEvent::ScaleFactorChanged {
+                        new_inner_size: &mut size,
+                        ..
+                    },
+                ..
+            } => {
+                println!();
+                println!("Come from here");
+                let PhysicalSize { width, height } = size;
+
+                render.resize(width.max(1), height.max(1)).unwrap();
+
+                if video_recording {
+                    println!("Stop recording. Resolution has been changed.",);
+                    video_recording = false;
+                    video_tx.send(RecordEvent::Finish).unwrap();
+                }
+            }
 
             Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                WindowEvent::Resized(PhysicalSize { width, height }) => {
-                    Renderer::resize(&mut render, width, height).unwrap();
+                WindowEvent::CloseRequested
+                | WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            virtual_keycode: Some(VirtualKeyCode::Escape),
+                            state: ElementState::Pressed,
+                            ..
+                        },
+                    ..
+                } => *control_flow = ControlFlow::Exit,
 
-                    if video_recording {
-                        println!("Stop recording. Resolution has been changed.",);
-                        video_recording = false;
-                        video_tx.send(RecordEvent::Finish).unwrap();
-                    }
-                }
                 WindowEvent::KeyboardInput {
                     input:
                         KeyboardInput {
@@ -330,7 +362,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 _ => {}
             },
 
-            Event::MainEventsCleared => {
+            Event::RedrawRequested(_) => {
                 render.render(push_constant.as_slice()).unwrap();
                 start_event.try_send(()).ok();
                 if video_recording {
