@@ -77,7 +77,7 @@ impl<'a> RenderBundleStatic<'a> {
         push_constant_range: u32,
         (width, height): (u32, u32),
     ) -> Result<RenderBundleStatic<'a>> {
-        let kind = match false {
+        let kind = match true {
             true => {
                 Backend::Wgpu(WgpuRender::new(window, push_constant_range, width, height).await?)
             }

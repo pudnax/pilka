@@ -411,9 +411,10 @@ impl WgpuRender {
             depth_or_array_layers: 1,
         };
 
-        // FIXME: `configure` Doesn't mutate surface?
         let surface_config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::TEXTURE_BINDING,
             format,
             width: extent.width,
             height: extent.height,
