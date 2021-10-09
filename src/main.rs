@@ -293,8 +293,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let now = Instant::now();
                             let (frame, image_dimentions) = render.capture_frame().unwrap();
                             eprintln!("Capture image: {:#?}", now.elapsed());
-                            // let frame = &pilka.screenshot_ctx.data
-                            //     [..image_dimentions.padded_bytes_per_row * image_dimentions.height];
                             save_screenshot(frame, image_dimentions); // .join().unwrap();
                         }
 
