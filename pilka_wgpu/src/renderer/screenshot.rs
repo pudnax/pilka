@@ -37,15 +37,15 @@ pub struct ScreenshotCtx {
     dst_texture_bind_group_layout: wgpu::BindGroupLayout,
     binding_resources: Option<BindingResources>,
 
-    uniforms: Uniforms,
-    uniform_buffer: wgpu::Buffer,
+    // uniforms: Uniforms,
+    // uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
 
     data: wgpu::Buffer,
 }
 
 impl ScreenshotCtx {
-    pub const DST_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+    pub const DST_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
     pub fn resize(&mut self, device: &Device, width: u32, height: u32) {
         let new_dims = ImageDimentions::new(width, height, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
@@ -237,7 +237,7 @@ impl ScreenshotCtx {
             label: Some("Screen mapped Buffer"),
             size: image_dimentions.linear_size(),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: true,
+            mapped_at_creation: false,
         });
 
         Self {
@@ -248,8 +248,8 @@ impl ScreenshotCtx {
             dst_texture_bind_group_layout,
             binding_resources: None,
 
-            uniforms,
-            uniform_buffer,
+            // uniforms,
+            // uniform_buffer,
             uniform_bind_group,
 
             data,
@@ -294,28 +294,25 @@ impl ScreenshotCtx {
             );
         }
 
-        let source = wgpu::ImageCopyTexture {
-            texture: &binding_resources.dst_texture,
-            mip_level: 1,
-            origin: wgpu::Origin3d { x: 0, y: 0, z: 0 },
-            aspect: wgpu::TextureAspect::All,
-        };
-        let destination = wgpu::ImageCopyBuffer {
-            buffer: &self.data,
-            layout: wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(
-                    NonZeroU32::new(self.image_dimentions.padded_bytes_per_row).unwrap(),
-                ),
-                rows_per_image: Some(NonZeroU32::new(self.image_dimentions.height).unwrap()),
-            },
-        };
         let copy_size = wgpu::Extent3d {
             width: self.image_dimentions.width,
             height: self.image_dimentions.height,
             depth_or_array_layers: 1,
         };
-        encoder.copy_texture_to_buffer(source, destination, copy_size);
+        encoder.copy_texture_to_buffer(
+            binding_resources.dst_texture.as_image_copy(),
+            wgpu::ImageCopyBuffer {
+                buffer: &self.data,
+                layout: wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(
+                        NonZeroU32::new(self.image_dimentions.padded_bytes_per_row).unwrap(),
+                    ),
+                    rows_per_image: None,
+                },
+            },
+            copy_size,
+        );
 
         queue.submit(std::iter::once(encoder.finish()));
 
