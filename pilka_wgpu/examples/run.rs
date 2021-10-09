@@ -1,18 +1,16 @@
 use color_eyre::*;
 use notify::Config;
 use notify::{event::EventKind, RecursiveMode, Watcher};
-use pilka_types::{ShaderCreateInfo, ShaderInfo};
-use std::ffi::{CStr, CString};
-use std::mem::size_of;
-use std::path::{Path, PathBuf};
+use pilka_types::ShaderCreateInfo;
+use std::ffi::CString;
+use std::path::Path;
+use std::time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
     window::WindowBuilder,
 };
-
-const SHADER_PATH: &str = "shaders";
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -31,14 +29,13 @@ fn main() -> Result<()> {
         height,
     ))?;
 
-    let shader_f = wgpu::util::make_spirv_raw(include_bytes!("frag.spv"));
-    let shader_v = wgpu::util::make_spirv_raw(include_bytes!("vert.spv"));
+    let shader_v = wgpu::util::make_spirv_raw(include_bytes!("shader.vert.spv"));
+    let shader_f = wgpu::util::make_spirv_raw(include_bytes!("shader.frag.spv"));
 
     let entry_point = CString::new("main").unwrap();
-    dbg!(&entry_point);
     state.push_render_pipeline(
-        ShaderCreateInfo::new(&shader_f, entry_point.as_c_str()),
         ShaderCreateInfo::new(&shader_v, entry_point.as_c_str()),
+        ShaderCreateInfo::new(&shader_f, entry_point.as_c_str()),
     )?;
 
     let (tx, rx) = std::sync::mpsc::channel();
@@ -49,9 +46,12 @@ fn main() -> Result<()> {
             eprintln!("Watch error: {:?}", e)
         }
     })?;
-    watcher.watch(Path::new(SHADER_PATH), RecursiveMode::Recursive)?;
+    watcher.watch(Path::new("./"), RecursiveMode::Recursive)?;
     watcher.configure(Config::PreciseEvents(true))?;
     watcher.configure(Config::NoticeEvents(false))?;
+
+    let mut push_constant = PushConstant::default();
+    let time = Instant::now();
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -73,6 +73,8 @@ fn main() -> Result<()> {
                         // };
                     }
                 }
+
+                push_constant.time = time.elapsed().as_secs_f32();
             }
             // Event::DeviceEvent { device_id, event } => {}
             Event::WindowEvent { window_id, event } if window_id == window.id() => match event {
@@ -88,6 +90,7 @@ fn main() -> Result<()> {
                 } => *control_flow = ControlFlow::Exit,
                 WindowEvent::Resized(PhysicalSize { width, height }) => {
                     state.resize(width, height);
+                    push_constant.wh = [width as _, height as _];
                 }
                 WindowEvent::ScaleFactorChanged {
                     new_inner_size: PhysicalSize { width, height },
@@ -96,10 +99,7 @@ fn main() -> Result<()> {
                 _ => {}
             },
             Event::MainEventsCleared => {
-                match state.render(&[0; size_of::<PushConstant>()]) {
-                    Ok(_) => {}
-                    Err(_) => {}
-                };
+                if state.render(push_constant.as_slice()).is_ok() {};
             }
             Event::LoopDestroyed => {}
             _ => {}
@@ -121,8 +121,8 @@ pub struct PushConstant {
 }
 
 impl PushConstant {
-    unsafe fn as_slice(&self) -> &[u8] {
-        any_as_u8_slice(self)
+    fn as_slice(&self) -> &[u8] {
+        unsafe { any_as_u8_slice(self) }
     }
 
     pub fn size() -> u32 {
