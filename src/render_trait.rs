@@ -57,6 +57,7 @@ pub trait Renderer {
     fn shut_down(&self) {}
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum Backend<'a> {
     Ash(AshRender<'a>),
     Wgpu(WgpuRender),
@@ -72,15 +73,13 @@ pub struct RenderBundleStatic<'a> {
 }
 
 impl<'a> RenderBundleStatic<'a> {
-    pub async fn new(
+    pub fn new(
         window: &impl HasRawWindowHandle,
         push_constant_range: u32,
         (width, height): (u32, u32),
     ) -> Result<RenderBundleStatic<'a>> {
         let kind = match true {
-            true => {
-                Backend::Wgpu(WgpuRender::new(window, push_constant_range, width, height).await?)
-            }
+            true => Backend::Wgpu(WgpuRender::new(window, push_constant_range, width, height)?),
             false => Backend::Ash(AshRender::new(window, push_constant_range).unwrap()),
         };
         Ok(Self {
@@ -248,9 +247,7 @@ impl<'a> RenderBundleStatic<'a> {
 
         self.kind = match kind {
             Kind::Ash => Some(Backend::Wgpu(
-                WgpuRender::new(window, self.push_constant_range, self.wh.0, self.wh.1)
-                    .await
-                    .unwrap(),
+                WgpuRender::new(window, self.push_constant_range, self.wh.0, self.wh.1).unwrap(),
             )),
             Kind::Wgpu => Some(Backend::Ash(
                 AshRender::new(window, self.push_constant_range).unwrap(),

@@ -21,8 +21,8 @@ env_logger = "0.9.0"
 # naga = { git = "https://github.com/gfx-rs/naga", branch = "master", features = ["glsl-in",
 #     "wgsl-in", "spv-in", "span", "spv-out", "wgsl-out", "glsl-validate"] }
 pilka_types = { version = "0.1.0", path = "../pilka_types" }
+futures = "0.3.17"
 
 [dev-dependencies]
 winit = "0.25.0"
 notify = "5.0.0-pre.13"
-futures = "0.3.17"
