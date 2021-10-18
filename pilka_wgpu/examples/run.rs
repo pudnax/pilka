@@ -22,12 +22,7 @@ fn main() -> Result<()> {
         .build(&event_loop)?;
 
     let PhysicalSize { width, height } = window.inner_size();
-    let mut state = futures::executor::block_on(pilka_wgpu::WgpuRender::new(
-        &window,
-        PushConstant::size(),
-        width,
-        height,
-    ))?;
+    let mut state = pilka_wgpu::WgpuRender::new(&window, PushConstant::size(), width, height)?;
 
     let shader_v = wgpu::util::make_spirv_raw(include_bytes!("shader.vert.spv"));
     let shader_f = wgpu::util::make_spirv_raw(include_bytes!("shader.frag.spv"));

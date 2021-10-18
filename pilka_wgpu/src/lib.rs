@@ -20,4 +20,6 @@
 
 mod renderer;
 
+mod reshaper;
+
 pub use renderer::WgpuRender;

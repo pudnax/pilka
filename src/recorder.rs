@@ -124,6 +124,7 @@ pub fn record_thread(rx: crossbeam_channel::Receiver<RecordEvent>) {
     let mut process = None;
 
     // TODO: try resv
+        // TODO: introduce timeout
     while let Ok(event) = rx.recv() {
         match event {
             RecordEvent::Start(image_dimentions) => {

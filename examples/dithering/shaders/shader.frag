@@ -88,15 +88,15 @@ vec2 ray_march2(vec3 rayPos, vec3 rayDir, float t) {
 void main() {
     vec2 uv = (in_uv + -0.5) * 2.0 / vec2(pc.resolution.y / pc.resolution.x, 1);
 
-	float t = pc.time / 5;
-	vec3 O = vec3(0.0, 0.0, 4.0);
-	vec3 D = normalize(vec3(uv, -2.));
-	vec3 color = vec3(0);
+    float t = pc.time / 5;
+    vec3 O = vec3(0.0, 0.0, 4.0);
+    vec3 D = normalize(vec3(uv, -2.));
+    vec3 color = vec3(0);
 
     for (int i = 0; i < 3; i++) {
-	vec2 rm = ray_march2(O, D, t);
+        vec2 rm = ray_march2(O, D, t);
         float d = rm[0];
-        vec3 light = vec3(10,0,0);
+        vec3 light = vec3(10, 0, 0);
         vec3 p = O + D * d;
         if (d > MAX_DIST) {
             vec3 n = wnormal(p);
@@ -104,15 +104,12 @@ void main() {
             vec2 rayMarchLight = ray_march2(p + dirToLight * .06, dirToLight, t);
             float distToObstable = rayMarchLight.x;
             float distToLight = length(light - p);
-                color[i] = .5 * (dot(n, normalize(light - p))) + .5;
-                color[i] = step(
-                    texture(float_texture1, (in_uv + 4.*float(i))/2.).x,
-                    color[i]
-                );
-            } else {
-		float tex = texture(float_texture1, (in_uv + 8.*float(1))/32.).x * 0.03;
-		color = max(color, vec3(tex));
-            }
+            color[i] = .5 * (dot(n, normalize(light - p))) + .5;
+            color[i] = step(texture(float_texture1, (in_uv + 4. * float(i)) / 2.).x, color[i]);
+        } else {
+            float tex = texture(float_texture1, (in_uv + 8. * float(1)) / 32.).x * 0.03;
+            color = max(color, vec3(tex));
+        }
         t += .011;
     }
 
