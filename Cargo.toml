@@ -2,7 +2,7 @@
 name = "pilka"
 version = "0.5.10"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
-edition = "2015"
+edition = "2021"
 license = "GPL-2.0-or-later"
 description = "Another live-coding tool for creating shaders demos."
 repository = "https://github.com/pudnax/pilka/"
