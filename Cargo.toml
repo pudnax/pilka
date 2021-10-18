@@ -28,7 +28,7 @@ pilka_wgpu = { version = "0.1.0", path = "pilka_wgpu" }
 pilka_types = { version = "0.1.0", path = "pilka_types" }
 notify = "5.0.0-pre.13"
 chrono = "0.4.19"
-png = "0.17.1"
+png = "0.17.2"
 cpal = "0.13.4"
 rustfft = "6.0.1"
 crossbeam-channel = "0.5.1"

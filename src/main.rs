@@ -325,7 +325,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let now = Instant::now();
                             let (frame, image_dimentions) = render.capture_frame().unwrap();
                             eprintln!("Capture image: {:#?}", now.elapsed());
-                            save_screenshot(frame, image_dimentions); // .join().unwrap();
+                            // TODO: Make new event in video_tx
+                            save_screenshot(frame, image_dimentions);
                         }
 
                         if has_ffmpeg && VirtualKeyCode::F12 == keycode {

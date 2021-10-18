@@ -79,8 +79,8 @@ impl ImageDimentions {
     pub fn new(width: u32, height: u32, align: u32) -> Self {
         let bytes_per_pixel = std::mem::size_of::<[u8; 4]>() as u32;
         let unpadded_bytes_per_row = width * bytes_per_pixel;
-        let padded_bytes_per_row_padding = (align - unpadded_bytes_per_row % align) % align;
-        let padded_bytes_per_row = unpadded_bytes_per_row + padded_bytes_per_row_padding;
+        let row_padding = (align - unpadded_bytes_per_row % align) % align;
+        let padded_bytes_per_row = unpadded_bytes_per_row + row_padding;
         Self {
             width,
             height,
