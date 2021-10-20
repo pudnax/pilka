@@ -1,19 +1,5 @@
 use wgpu::{BindGroup, Device, RenderPipeline};
 
-#[repr(C)]
-#[derive(Debug)]
-struct Uniforms {
-    samples: u32,
-}
-
-impl Uniforms {
-    fn as_slice(&self) -> &[u8] {
-        let len = std::mem::size_of::<Self>();
-        let ptr: *const Self = self;
-        unsafe { std::slice::from_raw_parts(ptr.cast(), len) }
-    }
-}
-
 pub struct Blitter {
     pipeline: RenderPipeline,
     sampler_bind_group: BindGroup,
@@ -23,10 +9,7 @@ impl Blitter {
     pub const DST_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
     pub fn new(device: &Device) -> Self {
-        let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
-            label: None,
-            source: wgpu::ShaderSource::Wgsl(include_str!("blit.wgsl").into()),
-        });
+        let shader = device.create_shader_module(&wgpu::include_wgsl!("blit.wgsl"));
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("blit"),
             layout: None,
@@ -88,13 +71,13 @@ impl Blitter {
             layout: &self.pipeline.get_bind_group_layout(1),
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::TextureView(&src_texture),
+                resource: wgpu::BindingResource::TextureView(src_texture),
             }],
         });
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Blit Pass"),
             color_attachments: &[wgpu::RenderPassColorAttachment {
-                view: &dst_texture,
+                view: dst_texture,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
