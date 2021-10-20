@@ -93,15 +93,6 @@ checksum = "be4dc07131ffa69b8072d35f5007352af944213cde02545e2103680baed38fcd"
 
 [[package]]
 name = "ash"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06063a002a77d2734631db74e8f4ce7148b77fe522e6bca46f2ae7774fd48112"
-dependencies = [
- "libloading 0.7.1",
-]
-
-[[package]]
-name = "ash"
 version = "0.33.3+1.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc4f1d82f164f838ae413296d1131aa6fa79b917d25bebaa7033d25620c09219"
@@ -111,12 +102,12 @@ dependencies = [
 
 [[package]]
 name = "ash-molten"
-version = "0.10.0+1.1.5"
+version = "0.11.0+1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0bf85d20c05e8cf9cc8c54577acc620d0c776fb8d8d771088690494a522d831"
+checksum = "cc956461ea460ef5bcb4d7449390653a40c871d776e098af156e421f2ec69b46"
 dependencies = [
  "anyhow",
- "ash 0.32.1",
+ "ash",
  "plist",
  "serde",
 ]
@@ -127,7 +118,7 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12f91ce4c6be1a2ba99d3d6cd57d5bae9ac6d6f903b5ae53d6b1dee2edf872af"
 dependencies = [
- "ash 0.33.3+1.2.191",
+ "ash",
  "raw-window-handle",
  "raw-window-metal",
 ]
@@ -1767,11 +1758,12 @@ dependencies = [
 name = "pilka_ash"
 version = "0.5.10"
 dependencies = [
- "ash 0.33.3+1.2.191",
+ "ash",
  "ash-molten",
  "ash-window",
  "ktx",
  "pilka_types",
+ "profiling",
  "raw-window-handle",
  "shaderc",
 ]
@@ -1900,6 +1892,19 @@ name = "profiling"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87dfd5592a8eed7e74f56ad7b125f8234763b805c30f0c7c95c486920026a6ec"
+dependencies = [
+ "profiling-procmacros",
+]
+
+[[package]]
+name = "profiling-procmacros"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9dc92bed14cc1433694b0ee18dfb3c219bf182019b0daf7b017f7a9f1e280ac"
+dependencies = [
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "quote"
@@ -2537,7 +2542,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79f51fedd4190ce4c3f953bfa5eed6e528b4c31922de5d441efa0999114572fc"
 dependencies = [
  "arrayvec",
- "ash 0.33.3+1.2.191",
+ "ash",
  "bit-set",
  "bitflags",
  "block",

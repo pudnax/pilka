@@ -131,6 +131,7 @@ impl<'a> ScreenshotCtx<'a> {
         }
     }
 
+    #[profiling::function]
     pub fn realloc(
         &mut self,
         device: &VkDevice,
@@ -221,6 +222,7 @@ impl<'a> ScreenshotCtx<'a> {
         Ok(())
     }
 
+    #[profiling::function]
     pub fn capture_frame(
         &mut self,
         device: &VkDevice,
@@ -289,6 +291,7 @@ impl<'a> ScreenshotCtx<'a> {
             .build()];
 
         unsafe {
+            profiling::scope!("Cmd Blit");
             device.cmd_blit_image(
                 copybuffer,
                 present_image,
@@ -301,6 +304,7 @@ impl<'a> ScreenshotCtx<'a> {
         };
 
         if let Some(ref blit_image) = self.blit_image {
+            profiling::scope!("Extra Copy");
             transport_barrier(
                 blit_image.image,
                 ImageLayout::UNDEFINED,
