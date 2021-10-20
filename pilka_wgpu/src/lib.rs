@@ -22,4 +22,6 @@ mod renderer;
 
 mod reshaper;
 
+mod blitter;
+
 pub use renderer::WgpuRender;

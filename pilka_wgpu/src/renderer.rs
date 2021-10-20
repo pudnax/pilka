@@ -1,23 +1,22 @@
 mod screenshot;
 
-use std::{fmt::Display, num::NonZeroU32, ops::Index, path::PathBuf};
+use std::{fmt::Display, ops::Index, path::PathBuf};
 
+use color_eyre::Result;
 use futures::executor::block_on;
 use pilka_types::{
     dispatch_optimal_size, ContiniousHashMap, Frame, ImageDimentions, ShaderCreateInfo,
 };
-
-use color_eyre::Result;
 use raw_window_handle::HasRawWindowHandle;
 use wgpu::{
     Adapter, BindGroup, BindGroupLayout, BindGroupLayoutDescriptor, ComputePipeline, Device,
-    Maintain, MapMode, PrimitiveState, PrimitiveTopology, Queue, RenderPipeline, Surface, Texture,
-    TextureFormat, TextureView,
+    PrimitiveState, PrimitiveTopology, Queue, RenderPipeline, Surface, Texture, TextureFormat,
+    TextureView,
 };
 
-use screenshot::ScreenshotCtx;
+use crate::blitter::Blitter;
 
-use crate::reshaper::Reshaper;
+use screenshot::ScreenshotCtx;
 
 pub(crate) const SUBGROUP_SIZE: u32 = 16;
 
@@ -235,6 +234,7 @@ fn create_textures(
             size: extent,
             usage: wgpu::TextureUsages::COPY_SRC
                 | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::TEXTURE_BINDING
                 | wgpu::TextureUsages::STORAGE_BINDING,
             mip_level_count: 1,
@@ -289,8 +289,6 @@ fn create_textures(
 }
 
 pub struct WgpuRender {
-    // FIXME: I get validation error if this field below adapter
-    // screenshot_ctx: ScreenshotCtx,
     adapter: Adapter,
     pub device: Device,
     pub surface: Surface,
@@ -310,7 +308,9 @@ pub struct WgpuRender {
     storage_texture_bind_group: BindGroup,
     sampler_bind_group: BindGroup,
 
-    // reshaper: Reshaper;
+    blitter: Blitter,
+    screenshot_ctx: ScreenshotCtx,
+
     pub paused: bool,
 }
 
@@ -445,9 +445,10 @@ impl WgpuRender {
             }],
         });
 
-        // let screenshot_ctx = ScreenshotCtx::new(&device, width, height);
+        let blitter = Blitter::new(&device);
+        let screenshot_ctx = ScreenshotCtx::new(&device, width, height);
+
         Ok(Self {
-            // screenshot_ctx,
             adapter,
             device,
             surface,
@@ -466,6 +467,9 @@ impl WgpuRender {
             sampled_texture_bind_group,
             storage_texture_bind_group,
             sampler_bind_group,
+
+            blitter,
+            screenshot_ctx,
 
             paused: false,
         })
@@ -492,7 +496,7 @@ impl WgpuRender {
         self.sampled_texture_bind_group = sampled_texture_bind_group;
         self.storage_texture_bind_group = storage_texture_bind_group;
 
-        // self.screenshot_ctx.resize(&self.device, width, height);
+        self.screenshot_ctx.resize(&self.device, width, height);
     }
 
     pub fn push_compute_pipeline(&mut self, comp: ShaderCreateInfo) -> Result<()> {
@@ -641,7 +645,7 @@ impl WgpuRender {
                     .expect("Failed to acquire next surface texture")
             }
         };
-        let view = frame
+        let frame_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -651,12 +655,6 @@ impl WgpuRender {
                 label: Some("Main Encoder"),
             });
 
-        encoder.copy_texture_to_texture(
-            frame.texture.as_image_copy(),
-            self.textures[0].as_image_copy(),
-            self.extent,
-        );
-
         for (i, pipeline) in self.pipelines.iter().enumerate() {
             match pipeline {
                 Pipeline::Render(ref pipeline) => {
@@ -664,15 +662,10 @@ impl WgpuRender {
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some(&label),
                         color_attachments: &[wgpu::RenderPassColorAttachment {
-                            view: &view,
+                            view: &frame_view,
                             resolve_target: None,
                             ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: 0.0,
-                                    g: 0.0,
-                                    b: 0.0,
-                                    a: 1.0,
-                                }),
+                                load: wgpu::LoadOp::Load,
                                 store: true,
                             },
                         }],
@@ -706,6 +699,13 @@ impl WgpuRender {
             }
         }
 
+        self.blitter.blit_to_texture(
+            &self.device,
+            &mut encoder,
+            &frame_view,
+            &self.texture_views[0],
+        );
+
         self.queue.submit(std::iter::once(encoder.finish()));
 
         frame.present();
@@ -714,146 +714,16 @@ impl WgpuRender {
     }
 
     pub fn screenshot_dimentions(&self) -> ImageDimentions {
-        // self.screenshot_ctx.image_dimentions
-        ImageDimentions::new(
-            self.extent.width,
-            self.extent.height,
-            wgpu::COPY_BYTES_PER_ROW_ALIGNMENT,
-        )
+        self.screenshot_ctx.image_dimentions
     }
 
     pub fn capture_frame(&mut self) -> Result<Frame, wgpu::SurfaceError> {
-        let src_texture = self.surface.get_current_texture()?;
-        let src_texture_view = src_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        // Ok(self
-        //     .screenshot_ctx
-        //     .capture_frame(&self.device, &self.queue, &src_texture_view))
-
-        let buffer_dimensions =
-            BufferDimensions::new(self.extent.width as _, self.extent.height as _);
-        // The output buffer lets us retrieve the data as an array
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size: (buffer_dimensions.padded_bytes_per_row * buffer_dimensions.height) as u64,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let texture_extent = wgpu::Extent3d {
-            width: buffer_dimensions.width as u32,
-            height: buffer_dimensions.height as u32,
-            depth_or_array_layers: 1,
-        };
-
-        // The render pipeline renders data into this texture
-        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            size: texture_extent,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            label: None,
-        });
-
-        // Set the background to be red
-        let command_buffer = {
-            let mut encoder = self
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &[wgpu::RenderPassColorAttachment {
-                    view: &texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::RED),
-                        store: true,
-                    },
-                }],
-                depth_stencil_attachment: None,
-            });
-
-            // Copy the data from the texture to the buffer
-            encoder.copy_texture_to_buffer(
-                src_texture.texture.as_image_copy(),
-                wgpu::ImageCopyBuffer {
-                    buffer: &buffer,
-                    layout: wgpu::ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: Some(
-                            std::num::NonZeroU32::new(
-                                buffer_dimensions.padded_bytes_per_row as u32,
-                            )
-                            .unwrap(),
-                        ),
-                        rows_per_image: None,
-                    },
-                },
-                texture_extent,
-            );
-
-            encoder.finish()
-        };
-
-        self.queue.submit(Some(command_buffer));
-        src_texture.present();
-
-        let image_slice = buffer.slice(..);
-        let map_future = image_slice.map_async(MapMode::Read);
-
-        self.device.poll(Maintain::Wait);
-
-        let mut frame;
-        if let Ok(()) = futures::executor::block_on(map_future) {
-            let mapped_slice = image_slice.get_mapped_range();
-            frame = mapped_slice.to_vec();
-            // dbg!(&frame);
-
-            drop(mapped_slice);
-            buffer.unmap();
-        } else {
-            panic!()
-        }
-
-        let image_dimentions = ImageDimentions::new(
-            self.extent.width,
-            self.extent.height,
-            wgpu::COPY_BYTES_PER_ROW_ALIGNMENT,
-        );
-        dbg!(&image_dimentions);
-        dbg!(&buffer_dimensions);
-
-        Ok((frame, image_dimentions))
+        Ok(self
+            .screenshot_ctx
+            .capture_frame(&self.device, &self.queue, &self.textures[0]))
     }
 
     pub fn wait_idle(&self) {
         self.device.poll(wgpu::Maintain::Wait)
-    }
-}
-
-#[derive(Debug)]
-struct BufferDimensions {
-    width: usize,
-    height: usize,
-    unpadded_bytes_per_row: usize,
-    padded_bytes_per_row: usize,
-}
-
-impl BufferDimensions {
-    fn new(width: usize, height: usize) -> Self {
-        let bytes_per_pixel = std::mem::size_of::<u32>();
-        let unpadded_bytes_per_row = width * bytes_per_pixel;
-        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize;
-        let padded_bytes_per_row_padding = (align - unpadded_bytes_per_row % align) % align;
-        let padded_bytes_per_row = unpadded_bytes_per_row + padded_bytes_per_row_padding;
-        Self {
-            width,
-            height,
-            unpadded_bytes_per_row,
-            padded_bytes_per_row,
-        }
     }
 }
