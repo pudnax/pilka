@@ -241,7 +241,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
 
-            Event::WindowEvent { event, .. } => match event {
+            Event::WindowEvent { event, window_id } if window.id() == window_id => match event {
                 WindowEvent::CloseRequested
                 | WindowEvent::KeyboardInput {
                     input:
@@ -311,7 +311,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             eprintln!("{}", push_constant);
                         }
 
-                        if VirtualKeyCode::F7 == keycode {
+                        if VirtualKeyCode::F8 == keycode {
                             pollster::block_on(render.switch(&window, &mut compiler)).unwrap();
                         }
 
