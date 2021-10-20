@@ -574,7 +574,7 @@ impl VkDevice {
         let memory_reqs = unsafe { self.get_buffer_memory_requirements(buffer) };
 
         let memory_type_index =
-            utils::find_memorytype_index(&memory_reqs, &self.memory_properties, memory_prop_flags)
+            utils::find_memory_type_index(&memory_reqs, &self.memory_properties, memory_prop_flags)
                 .unwrap();
         let mut mem_alloc_flags = vk::MemoryAllocateFlagsInfoKHR::default();
         let alloc_info = vk::MemoryAllocateInfo::builder()

@@ -629,6 +629,7 @@ impl<'a> AshRender<'a> {
         }
     }
 
+    #[profiling::function]
     pub fn render(&mut self, push_constant: &[u8]) -> VkResult<()> {
         let (present_index, is_suboptimal) = match unsafe {
             self.swapchain.swapchain_loader.acquire_next_image(
@@ -656,11 +657,6 @@ impl<'a> AshRender<'a> {
             },
         }];
 
-        let viewport = self.viewport;
-        let scissors = self.scissors;
-        let descriptor_sets = &self.descriptor_sets_render;
-        let present_image = self.swapchain.images[present_index as usize];
-        let prev_frame = self.previous_frame.image.image;
         let extent = vk::Extent3D {
             width: self.resolution.width,
             height: self.resolution.height,
@@ -671,9 +667,11 @@ impl<'a> AshRender<'a> {
 
         unsafe { self.device.queue_wait_idle(self.queues.compute_queue.queue) }?;
 
-        for undefined_pipeline in &self.pipelines {
+        for undefined_pipeline in self.pipelines.iter() {
             match undefined_pipeline {
                 Pipeline::Compute(ref pipeline) => {
+                    profiling::scope!("Compute Pipeline", format!("iteration {}").as_str());
+
                     let cmd_buf = pipeline.command_buffer;
                     unsafe {
                         self.device.reset_command_buffer(
@@ -688,14 +686,20 @@ impl<'a> AshRender<'a> {
                             .begin_command_buffer(cmd_buf, &command_buffer_begin_info)?;
 
                         if self.paused {
-                            self.device.blit_image(
-                                cmd_buf,
-                                present_image,
-                                vk::ImageLayout::PRESENT_SRC_KHR,
-                                prev_frame,
-                                vk::ImageLayout::GENERAL,
-                                extent,
-                            );
+                            {
+                                profiling::scope!(
+                                    "Blit to Prev Frame",
+                                    format!("iteration {}").as_str()
+                                );
+                                self.device.blit_image(
+                                    cmd_buf,
+                                    self.swapchain.images[present_index as usize],
+                                    vk::ImageLayout::PRESENT_SRC_KHR,
+                                    self.previous_frame.image.image,
+                                    vk::ImageLayout::GENERAL,
+                                    extent,
+                                );
+                            }
 
                             self.device.cmd_bind_pipeline(
                                 cmd_buf,
@@ -747,6 +751,8 @@ impl<'a> AshRender<'a> {
                     }
                 }
                 Pipeline::Graphics(ref pipeline) => {
+                    profiling::scope!("Render Pipeline", format!("iteration {}").as_str());
+
                     let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
                         .render_pass(*self.render_pass)
                         .framebuffer(self.framebuffers[present_index as usize])
@@ -773,7 +779,7 @@ impl<'a> AshRender<'a> {
                             |device, draw_command_buffer| {
                                 device.set_image_layout(
                                     draw_command_buffer,
-                                    prev_frame,
+                                    self.previous_frame.image.image,
                                     vk::ImageLayout::GENERAL,
                                     vk::ImageLayout::GENERAL,
                                     vk::PipelineStageFlags::COMPUTE_SHADER,
@@ -790,14 +796,14 @@ impl<'a> AshRender<'a> {
                                     vk::PipelineBindPoint::GRAPHICS,
                                     pipeline.pipeline,
                                 );
-                                device.cmd_set_viewport(draw_command_buffer, 0, &[viewport]);
-                                device.cmd_set_scissor(draw_command_buffer, 0, &[scissors]);
+                                device.cmd_set_viewport(draw_command_buffer, 0, &[self.viewport]);
+                                device.cmd_set_scissor(draw_command_buffer, 0, &[self.scissors]);
                                 device.cmd_bind_descriptor_sets(
                                     draw_command_buffer,
                                     vk::PipelineBindPoint::GRAPHICS,
                                     pipeline.pipeline_layout,
                                     0,
-                                    descriptor_sets,
+                                    &self.descriptor_sets_render,
                                     &[],
                                 );
 
@@ -846,6 +852,7 @@ impl<'a> AshRender<'a> {
             Err(e) => panic!("Unexpected error on presenting image: {}", e),
         }
 
+        profiling::finish_frame!();
         Ok(())
     }
 
@@ -853,6 +860,7 @@ impl<'a> AshRender<'a> {
     //
     // Probably Very bad! Consider waiting for approciate command buffers and fences
     // (i have no much choice of them) or restrict the amount of resizing events.
+    #[profiling::function]
     pub fn resize(&mut self) -> VkResult<()> {
         unsafe { self.device.device_wait_idle() }?;
 
@@ -883,6 +891,7 @@ impl<'a> AshRender<'a> {
             .iter_mut()
             .zip(&self.swapchain.image_views)
         {
+            profiling::scope!("Creating Framebuffers", format!("iteration {}").as_str());
             let new_framebuffer = VkSwapchain::create_framebuffer(
                 &[*present_image],
                 (width, height),
@@ -894,6 +903,7 @@ impl<'a> AshRender<'a> {
         }
 
         for &image in &self.swapchain.images {
+            profiling::scope!("Creating Images", format!("iteration {}").as_str());
             self.command_pool.record_submit_commandbuffer(
                 &self.device,
                 self.queues.graphics_queue.queue,
@@ -1177,6 +1187,7 @@ impl<'a> AshRender<'a> {
         Ok((pipeline_layout, descriptor_set_layouts))
     }
 
+    #[profiling::function]
     pub fn capture_frame(&mut self) -> VkResult<Frame> {
         let present_image = self.swapchain.images[self.command_pool.active_command];
         let queue = &self.queues.graphics_queue;
