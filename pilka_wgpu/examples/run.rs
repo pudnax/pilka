@@ -4,7 +4,7 @@ use notify::{event::EventKind, RecursiveMode, Watcher};
 use pilka_types::ShaderCreateInfo;
 use std::ffi::CString;
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -146,20 +146,21 @@ impl Default for PushConstant {
     }
 }
 
-// TODO: Make proper ms -> sec converion
 impl std::fmt::Display for PushConstant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let time = Duration::from_secs_f32(self.time);
+        let time_delta = Duration::from_secs_f32(self.time_delta);
         write!(
             f,
             "position:\t{:?}\n\
-             time:\t\t{:.2}\n\
-             time delta:\t{:.3} ms, fps: {:.2}\n\
+             time duh?:\t\t{:.2} sec\n\
+             time delta:\t{:#.3?} ms, fps: {:.2}\n\
              width, height:\t{:?}\nmouse:\t\t{:.2?}\n\
              frame:\t\t{}\nrecord_period:\t{}\n",
             self.pos,
-            self.time,
-            self.time_delta * 1000.,
-            1. / self.time_delta,
+            time.as_secs_f32(),
+            time_delta, // * 1000.,
+            1. / time_delta.as_secs_f32(),
             self.wh,
             self.mouse,
             self.frame,
