@@ -103,7 +103,7 @@ pub fn save_screenshot(
             writer.write_all(chunk)?;
         }
         writer.finish()?;
-        eprintln!("Encode image: {:#?}", now.elapsed());
+        eprintln!("Encode image: {:#.2?}", now.elapsed());
         Ok(())
     })
 }
@@ -177,19 +177,20 @@ impl Default for PushConstant {
     }
 }
 
-// TODO: Make proper ms -> sec converion
 impl std::fmt::Display for PushConstant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let time = Duration::from_secs_f32(self.time);
+        let time_delta = Duration::from_secs_f32(self.time_delta);
         write!(
             f,
             "position:\t{:?}\n\
-             time:\t\t{:.2}\n\
-             time delta:\t{:.3} ms, fps: {:.2}\n\
+             time:\t\t{:#.2?}\n\
+             time delta:\t{:#.3?}, fps: {:#.2?}\n\
              width, height:\t{:?}\nmouse:\t\t{:.2?}\n\
              frame:\t\t{}\nrecord_period:\t{}\n",
             self.pos,
-            self.time,
-            self.time_delta * 1000.,
+            time,
+            time_delta,
             1. / self.time_delta,
             self.wh,
             self.mouse,

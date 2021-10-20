@@ -230,8 +230,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                     },
                 ..
             } => {
-                println!();
-                println!("Come from here");
                 let PhysicalSize { width, height } = size;
 
                 render.resize(width.max(1), height.max(1)).unwrap();
@@ -324,7 +322,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if VirtualKeyCode::F11 == keycode {
                             let now = Instant::now();
                             let (frame, image_dimentions) = render.capture_frame().unwrap();
-                            eprintln!("Capture image: {:#?}", now.elapsed());
+                            eprintln!("Capture image: {:#.2?}", now.elapsed());
                             // TODO: Make new event in video_tx
                             save_screenshot(frame, image_dimentions);
                         }
