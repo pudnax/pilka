@@ -20,6 +20,8 @@ use screenshot::ScreenshotCtx;
 
 pub(crate) const SUBGROUP_SIZE: u32 = 16;
 
+const NUM_SAMPLES: u32 = 4;
+
 pub enum Pipeline {
     Render(RenderPipeline),
     Compute(ComputePipeline),
@@ -311,6 +313,8 @@ pub struct WgpuRender {
     blitter: Blitter,
     screenshot_ctx: ScreenshotCtx,
 
+    multisampled_framebuffer: wgpu::TextureView,
+
     pub paused: bool,
 }
 
@@ -391,8 +395,9 @@ impl WgpuRender {
         }))
         .unwrap();
 
-        let format = surface.get_preferred_format(&adapter).unwrap();
-        // let format = wgpu::TextureFormat::Bgra8Unorm;
+        let format = surface
+            .get_preferred_format(&adapter)
+            .unwrap_or(wgpu::TextureFormat::Bgra8UnormSrgb);
         let limits = adapter.limits();
         let features = adapter.features();
         let trace_dir = std::env::var("WGPU_TRACE");
@@ -404,7 +409,6 @@ impl WgpuRender {
             },
             trace_dir.ok().as_ref().map(std::path::Path::new),
         ))?;
-
         let extent = wgpu::Extent3d {
             width,
             height,
@@ -448,6 +452,9 @@ impl WgpuRender {
         let blitter = Blitter::new(&device);
         let screenshot_ctx = ScreenshotCtx::new(&device, width, height);
 
+        let multisampled_framebuffer =
+            Self::create_multisample_texture(&device, format, NUM_SAMPLES, extent);
+
         Ok(Self {
             adapter,
             device,
@@ -470,6 +477,8 @@ impl WgpuRender {
 
             blitter,
             screenshot_ctx,
+
+            multisampled_framebuffer,
 
             paused: false,
         })
@@ -497,6 +506,28 @@ impl WgpuRender {
         self.storage_texture_bind_group = storage_texture_bind_group;
 
         self.screenshot_ctx.resize(&self.device, width, height);
+
+        self.multisampled_framebuffer =
+            Self::create_multisample_texture(&self.device, self.format, NUM_SAMPLES, self.extent)
+    }
+
+    fn create_multisample_texture(
+        device: &Device,
+        format: wgpu::TextureFormat,
+        sample_count: u32,
+        extent: wgpu::Extent3d,
+    ) -> wgpu::TextureView {
+        device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("Multisampled Frame"),
+                size: extent,
+                mip_level_count: 1,
+                sample_count,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            })
+            .create_view(&wgpu::TextureViewDescriptor::default())
     }
 
     pub fn push_compute_pipeline(&mut self, comp: ShaderCreateInfo) -> Result<()> {
@@ -617,7 +648,7 @@ impl WgpuRender {
                 },
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState {
-                    count: 1,
+                    count: NUM_SAMPLES,
                     mask: !0,
                     alpha_to_coverage_enabled: false,
                 },
@@ -662,8 +693,8 @@ impl WgpuRender {
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some(&label),
                         color_attachments: &[wgpu::RenderPassColorAttachment {
-                            view: &frame_view,
-                            resolve_target: None,
+                            view: &self.multisampled_framebuffer,
+                            resolve_target: Some(&frame_view),
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Load,
                                 store: true,

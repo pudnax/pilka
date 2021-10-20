@@ -1,3 +1,12 @@
+fn linear_to_srgb(linear: vec4<f32>) -> vec4<f32> {
+    let color_linear = linear.rgb;
+    let selector = ceil(color_linear - 0.0031308);
+    let under = 12.92 * color_linear;
+    let over = 1.055 * pow(color_linear, vec3<f32>(0.41666)) - 0.055;
+    let result = mix(under, over, selector);
+    return vec4<f32>(result, linear.a);
+}
+
 struct VertexOutput {
     [[builtin(position)]] position: vec4<f32>;
     [[location(0)]] uv : vec2<f32>;
@@ -20,5 +29,5 @@ var src_texture: texture_2d<f32>;
 
 [[stage(fragment)]]
 fn fs_main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
-    return textureSample(src_texture, src_sampler, in.uv);
+    return linear_to_srgb(textureSample(src_texture, src_sampler, in.uv));
 }
