@@ -136,7 +136,7 @@ impl<'a> ComputePipelineLayoutInfo {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::ReadWrite,
                         format: wgpu::TextureFormat::Rgba8Unorm,
@@ -146,7 +146,7 @@ impl<'a> ComputePipelineLayoutInfo {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::ReadWrite,
                         format: wgpu::TextureFormat::Rgba8Unorm,
@@ -156,7 +156,7 @@ impl<'a> ComputePipelineLayoutInfo {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::ReadWrite,
                         format: wgpu::TextureFormat::Rgba8Unorm,
@@ -166,7 +166,7 @@ impl<'a> ComputePipelineLayoutInfo {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 3,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::ReadWrite,
                         format: wgpu::TextureFormat::Rgba32Float,
@@ -176,7 +176,7 @@ impl<'a> ComputePipelineLayoutInfo {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 4,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::ReadWrite,
                         format: wgpu::TextureFormat::Rgba32Float,
@@ -190,7 +190,7 @@ impl<'a> ComputePipelineLayoutInfo {
         //     label: Some("fft Texture Bind Group Layout"),
         //     entries: &[wgpu::BindGroupLayoutEntry {
         //         binding: 0,
-        //         visibility: wgpu::ShaderStages::FRAGMENT,
+        //         visibility: wgpu::ShaderStages::COMPUTE,
         //         ty: wgpu::BindingType::StorageTexture {
         //             access: wgpu::StorageTextureAccess::ReadWrite,
         //             format: wgpu::TextureFormat::Rgba32Float,
@@ -603,18 +603,20 @@ impl WgpuRender {
         vs: ShaderCreateInfo,
         fs: ShaderCreateInfo,
     ) -> Result<Pipeline> {
-        let fs_module = self
-            .device
-            .create_shader_module(&wgpu::ShaderModuleDescriptor {
-                label: Some("FS"),
-                source: wgpu::ShaderSource::SpirV(fs.data.into()),
-            });
-        let vs_module = self
-            .device
-            .create_shader_module(&wgpu::ShaderModuleDescriptor {
-                label: Some("VS"),
-                source: wgpu::ShaderSource::SpirV(vs.data.into()),
-            });
+        let fs_module = unsafe {
+            self.device
+                .create_shader_module_spirv(&wgpu::ShaderModuleDescriptorSpirV {
+                    label: Some("FS"),
+                    source: fs.data.into(),
+                })
+        };
+        let vs_module = unsafe {
+            self.device
+                .create_shader_module_spirv(&wgpu::ShaderModuleDescriptorSpirV {
+                    label: Some("VS"),
+                    source: vs.data.into(),
+                })
+        };
 
         let pipeline_layout = self
             .device
@@ -747,10 +749,11 @@ impl WgpuRender {
         }
 
         {
-            puffin::profile_scope!("Submit + Present");
-
+            puffin::profile_scope!("Submit");
             self.queue.submit(std::iter::once(encoder.finish()));
-
+        }
+        {
+            puffin::profile_scope!("Present");
             frame.present();
         }
 

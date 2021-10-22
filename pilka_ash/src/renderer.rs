@@ -393,8 +393,8 @@ impl<'a> AshRender<'a> {
             let image_memory_flags = vk::MemoryPropertyFlags::DEVICE_LOCAL;
 
             let sampler_create_info = vk::SamplerCreateInfo::builder()
-                .mag_filter(vk::Filter::NEAREST)
-                .min_filter(vk::Filter::NEAREST)
+                .mag_filter(vk::Filter::LINEAR)
+                .min_filter(vk::Filter::LINEAR)
                 .address_mode_u(vk::SamplerAddressMode::REPEAT)
                 .address_mode_v(vk::SamplerAddressMode::REPEAT)
                 .address_mode_w(vk::SamplerAddressMode::REPEAT)
@@ -417,8 +417,8 @@ impl<'a> AshRender<'a> {
 
         let sampler = {
             let sampler_create_info = vk::SamplerCreateInfo::builder()
-                .mag_filter(vk::Filter::NEAREST)
-                .min_filter(vk::Filter::NEAREST)
+                .mag_filter(vk::Filter::LINEAR)
+                .min_filter(vk::Filter::LINEAR)
                 .address_mode_u(vk::SamplerAddressMode::REPEAT)
                 .address_mode_v(vk::SamplerAddressMode::REPEAT)
                 .address_mode_w(vk::SamplerAddressMode::REPEAT)

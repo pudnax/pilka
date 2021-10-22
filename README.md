@@ -31,6 +31,8 @@ emacs, vim, ed etc.) and `pilka` would fetch changes after each save.
 - <kbd>F4</kbd>: Pause and step forward one frame
 - <kbd>F5</kbd>: Restart playback at frame 0 (`Time` and `Pos` = 0)
 - <kbd>F6</kbd>: Print parameters
+- <kbd>F7</kbd>: Toggle profiler
+- <kbd>F8</kbd>: Switch backend
 - <kbd>F10</kbd>: Save shaders
 - <kbd>F11</kbd>: Take Screenshot
 - <kbd>F12</kbd>: Start/Stop record video
