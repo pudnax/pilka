@@ -1,4 +1,8 @@
+mod blitter;
 mod screenshot;
+
+use blitter::Blitter;
+use screenshot::ScreenshotCtx;
 
 use std::{fmt::Display, ops::Index, path::PathBuf};
 
@@ -14,12 +18,7 @@ use wgpu::{
     TextureView,
 };
 
-use crate::blitter::Blitter;
-
-use screenshot::ScreenshotCtx;
-
 pub(crate) const SUBGROUP_SIZE: u32 = 16;
-
 const NUM_SAMPLES: u32 = 4;
 
 pub enum Pipeline {
@@ -226,6 +225,7 @@ impl<const N: usize> Index<Binding> for [BindGroupLayout; N] {
     }
 }
 
+#[profiling::function]
 fn create_textures(
     device: &Device,
     extent: wgpu::Extent3d,
@@ -484,6 +484,7 @@ impl WgpuRender {
         })
     }
 
+    #[profiling::function]
     pub fn resize(&mut self, width: u32, height: u32) {
         if self.extent.width == width && self.extent.height == height {
             return;
@@ -666,6 +667,7 @@ impl WgpuRender {
         Ok(Pipeline::Render(pipeline))
     }
 
+    #[profiling::function]
     pub fn render(&self, push_constant: &[u8]) -> Result<(), wgpu::SurfaceError> {
         let frame = match self.surface.get_current_texture() {
             Ok(frame) => frame,
@@ -689,6 +691,8 @@ impl WgpuRender {
         for (i, pipeline) in self.pipelines.iter().enumerate() {
             match pipeline {
                 Pipeline::Render(ref pipeline) => {
+                    profiling::scope!("Render Pass", format!("iteration {}").as_str());
+
                     let label = format!("Render Pass {}", i);
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some(&label),
@@ -713,6 +717,8 @@ impl WgpuRender {
                     render_pass.draw(0..3, 0..1);
                 }
                 Pipeline::Compute(ref pipeline) if !self.paused => {
+                    profiling::scope!("Compute Pass", format!("iteration {}").as_str());
+
                     let mut compute_pass =
                         encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                             label: Some(&format!("Compute Pass {}", i)),
@@ -730,12 +736,15 @@ impl WgpuRender {
             }
         }
 
-        self.blitter.blit_to_texture(
-            &self.device,
-            &mut encoder,
-            &frame_view,
-            &self.texture_views[0],
-        );
+        {
+            profiling::scope!("Blitting", format!("iteration {}").as_str());
+            self.blitter.blit_to_texture(
+                &self.device,
+                &mut encoder,
+                &frame_view,
+                &self.texture_views[0],
+            );
+        }
 
         self.queue.submit(std::iter::once(encoder.finish()));
 
@@ -748,12 +757,14 @@ impl WgpuRender {
         self.screenshot_ctx.image_dimentions
     }
 
+    #[profiling::function]
     pub fn capture_frame(&mut self) -> Result<Frame, wgpu::SurfaceError> {
         Ok(self
             .screenshot_ctx
             .capture_frame(&self.device, &self.queue, &self.textures[0]))
     }
 
+    #[profiling::function]
     pub fn wait_idle(&self) {
         self.device.poll(wgpu::Maintain::Wait)
     }

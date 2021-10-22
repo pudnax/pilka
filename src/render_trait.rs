@@ -1,45 +1,12 @@
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-    ops::{Deref, DerefMut},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 use crate::shader_module;
 
 use color_eyre::Result;
 use pilka_ash::{AshRender, HasRawWindowHandle};
-use pilka_types::{Frame, ImageDimentions, PipelineInfo, ShaderCreateInfo};
+use pilka_types::{ContiniousHashMap, Frame, ImageDimentions, PipelineInfo, ShaderCreateInfo};
 use pilka_wgpu::WgpuRender;
 use shaderc::Compiler;
-
-#[derive(Debug)]
-pub struct ContiniousHashMap<K, V>(HashMap<K, HashSet<V>>);
-
-impl<K, V> Deref for ContiniousHashMap<K, V> {
-    type Target = HashMap<K, HashSet<V>>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<K, V> DerefMut for ContiniousHashMap<K, V> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl<K, V> ContiniousHashMap<K, V> {
-    fn new() -> Self {
-        Self(HashMap::new())
-    }
-}
-
-impl<K: Eq + Hash, V: Eq + Hash> ContiniousHashMap<K, V> {
-    fn push_value(&mut self, key: K, value: V) {
-        self.0.entry(key).or_insert_with(HashSet::new).insert(value);
-    }
-}
 
 pub trait Renderer {
     fn get_info(&self) -> String;
@@ -226,7 +193,7 @@ impl<'a> RenderBundleStatic<'a> {
     pub fn shader_list(&self) -> Vec<PathBuf> {
         self.shader_set.keys().cloned().collect()
     }
-    pub async fn switch(
+    pub fn switch(
         &mut self,
         window: &impl HasRawWindowHandle,
         shader_compiler: &mut Compiler,

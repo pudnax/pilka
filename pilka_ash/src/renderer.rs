@@ -670,7 +670,7 @@ impl<'a> AshRender<'a> {
         for undefined_pipeline in self.pipelines.iter() {
             match undefined_pipeline {
                 Pipeline::Compute(ref pipeline) => {
-                    profiling::scope!("Compute Pipeline", format!("iteration {}").as_str());
+                    profiling::scope!("Compute Pass", format!("iteration {}").as_str());
 
                     let cmd_buf = pipeline.command_buffer;
                     unsafe {
@@ -751,7 +751,7 @@ impl<'a> AshRender<'a> {
                     }
                 }
                 Pipeline::Graphics(ref pipeline) => {
-                    profiling::scope!("Render Pipeline", format!("iteration {}").as_str());
+                    profiling::scope!("Render Pass", format!("iteration {}").as_str());
 
                     let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
                         .render_pass(*self.render_pass)

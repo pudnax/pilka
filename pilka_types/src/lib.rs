@@ -94,6 +94,8 @@ impl ImageDimentions {
     }
 }
 
+/// A hash map with a [HashSet](std::collections::HashSet) to hold unique values
+#[derive(Debug)]
 pub struct ContiniousHashMap<K, V>(HashMap<K, HashSet<V>>);
 
 impl<K, V> Deref for ContiniousHashMap<K, V> {
@@ -110,12 +112,20 @@ impl<K, V> DerefMut for ContiniousHashMap<K, V> {
 }
 
 impl<K, V> ContiniousHashMap<K, V> {
+    /// Creates an empty [ContiniousHashMap]
+    ///
+    /// The hash map is initially created with a capacity of 0,
+    /// so it will not allocate until it is first inserted into.
     pub fn new() -> Self {
         Self(HashMap::new())
     }
 }
 
 impl<K: Eq + Hash, V: Eq + Hash> ContiniousHashMap<K, V> {
+    /// Inserts a key-value pair into the map.
+    ///
+    /// If the mep already contain this key this method will add
+    /// a value instead of rewriting an old value.
     pub fn push_value(&mut self, key: K, value: V) {
         self.0.entry(key).or_insert_with(HashSet::new).insert(value);
     }

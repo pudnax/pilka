@@ -59,6 +59,7 @@ impl Blitter {
         }
     }
 
+    #[profiling::function]
     pub fn blit_to_texture(
         &self,
         device: &Device,

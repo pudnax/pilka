@@ -20,6 +20,4 @@
 
 mod renderer;
 
-mod blitter;
-
 pub use renderer::WgpuRender;
