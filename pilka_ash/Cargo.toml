@@ -1,6 +1,6 @@
 [package]
 name = "pilka_ash"
-version = "0.5.10"
+version = "0.6.0"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -23,5 +23,5 @@ ash-molten = "0.11.0"
 ash-window = "0.7.0"
 raw-window-handle = "0.3.3"
 ktx = "0.3.2"
-pilka_types = { version = "0.1.0", path = "../pilka_types" }
+pilka_types = { version = "0.6.0", path = "../pilka_types" }
 puffin = "0.10.0"
