@@ -360,8 +360,8 @@ impl<'a> ScreenshotCtx<'a> {
             &self.image
         };
         let image_dimentions = ImageDimentions::new(
-            self.extent.width as _,
-            self.extent.height as _,
+            self.extent.width,
+            self.extent.height,
             image.memory_requirements.alignment as _,
         );
         let subresource_layout = unsafe {
