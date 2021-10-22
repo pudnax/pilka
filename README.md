@@ -52,12 +52,19 @@ emacs, vim, ed etc.) and `pilka` would fetch changes after each save.
 | mouse_pressed | bool    |         |
 | frame         | uint    |         |
 | time_delta    | float   |         |
+| record_period | float   |         |
 | prev_frame    | texture |         |
 
 ## Flags
 
  - `--record f32` - Specify duration of recorded video
  - `--size u32xu32` - Specify window size and lock from resizing
+
+## Choosing backend
+
+You can choose with what backend to startup with `PILKA_BACKEND` variable.
+Currently there're two backends available: "wgpu" and "ash". On invalid value
+it will fallback to it's default backend "wgpu".
 
 ## Requirements
 
@@ -90,11 +97,6 @@ cargo install --path .
 [winit](https://crates.io/crates/winit) is the "default" window library in Rust ecosystem. And it covers
 the most of cross-platform issues for you.
 
-[RustFFT](https://crates.io/crates/rustfft) is used to perform Fast FFT for generating sound textures.
-
-[cpal](https://crates.io/crates/cpal) is used to capture sound from microphone and probably MIDI devices
-in the future.
-
 [png](https://crates.io/crates/png) is used to encode screenshots into png files.
 
 [notify](https://crates.io/crates/notify) is a file watcher and maintains the hot-reload.
@@ -105,7 +107,15 @@ when it's mature enough.
 
 [ash](https://crates.io/crates/ash) is a Vulkan bindings. I choose `ash` because I see `pilka` as a
 learning project and want to touch the maximum untouched Vulkan. For the
-same reason I didn't use `vulkano`, `erupt`, `vulkanism`, `vkvk` and `wgpu`.
+same reason I didn't use `vulkano`, `erupt`, `vulkanism`, `vkvk`.
+
+[wgpu](https://github.com/gfx-rs/wgpu) is save GPU abstraction over different graphics API like
+Vulkan, Metal, OpenGL and used for primary backend aside of `ash`.
+
+[puffin](https://github.com/EmbarkStudios/puffin) is scoped profiler written in Rust by [EmbarkStudios](https://github.com/EmbarkStudios) and I baked it to `pilka` for fast performance checking.
+
+[pollster](https://github.com/zesterer/pollster) is smol blocking executor and needed for eliminating
+async `wgpu` API.
 
 **Ffmpeg** is used to record and save to video. For my concerns it's
 temporary solution after which I switch to [rav1e](https://github.com/xiph/rav1e) on it's release.
@@ -118,7 +128,7 @@ temporary solution after which I switch to [rav1e](https://github.com/xiph/rav1e
 ## Examples
 You can run any example by executing `pilka` inside of the folder
 ```bash
-cd examples/dithering
+cd examples/cube
 cargo run
 ```
 
