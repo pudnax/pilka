@@ -61,9 +61,9 @@ emacs, vim, ed etc.) and `pilka` would fetch changes after each save.
 
 ## Choosing backend
 
-You can choose with what backend to startup with `PILKA_BACKEND` variable.
-Currently there're two backends available: "wgpu" and "ash". On invalid value
-it will fallback to it's default backend "wgpu".
+You can select which backend to start with with the `PILKA_BACKEND` variable.
+Currently two backends are available: "wgpu" and "ash". If the value of the
+variable is incorrect, the default backend "wgpu" will be rolled back.
 
 ## Requirements
 
