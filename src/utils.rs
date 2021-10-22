@@ -92,8 +92,8 @@ pub fn save_screenshot(
             png::Encoder::new(w, image_dimentions.width as _, image_dimentions.height as _);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
-        let padded_bytes = image_dimentions.padded_bytes_per_row.try_into().unwrap();
-        let unpadded_bytes = image_dimentions.unpadded_bytes_per_row.try_into().unwrap();
+        let padded_bytes = image_dimentions.padded_bytes_per_row as _;
+        let unpadded_bytes = image_dimentions.unpadded_bytes_per_row as _;
         let mut writer = encoder
             .write_header()?
             .into_stream_writer_with_size(unpadded_bytes)?;
