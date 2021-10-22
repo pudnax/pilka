@@ -29,5 +29,7 @@ var src_texture: texture_2d<f32>;
 
 [[stage(fragment)]]
 fn fs_main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
-    return linear_to_srgb(textureSample(src_texture, src_sampler, in.uv));
+    let col = textureSample(src_texture, src_sampler, in.uv);
+    // let linear = linear_to_srgb(col);
+    return col;
 }

@@ -108,7 +108,6 @@ impl ShaderCompiler {
             Ok(m) => Some(m),
             Err(span) => {
                 println!("Got here");
-                dbg!(&span);
                 for e in span {
                     eprintln!("Glsl error: {e}");
                 }

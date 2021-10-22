@@ -17,6 +17,8 @@ pub fn print_help() {
     println!("- `F4`:   Pause and step forward one frame");
     println!("- `F5`:   Restart playback at frame 0 (`Time` and `Pos` = 0)");
     println!("- `F6`:   Print parameters");
+    println!("- `F7`:   Toggle profiler");
+    println!("- `F8`:   Switch backend");
     println!("- `F10`:  Save shaders");
     println!("- `F11`:  Take Screenshot");
     println!("- `F12`:  Start/Stop record video");
