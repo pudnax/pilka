@@ -7,9 +7,10 @@ layout(std430, push_constant) uniform PushConstant {
     float time;
     vec2 resolution;
     vec2 mouse;
-    float spectrum;
     bool mouse_pressed;
+    uint frame;
     float time_delta;
+    float record_period;
 } pc;
 
 void main() {
