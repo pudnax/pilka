@@ -166,6 +166,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         match event {
             Event::RedrawEventsCleared => {
+                puffin::profile_scope!("Redraw Timeout");
                 let target_frametime = Duration::from_secs_f64(1.0 / 60.0);
                 let time_since_last_frame = last_update_inst.elapsed();
                 if time_since_last_frame >= target_frametime {
@@ -277,6 +278,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     profiler_window = None;
                 }
             }
+
             Event::WindowEvent { event, window_id } if main_window.id() == window_id => match event
             {
                 WindowEvent::KeyboardInput {
