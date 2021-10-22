@@ -4,10 +4,14 @@
 layout(location = 0) out vec2 out_uv;
 
 layout(std430, push_constant) uniform PushConstant {
-	vec3 pos;
-	float time;
-	vec2 resolution;
-	vec2 mouse;
+    vec3 pos;
+    float time;
+    vec2 resolution;
+    vec2 mouse;
+    bool mouse_pressed;
+    uint frame;
+    float time_delta;
+    float record_period;
 } pc;
 
 void main() {
