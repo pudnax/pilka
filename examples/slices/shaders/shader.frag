@@ -7,14 +7,15 @@
 layout(location = 0) in vec2 in_uv;
 layout(location = 0) out vec4 out_color;
 
-layout(set = 0, binding = 0) uniform sampler2D previous_frame;
-layout(set = 0, binding = 1) uniform sampler2D generic_texture;
-layout(set = 0, binding = 2) uniform sampler2D dummy_texture;
-#define T(t) (texture(t, vec2(in_uv.x, -in_uv.y)))
-#define T_off(t,off) (texture(t, vec2(in_uv.x + off.x, -(in_uv.y + off.y))))
-
-layout(set = 0, binding = 3) uniform sampler2D float_texture1;
-layout(set = 0, binding = 4) uniform sampler2D float_texture2;
+layout(set = 0, binding = 0) uniform texture2D prev_frame;
+layout(set = 0, binding = 1) uniform texture2D generic_texture;
+layout(set = 0, binding = 2) uniform texture2D dummy_texture;
+layout(set = 0, binding = 3) uniform texture2D float_texture1;
+layout(set = 0, binding = 4) uniform texture2D float_texture2;
+layout(set = 1, binding = 0) uniform sampler tex_sampler;
+#define T(tex, uv_coord) (texture(sampler2D(tex, tex_sampler), uv_coord))
+#define Tuv(tex) (T(tex, vec2(in_uv.x, -in_uv.y)))
+#define T_off(tex, off) (T(tex, vec2(in_uv.x + off.x, -(in_uv.y + off.y))))
 
 layout(std430, push_constant) uniform PushConstant {
     vec3 pos;
@@ -24,7 +25,7 @@ layout(std430, push_constant) uniform PushConstant {
     bool mouse_pressed;
     uint frame;
     float time_delta;
-	float record_period;
+    float record_period;
 } pc;
 
 #define time pc.time
@@ -59,7 +60,7 @@ vec2 noise(in vec3 x) {
     f = f * f * (3.0 - 2.0 * f);
 
     vec2 uv = (p.xy + vec2(37.0, 17.0) * p.z) + f.xy;
-    vec4 rg = textureLod(float_texture1, (uv + 0.5) / 256.0, 0.0);
+    vec4 rg = textureLod(sampler2D(float_texture1, tex_sampler), (uv + 0.5) / 256.0, 0.0);
     return mix(rg.yw, rg.xz, f.z);
 }
 
@@ -265,8 +266,8 @@ void main() {
 
     uv = uv * 0.5 + 1.;
     float T = floor(time * 60.0);
-    vec2 scratchSpace = mix(noise(vec3(uv * 8.0, T)).xy, uv.yx + T, .8) * 1.0;
-    float scratches = texture(float_texture1, scratchSpace).r;
+    vec2 scratch_space = mix(noise(vec3(uv * 8.0, T)).xy, uv.yx + T, .8) * 1.0;
+    float scratches = T(float_texture1, scratch_space).r;
     color *= vec3(1.0) - .5 * vec3(.3, .5, .7) * pow(1.0 - smoothstep(.0, .1, scratches), 2.0);
 
     color = to_gamma(color);

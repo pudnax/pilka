@@ -8,6 +8,7 @@ layout(std430, push_constant) uniform PushConstant {
     bool mouse_pressed;
     uint frame;
     float time_delta;
+    float record_period;
 } pc;
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
@@ -18,8 +19,6 @@ layout (binding = 2, rgba8) uniform image2D dummy_texture;
 
 layout (binding = 3, rgba32f) uniform image2D float_texture1;
 layout (binding = 4, rgba32f) uniform image2D float_texture2;
-
-layout(set = 1, binding = 0) uniform sampler1D fft_texture;
 
 uvec4 s0, s1;
 ivec2 pixel;
