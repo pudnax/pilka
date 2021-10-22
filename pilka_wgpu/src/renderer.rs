@@ -225,11 +225,11 @@ impl<const N: usize> Index<Binding> for [BindGroupLayout; N] {
     }
 }
 
-#[profiling::function]
 fn create_textures(
     device: &Device,
     extent: wgpu::Extent3d,
 ) -> (Vec<Texture>, Vec<TextureView>, BindGroup, BindGroup) {
+    puffin::profile_function!();
     let make_texture = |label, format| {
         device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
@@ -484,8 +484,8 @@ impl WgpuRender {
         })
     }
 
-    #[profiling::function]
     pub fn resize(&mut self, width: u32, height: u32) {
+        puffin::profile_function!();
         if self.extent.width == width && self.extent.height == height {
             return;
         }
@@ -667,8 +667,8 @@ impl WgpuRender {
         Ok(Pipeline::Render(pipeline))
     }
 
-    #[profiling::function]
     pub fn render(&self, push_constant: &[u8]) -> Result<(), wgpu::SurfaceError> {
+        puffin::profile_function!();
         let frame = match self.surface.get_current_texture() {
             Ok(frame) => frame,
             Err(_) => {
@@ -691,7 +691,7 @@ impl WgpuRender {
         for (i, pipeline) in self.pipelines.iter().enumerate() {
             match pipeline {
                 Pipeline::Render(ref pipeline) => {
-                    profiling::scope!("Render Pass", format!("iteration {}").as_str());
+                    puffin::profile_scope!("Render Pass", format!("iteration {}", i).as_str());
 
                     let label = format!("Render Pass {}", i);
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -717,7 +717,7 @@ impl WgpuRender {
                     render_pass.draw(0..3, 0..1);
                 }
                 Pipeline::Compute(ref pipeline) if !self.paused => {
-                    profiling::scope!("Compute Pass", format!("iteration {}").as_str());
+                    puffin::profile_scope!("Compute Pass", format!("iteration {}", i).as_str());
 
                     let mut compute_pass =
                         encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -737,7 +737,7 @@ impl WgpuRender {
         }
 
         {
-            profiling::scope!("Blitting", format!("iteration {}").as_str());
+            puffin::profile_scope!("Blitting");
             self.blitter.blit_to_texture(
                 &self.device,
                 &mut encoder,
@@ -746,9 +746,13 @@ impl WgpuRender {
             );
         }
 
-        self.queue.submit(std::iter::once(encoder.finish()));
+        {
+            puffin::profile_scope!("Submit + Present");
 
-        frame.present();
+            self.queue.submit(std::iter::once(encoder.finish()));
+
+            frame.present();
+        }
 
         Ok(())
     }
@@ -757,15 +761,15 @@ impl WgpuRender {
         self.screenshot_ctx.image_dimentions
     }
 
-    #[profiling::function]
     pub fn capture_frame(&mut self) -> Result<Frame, wgpu::SurfaceError> {
+        puffin::profile_function!();
         Ok(self
             .screenshot_ctx
             .capture_frame(&self.device, &self.queue, &self.textures[0]))
     }
 
-    #[profiling::function]
     pub fn wait_idle(&self) {
+        puffin::profile_function!();
         self.device.poll(wgpu::Maintain::Wait)
     }
 }

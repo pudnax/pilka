@@ -59,7 +59,6 @@ impl Blitter {
         }
     }
 
-    #[profiling::function]
     pub fn blit_to_texture(
         &self,
         device: &Device,
@@ -67,6 +66,7 @@ impl Blitter {
         src_texture: &wgpu::TextureView,
         dst_texture: &wgpu::TextureView,
     ) {
+        puffin::profile_function!();
         let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &self.pipeline.get_bind_group_layout(1),

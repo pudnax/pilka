@@ -629,8 +629,8 @@ impl<'a> AshRender<'a> {
         }
     }
 
-    #[profiling::function]
     pub fn render(&mut self, push_constant: &[u8]) -> VkResult<()> {
+        puffin::profile_function!();
         let (present_index, is_suboptimal) = match unsafe {
             self.swapchain.swapchain_loader.acquire_next_image(
                 self.swapchain.swapchain,
@@ -667,10 +667,10 @@ impl<'a> AshRender<'a> {
 
         unsafe { self.device.queue_wait_idle(self.queues.compute_queue.queue) }?;
 
-        for undefined_pipeline in self.pipelines.iter() {
+        for (i, undefined_pipeline) in self.pipelines.iter().enumerate() {
             match undefined_pipeline {
                 Pipeline::Compute(ref pipeline) => {
-                    profiling::scope!("Compute Pass", format!("iteration {}").as_str());
+                    puffin::profile_scope!("Compute Pass", format!("iteration {}", i).as_str());
 
                     let cmd_buf = pipeline.command_buffer;
                     unsafe {
@@ -687,9 +687,9 @@ impl<'a> AshRender<'a> {
 
                         if self.paused {
                             {
-                                profiling::scope!(
+                                puffin::profile_scope!(
                                     "Blit to Prev Frame",
-                                    format!("iteration {}").as_str()
+                                    format!("iteratioin {}", i).as_str()
                                 );
                                 self.device.blit_image(
                                     cmd_buf,
@@ -751,7 +751,7 @@ impl<'a> AshRender<'a> {
                     }
                 }
                 Pipeline::Graphics(ref pipeline) => {
-                    profiling::scope!("Render Pass", format!("iteration {}").as_str());
+                    puffin::profile_scope!("Render Pass", format!("iteration {}", i).as_str());
 
                     let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
                         .render_pass(*self.render_pass)
@@ -852,7 +852,6 @@ impl<'a> AshRender<'a> {
             Err(e) => panic!("Unexpected error on presenting image: {}", e),
         }
 
-        profiling::finish_frame!();
         Ok(())
     }
 
@@ -860,8 +859,9 @@ impl<'a> AshRender<'a> {
     //
     // Probably Very bad! Consider waiting for approciate command buffers and fences
     // (i have no much choice of them) or restrict the amount of resizing events.
-    #[profiling::function]
     pub fn resize(&mut self) -> VkResult<()> {
+        puffin::profile_function!();
+
         unsafe { self.device.device_wait_idle() }?;
 
         self.resolution = self.surface.resolution(&self.device)?;
@@ -886,12 +886,13 @@ impl<'a> AshRender<'a> {
         for &framebuffer in &self.framebuffers {
             unsafe { self.device.destroy_framebuffer(framebuffer, None) };
         }
-        for (framebuffer, present_image) in self
+        for (i, (framebuffer, present_image)) in self
             .framebuffers
             .iter_mut()
             .zip(&self.swapchain.image_views)
+            .enumerate()
         {
-            profiling::scope!("Creating Framebuffers", format!("iteration {}").as_str());
+            puffin::profile_scope!("Creating Framebuffers", format!("iteration {}", i).as_str());
             let new_framebuffer = VkSwapchain::create_framebuffer(
                 &[*present_image],
                 (width, height),
@@ -902,8 +903,8 @@ impl<'a> AshRender<'a> {
             *framebuffer = new_framebuffer;
         }
 
-        for &image in &self.swapchain.images {
-            profiling::scope!("Creating Images", format!("iteration {}").as_str());
+        for (i, &image) in self.swapchain.images.iter().enumerate() {
+            puffin::profile_scope!("Creating Images", format!("iteration {}", i).as_str());
             self.command_pool.record_submit_commandbuffer(
                 &self.device,
                 self.queues.graphics_queue.queue,
@@ -1187,8 +1188,8 @@ impl<'a> AshRender<'a> {
         Ok((pipeline_layout, descriptor_set_layouts))
     }
 
-    #[profiling::function]
     pub fn capture_frame(&mut self) -> VkResult<Frame> {
+        puffin::profile_function!();
         let present_image = self.swapchain.images[self.command_pool.active_command];
         let queue = &self.queues.graphics_queue;
         self.screenshot_ctx.capture_frame(

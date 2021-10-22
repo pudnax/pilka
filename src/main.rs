@@ -1,5 +1,6 @@
 mod default_shaders;
 mod input;
+mod profiler_window;
 mod recorder;
 mod render_trait;
 mod shader_module;
@@ -7,6 +8,8 @@ mod utils;
 
 #[allow(dead_code)]
 mod audio;
+
+use profiler_window::ProfilerWindow;
 
 use std::{
     error::Error,
@@ -28,7 +31,7 @@ use notify::{
 use winit::{
     dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::ControlFlow,
+    event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 
@@ -39,6 +42,8 @@ pub const SHADER_PATH: &str = "shaders";
 const SHADER_ENTRY_POINT: &str = "main";
 
 fn main() -> Result<(), Box<dyn Error>> {
+    puffin::set_scopes_on(true);
+
     // Initialize error hook.
     color_eyre::install()?;
     env_logger::init();
@@ -50,9 +55,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // let mut audio_context = audio::AudioContext::new()?;
 
-    let event_loop = winit::event_loop::EventLoop::new();
+    let event_loop = EventLoop::new();
 
-    let window = {
+    let main_window = {
         let mut window_builder = WindowBuilder::new().with_title("Pilka");
         #[cfg(unix)]
         {
@@ -70,8 +75,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         window_builder.build(&event_loop)?
     };
 
-    let PhysicalSize { width, height } = window.inner_size();
-    let mut render = RenderBundleStatic::new(&window, PushConstant::size(), (width, height))?;
+    let PhysicalSize { width, height } = main_window.inner_size();
+    let mut render = RenderBundleStatic::new(&main_window, PushConstant::size(), (width, height))?;
 
     let shader_dir = PathBuf::new().join(SHADER_PATH);
 
@@ -148,16 +153,26 @@ fn main() -> Result<(), Box<dyn Error>> {
         push_constant.record_period = period.as_secs_f32();
     }
 
+    let mut profiler_window: Option<ProfilerWindow> = None;
+
     let mut last_update_inst = Instant::now();
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, event_loop, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
+
+        if let Some(ref mut w) = profiler_window {
+            w.handle_event(&event);
+        }
+
         match event {
             Event::RedrawEventsCleared => {
                 let target_frametime = Duration::from_secs_f64(1.0 / 60.0);
                 let time_since_last_frame = last_update_inst.elapsed();
                 if time_since_last_frame >= target_frametime {
-                    window.request_redraw();
+                    main_window.request_redraw();
+                    if let Some(ref mut w) = profiler_window {
+                        w.request_redraw();
+                    }
                     last_update_inst = Instant::now();
                 } else {
                     *control_flow = ControlFlow::WaitUntil(
@@ -166,12 +181,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
             Event::NewEvents(_) => {
+                puffin::profile_scope!("Frame setup");
+
                 if let Ok(rx_event) = rx.try_recv() {
                     if let notify::Event {
                         kind: EventKind::Modify(ModifyKind::Data(_)),
                         ..
                     } = rx_event
                     {
+                        puffin::profile_scope!("Shader Change Event");
                         match render.register_shader_change(rx_event.paths.as_ref(), &mut compiler)
                         {
                             Ok(_) => {
@@ -202,7 +220,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     timeline.elapsed().as_secs_f32()
                 };
 
-                push_constant.wh = window.inner_size().into();
+                push_constant.wh = main_window.inner_size().into();
 
                 input.process_position(&mut push_constant);
 
@@ -228,11 +246,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                         new_inner_size: &mut size,
                         ..
                     },
-                ..
+                window_id,
             } => {
-                let PhysicalSize { width, height } = size;
+                puffin::profile_scope!("Resize");
+                let PhysicalSize { width, height } = dbg!(size);
 
-                render.resize(width.max(1), height.max(1)).unwrap();
+                if let Some(ref mut w) = profiler_window {
+                    if w.id() == window_id {
+                        w.resize();
+                    }
+                }
+
+                if main_window.id() == window_id {
+                    render.resize(width.max(1), height.max(1)).unwrap();
+                }
 
                 if video_recording {
                     println!("Stop recording. Resolution has been changed.",);
@@ -241,18 +268,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
 
-            Event::WindowEvent { event, window_id } if window.id() == window_id => match event {
-                WindowEvent::CloseRequested
-                | WindowEvent::KeyboardInput {
-                    input:
-                        KeyboardInput {
-                            virtual_keycode: Some(VirtualKeyCode::Escape),
-                            state: ElementState::Pressed,
-                            ..
-                        },
-                    ..
-                } => *control_flow = ControlFlow::Exit,
-
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                window_id,
+            } => {
+                let sec_id = profiler_window.as_ref().unwrap().id();
+                if window_id == sec_id {
+                    profiler_window = None;
+                }
+            }
+            Event::WindowEvent { event, window_id } if main_window.id() == window_id => match event
+            {
                 WindowEvent::KeyboardInput {
                     input:
                         KeyboardInput {
@@ -262,6 +288,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                         },
                     ..
                 } => {
+                    puffin::profile_scope!("Keyboard Events");
+
                     input.update(&keycode, &state);
 
                     if VirtualKeyCode::Escape == keycode {
@@ -311,8 +339,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                             eprintln!("{}", push_constant);
                         }
 
+                        if VirtualKeyCode::F7 == keycode {
+                            if profiler_window.is_some() {
+                                profiler_window = None;
+                            } else {
+                                profiler_window = Some(ProfilerWindow::new(event_loop).unwrap());
+                            }
+                        }
+
                         if VirtualKeyCode::F8 == keycode {
-                            render.switch(&window, &mut compiler).unwrap();
+                            render.switch(&main_window, &mut compiler).unwrap();
                         }
 
                         if VirtualKeyCode::F10 == keycode {
@@ -323,7 +359,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let now = Instant::now();
                             let (frame, image_dimentions) = render.capture_frame().unwrap();
                             eprintln!("Capture image: {:#.2?}", now.elapsed());
-                            // TODO: Make new event in video_tx
                             save_screenshot(frame, image_dimentions);
                         }
 
@@ -344,7 +379,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     ..
                 } => {
                     if !pause {
-                        let PhysicalSize { width, height } = window.inner_size();
+                        let PhysicalSize { width, height } = main_window.inner_size();
                         let x = (x as f32 / width as f32 - 0.5) * 2.;
                         let y = -(y as f32 / height as f32 - 0.5) * 2.;
                         push_constant.mouse = [x, y];
@@ -360,8 +395,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                 },
                 _ => {}
             },
-
             Event::RedrawRequested(_) => {
+                puffin::GlobalProfiler::lock().new_frame();
+                puffin::profile_scope!("Rendering");
+
+                if let Some(ref mut w) = profiler_window {
+                    w.render(&timeline);
+                }
+
                 render.render(push_constant.as_slice()).unwrap();
                 start_event.try_send(()).ok();
                 if video_recording {

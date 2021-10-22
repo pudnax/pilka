@@ -24,4 +24,4 @@ ash-window = "0.7.0"
 raw-window-handle = "0.3.3"
 ktx = "0.3.2"
 pilka_types = { version = "0.1.0", path = "../pilka_types" }
-profiling = "1.0.3"
+puffin = "0.10.0"
