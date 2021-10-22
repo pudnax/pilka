@@ -45,9 +45,14 @@ impl<'a> RenderBundleStatic<'a> {
         push_constant_range: u32,
         (width, height): (u32, u32),
     ) -> Result<RenderBundleStatic<'a>> {
-        let kind = match true {
-            true => Backend::Wgpu(WgpuRender::new(window, push_constant_range, width, height)?),
-            false => Backend::Ash(AshRender::new(window, push_constant_range).unwrap()),
+        let kind = match std::env::var("PILKA_BACKEND")
+            .unwrap_or_else(|_| "wgpu".into())
+            .to_lowercase()
+            .as_str()
+        {
+            "wgpu" => Backend::Wgpu(WgpuRender::new(window, push_constant_range, width, height)?),
+            "ash" => Backend::Ash(AshRender::new(window, push_constant_range).unwrap()),
+            _ => Backend::Wgpu(WgpuRender::new(window, push_constant_range, width, height)?),
         };
         Ok(Self {
             kind: Some(kind),
@@ -113,7 +118,7 @@ impl<'a> RenderBundleStatic<'a> {
         for include in includes {
             self.shader_set.push_value(include.clone(), pipeline_number);
         }
-        self.pipelines.push(pipeline.clone());
+        self.pipelines.push(pipeline);
         self.includes.push(includes.to_vec());
 
         Ok(())

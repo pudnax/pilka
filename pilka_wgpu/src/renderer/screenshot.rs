@@ -82,7 +82,7 @@ impl ScreenshotCtx {
 
         device.poll(Maintain::Wait);
 
-        futures::executor::block_on(map_future).unwrap();
+        pollster::block_on(map_future).unwrap();
 
         let mapped_slice = image_slice.get_mapped_range();
         let frame = mapped_slice.to_vec();
