@@ -33,15 +33,14 @@ impl ProfilerWindow {
         let instance = Instance::new(Backends::PRIMARY);
         let window = Window::new(event_loop)?;
         let surface = unsafe { instance.create_surface(&window) };
-        let adapter =
-            futures::executor::block_on(instance.request_adapter(&RequestAdapterOptions {
-                power_preference: egui_wgpu_backend::wgpu::PowerPreference::LowPower,
-                force_fallback_adapter: false,
-                compatible_surface: Some(&surface),
-            }))
-            .unwrap();
+        let adapter = pollster::block_on(instance.request_adapter(&RequestAdapterOptions {
+            power_preference: egui_wgpu_backend::wgpu::PowerPreference::LowPower,
+            force_fallback_adapter: false,
+            compatible_surface: Some(&surface),
+        }))
+        .unwrap();
 
-        let (device, queue) = futures::executor::block_on(adapter.request_device(
+        let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 features: Features::default(),
                 limits: Limits::default(),

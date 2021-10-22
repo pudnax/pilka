@@ -7,10 +7,10 @@ use screenshot::ScreenshotCtx;
 use std::{fmt::Display, ops::Index, path::PathBuf};
 
 use color_eyre::Result;
-use futures::executor::block_on;
 use pilka_types::{
     dispatch_optimal_size, ContiniousHashMap, Frame, ImageDimentions, ShaderCreateInfo,
 };
+use pollster::block_on;
 use raw_window_handle::HasRawWindowHandle;
 use wgpu::{
     Adapter, BindGroup, BindGroupLayout, BindGroupLayoutDescriptor, ComputePipeline, Device,

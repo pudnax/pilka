@@ -2,7 +2,7 @@ mod default_shaders;
 mod input;
 mod profiler_window;
 mod recorder;
-mod render_trait;
+mod render_bundle;
 mod shader_module;
 mod utils;
 
@@ -20,7 +20,7 @@ use std::{
 
 use pilka_types::{PipelineInfo, ShaderInfo};
 use recorder::{RecordEvent, RecordTimer};
-use render_trait::{RenderBundleStatic, Renderer};
+use render_bundle::{RenderBundleStatic, Renderer};
 use utils::{parse_args, print_help, save_screenshot, save_shaders, Args, PushConstant};
 
 use eyre::*;
