@@ -65,6 +65,7 @@ impl<'a> RenderBundleStatic<'a> {
         includes: &[PathBuf],
         shader_compiler: &mut Compiler,
     ) -> Result<()> {
+        puffin::profile_function!();
         let pipeline_number = self.pipelines.len();
         match pipeline {
             PipelineInfo::Rendering { ref vert, ref frag } => {
@@ -123,6 +124,7 @@ impl<'a> RenderBundleStatic<'a> {
         paths: &[PathBuf],
         shader_compiler: &mut Compiler,
     ) -> Result<()> {
+        puffin::profile_function!();
         self.wait_idle();
         for path in paths {
             if let Some(pipeline_indices) = self.shader_set.get(path) {
@@ -198,6 +200,7 @@ impl<'a> RenderBundleStatic<'a> {
         window: &impl HasRawWindowHandle,
         shader_compiler: &mut Compiler,
     ) -> Result<()> {
+        puffin::profile_function!();
         self.wait_idle();
         #[derive(Debug)]
         enum Kind {
@@ -283,9 +286,11 @@ impl Renderer for RenderBundleStatic<'_> {
         self.get_active_mut().resize(width, height)
     }
     fn render(&mut self, push_constant: &[u8]) -> Result<()> {
+        puffin::profile_function!();
         self.get_active_mut().render(push_constant)
     }
     fn capture_frame(&mut self) -> Result<Frame> {
+        puffin::profile_function!();
         self.get_active_mut().capture_frame()
     }
     fn captured_frame_dimentions(&self) -> ImageDimentions {
@@ -293,6 +298,7 @@ impl Renderer for RenderBundleStatic<'_> {
     }
 
     fn wait_idle(&self) {
+        puffin::profile_function!();
         self.get_active().wait_idle()
     }
     fn shut_down(&self) {

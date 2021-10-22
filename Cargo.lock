@@ -770,6 +770,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_wgpu_backend"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10b5ce7d92c1efed2572c77894a5d21f7b78fb0095c4f1ea4a69378560972991"
+dependencies = [
+ "bytemuck",
+ "epi",
+ "wgpu",
+]
+
+[[package]]
 name = "egui_winit_platform"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -873,6 +884,15 @@ dependencies = [
  "atomic_refcell",
  "emath",
  "ordered-float",
+]
+
+[[package]]
+name = "epi"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3c033c9b4d921566a98b8831b63af5ba2a0ad7ffa62d22b897698f36c22a28a"
+dependencies = [
+ "egui",
 ]
 
 [[package]]
@@ -1830,9 +1850,11 @@ dependencies = [
  "color-eyre",
  "cpal",
  "crossbeam-channel",
+ "egui_wgpu_backend",
  "egui_winit_platform",
  "env_logger",
  "eyre",
+ "futures",
  "notify",
  "pilka_ash",
  "pilka_types",
@@ -1854,7 +1876,7 @@ dependencies = [
  "ash-window",
  "ktx",
  "pilka_types",
- "profiling",
+ "puffin",
  "raw-window-handle",
 ]
 
@@ -1872,7 +1894,7 @@ dependencies = [
  "futures",
  "notify",
  "pilka_types",
- "profiling",
+ "puffin",
  "raw-window-handle",
  "wgpu",
  "winit",
@@ -1977,19 +1999,6 @@ name = "profiling"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87dfd5592a8eed7e74f56ad7b125f8234763b805c30f0c7c95c486920026a6ec"
-dependencies = [
- "profiling-procmacros",
-]
-
-[[package]]
-name = "profiling-procmacros"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9dc92bed14cc1433694b0ee18dfb3c219bf182019b0daf7b017f7a9f1e280ac"
-dependencies = [
- "quote",
- "syn",
-]
 
 [[package]]
 name = "puffin"
@@ -2003,9 +2012,9 @@ dependencies = [
 
 [[package]]
 name = "puffin_egui"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0de593a9573f45bd2271222b954e54066477050fab7b8e24cf88edd97add9ee9"
+checksum = "f619d6b3df22e6f5b3e092fc0ce6e74991481380ec3d78b32050c59e1b946737"
 dependencies = [
  "egui",
  "natord",
