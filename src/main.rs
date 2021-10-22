@@ -249,7 +249,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 window_id,
             } => {
                 puffin::profile_scope!("Resize");
-                let PhysicalSize { width, height } = dbg!(size);
+                let PhysicalSize { width, height } = size;
 
                 if let Some(ref mut w) = profiler_window {
                     if w.id() == window_id {

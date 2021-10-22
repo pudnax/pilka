@@ -93,7 +93,7 @@ impl ProfilerWindow {
     }
 
     pub fn resize(&mut self) {
-        let PhysicalSize { width, height } = dbg!(self.window.inner_size());
+        let PhysicalSize { width, height } = self.window.inner_size();
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
