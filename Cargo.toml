@@ -35,9 +35,11 @@ rustfft = "6.0.1"
 crossbeam-channel = "0.5.1"
 env_logger = "0.9.0"
 shaderc = "0.7.3"
+futures = "0.3.17"
 
 puffin = "0.10.0"
-puffin_egui = "0.9.0"
+puffin_egui = "0.9.1"
+egui_wgpu_backend = "0.13.0"
 egui_winit_platform = "0.10.0"
 
 [profile.release]

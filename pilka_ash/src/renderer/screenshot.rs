@@ -131,13 +131,14 @@ impl<'a> ScreenshotCtx<'a> {
         }
     }
 
-    #[profiling::function]
     pub fn realloc(
         &mut self,
         device: &VkDevice,
         device_properties: &VkDeviceProperties,
         mut extent: vk::Extent3D,
     ) -> VkResult<()> {
+        puffin::profile_function!();
+
         if self.extent != extent {
             extent.height = extent.height + extent.height % 2;
             self.extent = extent;
@@ -222,7 +223,6 @@ impl<'a> ScreenshotCtx<'a> {
         Ok(())
     }
 
-    #[profiling::function]
     pub fn capture_frame(
         &mut self,
         device: &VkDevice,
@@ -230,6 +230,8 @@ impl<'a> ScreenshotCtx<'a> {
         present_image: ash::vk::Image,
         queue: &VkQueue,
     ) -> VkResult<Frame> {
+        puffin::profile_function!();
+
         let copybuffer = self.commbuf;
         unsafe {
             device.reset_command_buffer(copybuffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES)
@@ -291,7 +293,7 @@ impl<'a> ScreenshotCtx<'a> {
             .build()];
 
         unsafe {
-            profiling::scope!("Cmd Blit");
+            puffin::profile_scope!("Cmd Blit");
             device.cmd_blit_image(
                 copybuffer,
                 present_image,
@@ -304,7 +306,7 @@ impl<'a> ScreenshotCtx<'a> {
         };
 
         if let Some(ref blit_image) = self.blit_image {
-            profiling::scope!("Extra Copy");
+            puffin::profile_scope!("Extra Copy");
             transport_barrier(
                 blit_image.image,
                 ImageLayout::UNDEFINED,

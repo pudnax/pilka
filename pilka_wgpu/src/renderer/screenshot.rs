@@ -9,11 +9,11 @@ pub struct ScreenshotCtx {
 }
 
 impl ScreenshotCtx {
-    #[profiling::function]
     pub fn resize(&mut self, device: &Device, width: u32, height: u32) {
+        puffin::profile_function!();
         let new_dims = ImageDimentions::new(width, height, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
         if new_dims.linear_size() > self.image_dimentions.linear_size() {
-            profiling::scope!("Reallocating Buffer");
+            puffin::profile_scope!("Reallocating Buffer");
             let image_dimentions =
                 ImageDimentions::new(width, height, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
 
@@ -45,13 +45,13 @@ impl ScreenshotCtx {
         }
     }
 
-    #[profiling::function]
     pub fn capture_frame(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         src_texture: &wgpu::Texture,
     ) -> (Vec<u8>, ImageDimentions) {
+        puffin::profile_function!();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Capture Encoder"),
         });

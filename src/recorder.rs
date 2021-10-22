@@ -121,11 +121,15 @@ pub fn new_ffmpeg_command(
 }
 
 pub fn record_thread(rx: crossbeam_channel::Receiver<RecordEvent>) {
+    puffin::profile_function!();
+
     let mut process = None;
 
     while let Ok(event) = rx.recv() {
         match event {
             RecordEvent::Start(image_dimentions) => {
+                puffin::profile_scope!("Start Recording");
+
                 create_folder(VIDEO_FOLDER).unwrap();
                 let dir_path = Path::new(VIDEO_FOLDER);
                 let filename = dir_path.join(format!(
@@ -136,6 +140,8 @@ pub fn record_thread(rx: crossbeam_channel::Receiver<RecordEvent>) {
                     Some(new_ffmpeg_command(image_dimentions, filename.to_str().unwrap()).unwrap());
             }
             RecordEvent::Record(frame) => {
+                puffin::profile_scope!("Process Frame");
+
                 if let Some(ref mut process) = process {
                     let writer = process.stdin.as_mut().unwrap();
                     writer.write_all(&frame).unwrap();
@@ -143,6 +149,8 @@ pub fn record_thread(rx: crossbeam_channel::Receiver<RecordEvent>) {
                 }
             }
             RecordEvent::Finish => {
+                puffin::profile_scope!("Stop Recording");
+
                 if let Some(ref mut process) = process {
                     process.wait().unwrap();
                 }
