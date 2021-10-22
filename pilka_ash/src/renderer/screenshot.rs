@@ -1,16 +1,13 @@
-use std::mem::size_of;
-
 use super::images::VkImage;
 use crate::{
-    pvk::{utils::return_aligned, VkCommandPool, VkDevice, VkDeviceProperties},
+    pvk::{VkCommandPool, VkDevice, VkDeviceProperties},
     VkQueue,
 };
 use ash::{
     prelude::VkResult,
     vk::{self, SubresourceLayout},
 };
-
-pub type Frame<'a> = (&'a [u8], ImageDimentions);
+use pilka_types::{Frame, ImageDimentions};
 
 pub struct ScreenshotCtx<'a> {
     fence: vk::Fence,
@@ -23,7 +20,7 @@ pub struct ScreenshotCtx<'a> {
 }
 
 impl<'a> ScreenshotCtx<'a> {
-    pub fn init(
+    pub fn new(
         device: &VkDevice,
         memory_properties: &vk::PhysicalDeviceMemoryProperties,
         command_pool: &VkCommandPool,
@@ -39,7 +36,7 @@ impl<'a> ScreenshotCtx<'a> {
         let fence = device.create_fence(false)?;
         let extent = vk::Extent3D {
             width: extent.width,
-            height: return_aligned(extent.height, 2),
+            height: extent.height + extent.height % 2,
             depth: 1,
         };
 
@@ -140,8 +137,10 @@ impl<'a> ScreenshotCtx<'a> {
         device_properties: &VkDeviceProperties,
         mut extent: vk::Extent3D,
     ) -> VkResult<()> {
+        puffin::profile_function!();
+
         if self.extent != extent {
-            extent.height = return_aligned(extent.height, 2);
+            extent.height = extent.height + extent.height % 2;
             self.extent = extent;
 
             unsafe { device.destroy_image(self.image.image, None) };
@@ -231,6 +230,8 @@ impl<'a> ScreenshotCtx<'a> {
         present_image: ash::vk::Image,
         queue: &VkQueue,
     ) -> VkResult<Frame> {
+        puffin::profile_function!();
+
         let copybuffer = self.commbuf;
         unsafe {
             device.reset_command_buffer(copybuffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES)
@@ -266,9 +267,46 @@ impl<'a> ScreenshotCtx<'a> {
             ImageLayout::TRANSFER_DST_OPTIMAL,
         );
 
-        device.blit_image(copybuffer, present_image, copy_image, extent, self.extent);
+        let offset = [
+            vk::Offset3D { x: 0, y: 0, z: 0 },
+            vk::Offset3D {
+                x: extent.width as i32,
+                y: extent.height as i32,
+                z: extent.depth as i32,
+            },
+        ];
+        let blit_region = [vk::ImageBlit::builder()
+            .src_subresource(vk::ImageSubresourceLayers {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_array_layer: 0,
+                layer_count: 1,
+                mip_level: 0,
+            })
+            .dst_subresource(vk::ImageSubresourceLayers {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_array_layer: 0,
+                layer_count: 1,
+                mip_level: 0,
+            })
+            .src_offsets(offset)
+            .dst_offsets(offset)
+            .build()];
+
+        unsafe {
+            puffin::profile_scope!("Cmd Blit");
+            device.cmd_blit_image(
+                copybuffer,
+                present_image,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                copy_image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                blit_region.as_ref(),
+                vk::Filter::NEAREST,
+            )
+        };
 
         if let Some(ref blit_image) = self.blit_image {
+            puffin::profile_scope!("Extra Copy");
             transport_barrier(
                 blit_image.image,
                 ImageLayout::UNDEFINED,
@@ -311,7 +349,10 @@ impl<'a> ScreenshotCtx<'a> {
 
         let (subresource_layout, image_dimentions) = self.image_dimentions(device);
 
-        Ok((&self.data[..subresource_layout.size as _], image_dimentions))
+        Ok((
+            self.data[..subresource_layout.size as _].to_vec(),
+            image_dimentions,
+        ))
     }
 
     pub fn image_dimentions(&self, device: &VkDevice) -> (SubresourceLayout, ImageDimentions) {
@@ -321,8 +362,8 @@ impl<'a> ScreenshotCtx<'a> {
             &self.image
         };
         let image_dimentions = ImageDimentions::new(
-            self.extent.width as _,
-            self.extent.height as _,
+            self.extent.width,
+            self.extent.height,
             image.memory_requirements.alignment as _,
         );
         let subresource_layout = unsafe {
@@ -336,28 +377,5 @@ impl<'a> ScreenshotCtx<'a> {
             )
         };
         (subresource_layout, image_dimentions)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ImageDimentions {
-    pub width: usize,
-    pub height: usize,
-    pub padded_bytes_per_row: usize,
-    pub unpadded_bytes_per_row: usize,
-}
-
-impl ImageDimentions {
-    fn new(width: usize, height: usize, align: usize) -> Self {
-        let bytes_per_pixel = size_of::<[u8; 4]>();
-        let unpadded_bytes_per_row = width * bytes_per_pixel;
-        let padded_bytes_per_row_padding = (align - unpadded_bytes_per_row % align) % align;
-        let padded_bytes_per_row = unpadded_bytes_per_row + padded_bytes_per_row_padding;
-        Self {
-            width,
-            height,
-            unpadded_bytes_per_row,
-            padded_bytes_per_row,
-        }
     }
 }

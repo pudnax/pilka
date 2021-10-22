@@ -1,0 +1,12 @@
+[package]
+name = "pilka_types"
+version = "0.1.0"
+edition = "2021"
+authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
+description = "Pilka types"
+license = "MIT"
+keywords = ["graphics"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
