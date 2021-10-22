@@ -42,7 +42,7 @@ impl VkInstance {
     pub fn new(
         validation_layers: &[&str],
         extention_names: &[&CStr],
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
         let entry = unsafe { ash::Entry::new() }?;
 
         #[cfg(target_os = "macos")]
@@ -77,7 +77,7 @@ impl VkInstance {
         let extensions = [DebugUtils::name()]
             .iter()
             .chain(extention_names)
-            .map(|s| unsafe { CStr::from_ptr(s.as_ptr() as *const i8) })
+            .map(|s| unsafe { CStr::from_ptr(s.as_ptr()) })
             .filter_map(|ext| {
                 available_exts
                     .iter()
@@ -125,13 +125,13 @@ impl VkInstance {
             (dbg_loader, dbg_callbk)
         };
 
-        Ok(Self {
+        Ok(Arc::new(Self {
             entry,
             instance,
             validation_layers,
             _dbg_loader,
             _dbg_callbk,
-        })
+        }))
     }
 
     /// Make surface and surface loader.
@@ -147,7 +147,7 @@ impl VkInstance {
     }
 
     pub fn create_device_and_queues(
-        &self,
+        self: Arc<Self>,
         surface: Option<&VkSurface>,
     ) -> VkResult<(VkDevice, VkDeviceProperties, VkQueues)> {
         // Acuire all availble device for this machine.
@@ -216,6 +216,7 @@ impl VkInstance {
 
         Ok((
             VkDevice {
+                instance: self.clone(),
                 device,
                 physical_device,
                 memory_properties,

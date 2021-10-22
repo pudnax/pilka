@@ -26,6 +26,7 @@ layout(std430, push_constant) uniform PushConstant {
     bool mouse_pressed;
     uint frame;
     float time_delta;
+    float record_period;
 } pc;
 
 vec3 vignette(vec3 color, vec2 q, float v) {

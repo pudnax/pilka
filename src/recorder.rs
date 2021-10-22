@@ -3,7 +3,7 @@ use crossbeam_channel::{Receiver, Sender};
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
-    io::{self, Write},
+    io::{self, BufWriter, Write},
     path::Path,
     process::{Child, Command, Stdio},
     time::{Duration, Instant},
@@ -12,7 +12,7 @@ use std::{
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-use pilka_ash::ImageDimentions;
+use pilka_types::ImageDimentions;
 
 use super::utils::create_folder;
 use crate::VIDEO_FOLDER;
@@ -70,10 +70,15 @@ pub fn ffmpeg_version() -> Result<(String, bool), ProcessError> {
     Ok(res)
 }
 
+pub struct Recorder {
+    process: Child,
+    image_dimentions: ImageDimentions,
+}
+
 pub fn new_ffmpeg_command(
     image_dimentions: ImageDimentions,
     filename: &str,
-) -> Result<Child, ProcessError> {
+) -> Result<Recorder, ProcessError> {
     #[rustfmt::skip]
     let args = [
         "-framerate", "60",
@@ -99,7 +104,7 @@ pub fn new_ffmpeg_command(
         .arg("-video_size")
         .arg(format!(
             "{}x{}",
-            image_dimentions.padded_bytes_per_row / 4,
+            image_dimentions.unpadded_bytes_per_row / 4,
             image_dimentions.height
         ))
         .args(&args)
@@ -117,38 +122,58 @@ pub fn new_ffmpeg_command(
 
     let child = command.spawn().map_err(ProcessError::SpawnError)?;
 
-    Ok(child)
+    Ok(Recorder {
+        process: child,
+        image_dimentions,
+    })
 }
 
 pub fn record_thread(rx: crossbeam_channel::Receiver<RecordEvent>) {
-    let mut process = None;
+    puffin::profile_function!();
 
-    // TODO: try resv
+    let mut recorder = None;
+
     while let Ok(event) = rx.recv() {
         match event {
             RecordEvent::Start(image_dimentions) => {
+                puffin::profile_scope!("Start Recording");
+
                 create_folder(VIDEO_FOLDER).unwrap();
                 let dir_path = Path::new(VIDEO_FOLDER);
                 let filename = dir_path.join(format!(
                     "record-{}.mp4",
                     chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
                 ));
-                process =
+                recorder =
                     Some(new_ffmpeg_command(image_dimentions, filename.to_str().unwrap()).unwrap());
             }
             RecordEvent::Record(frame) => {
-                if let Some(ref mut process) = process {
-                    let writer = process.stdin.as_mut().unwrap();
-                    writer.write_all(&frame).unwrap();
+                puffin::profile_scope!("Process Frame");
+
+                if let Some(ref mut recorder) = recorder {
+                    let writer = recorder.process.stdin.as_mut().unwrap();
+                    let mut writer = BufWriter::new(writer);
+
+                    let padded_bytes = recorder.image_dimentions.padded_bytes_per_row as _;
+                    let unpadded_bytes = recorder.image_dimentions.unpadded_bytes_per_row as _;
+                    for chunk in frame
+                        .chunks(padded_bytes)
+                        .map(|chunk| &chunk[..unpadded_bytes])
+                    {
+                        writer.write_all(chunk).unwrap();
+                    }
+                    // writer.write_all(&frame).unwrap();
                     writer.flush().unwrap();
                 }
             }
             RecordEvent::Finish => {
-                if let Some(ref mut process) = process {
-                    process.wait().unwrap();
+                puffin::profile_scope!("Stop Recording");
+
+                if let Some(ref mut process) = recorder {
+                    process.process.wait().unwrap();
                 }
-                drop(process);
-                process = None;
+                drop(recorder);
+                recorder = None;
             }
         }
     }

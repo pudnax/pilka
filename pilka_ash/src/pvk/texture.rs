@@ -103,7 +103,7 @@ impl VkTexture {
                     .image_subresource(
                         vk::ImageSubresourceLayers::builder()
                             .aspect_mask(vk::ImageAspectFlags::COLOR)
-                            .mip_level(i as _)
+                            .mip_level(i)
                             .base_array_layer(0)
                             .layer_count(1)
                             .build(),

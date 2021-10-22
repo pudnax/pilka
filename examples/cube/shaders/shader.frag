@@ -3,20 +3,21 @@
 // Heavily inspired by Flopine's streams... HBHS and cheers!
 // https://www.shadertoy.com/user/Flopine
 
-#include <prelude.glsl>
-
 layout(std430, push_constant) uniform PushConstant {
     vec3 pos;
     float time;
     vec2 resolution;
     vec2 mouse;
-    float spectrum;
+    bool mouse_pressed;
+    uint frame;
+    float time_delta;
+    float record_period;
 } pc;
 
 layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 out_color;
 
-/* #define PI 3.141592 */
+#define PI 3.14159265
 #define TAU 6.2831853071
 #define dt (mod(pc.time + PI * 0.5, TAU))
 
@@ -84,7 +85,6 @@ vec3 raymarch(vec2 uv) {
 void main() {
     vec3 cuber = raymarch(uv);
     vec3 col = (uv.y >= sin(dt + 2 * PI) * 2) ? cuber : PINK + square(uv);
-    /* col = raymarch(uv); */
 
     out_color = vec4(col * 1.2 / (2.1 - col * 0.5), 1.0);
     out_color = vec4(pow(col, vec3(3 / 1.0)), 1.0);

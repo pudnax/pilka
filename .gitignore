@@ -1,4 +1,6 @@
+*.rdc
 /.cargo
+/shaders
 /target
 /shader_dump
 /screenshots

@@ -1,52 +1,6 @@
 use ash::vk;
 
-pub fn return_aligned(len: u32, padding: u32) -> u32 {
-    len + (padding - len % padding) % padding
-}
-
 pub fn find_memory_type_index(
-    memory_req: &vk::MemoryRequirements,
-    memory_prop: &vk::PhysicalDeviceMemoryProperties,
-    flags: vk::MemoryPropertyFlags,
-) -> Option<u32> {
-    let best_suitable_index =
-        find_memorytype_index_f(memory_req, memory_prop, flags, |property_flags, flags| {
-            property_flags == flags
-        });
-    if best_suitable_index.is_some() {
-        return best_suitable_index;
-    }
-    find_memorytype_index_f(memory_req, memory_prop, flags, |property_flags, flags| {
-        property_flags & flags == flags
-    })
-}
-
-fn find_memorytype_index_f<F>(
-    memory_req: &vk::MemoryRequirements,
-    memory_prop: &vk::PhysicalDeviceMemoryProperties,
-    flags: vk::MemoryPropertyFlags,
-    f: F,
-) -> Option<u32>
-where
-    F: Fn(vk::MemoryPropertyFlags, vk::MemoryPropertyFlags) -> bool,
-{
-    let mut memory_type_bits = memory_req.memory_type_bits;
-    for (index, memory_type) in memory_prop.memory_types.iter().enumerate() {
-        if memory_type_bits & 1 == 1 && f(memory_type.property_flags, flags) {
-            return Some(index as u32);
-        }
-        memory_type_bits >>= 1;
-    }
-    None
-}
-
-/// # Safety
-/// Until you're using it on not ZST or DST it's fine
-pub unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-    unsafe { std::slice::from_raw_parts((p as *const T) as *const _, std::mem::size_of::<T>()) }
-}
-
-pub fn find_memorytype_index(
     memory_req: &vk::MemoryRequirements,
     memory_prop: &vk::PhysicalDeviceMemoryProperties,
     flags: vk::MemoryPropertyFlags,
@@ -63,36 +17,6 @@ pub fn find_memorytype_index(
 
 pub fn size_of_slice<T: Sized>(slice: &[T]) -> usize {
     std::mem::size_of::<T>() * slice.len()
-}
-
-// FIXME: Add license from wgpu project or delete this function
-pub fn make_spirv(data: &[u8]) -> std::borrow::Cow<[u32]> {
-    const MAGIC_NUMBER: u32 = 0x723_0203;
-
-    assert_eq!(
-        data.len() % std::mem::size_of::<u32>(),
-        0,
-        "data size is not a multiple of 4"
-    );
-
-    let words = if data.as_ptr().align_offset(std::mem::align_of::<u32>()) == 0 {
-        let (pre, words, post) = unsafe { data.align_to::<u32>() };
-        debug_assert!(pre.is_empty());
-        debug_assert!(post.is_empty());
-        std::borrow::Cow::from(words)
-    } else {
-        let mut words = vec![0u32; data.len() / std::mem::size_of::<u32>()];
-        unsafe {
-            std::ptr::copy_nonoverlapping(data.as_ptr(), words.as_mut_ptr() as *mut u8, data.len());
-        }
-        std::borrow::Cow::from(words)
-    };
-    assert_eq!(
-        words[0], MAGIC_NUMBER,
-        "wrong magic word {:x}. Make sure you are using a binary SPIRV file.",
-        words[0]
-    );
-    words
 }
 
 #[macro_export]
