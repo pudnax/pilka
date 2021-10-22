@@ -5,16 +5,29 @@ use pilka_types::ImageDimentions;
 
 use std::{
     fs::File,
-    io,
-    io::{BufWriter, Write},
+    io::{self, BufWriter, Write},
     path::Path,
     time::{Duration, Instant},
 };
 
+pub fn print_help() {
+    println!("\n- `F1`:   Print help");
+    println!("- `F2`:   Toggle play/pause");
+    println!("- `F3`:   Pause and step back one frame");
+    println!("- `F4`:   Pause and step forward one frame");
+    println!("- `F5`:   Restart playback at frame 0 (`Time` and `Pos` = 0)");
+    println!("- `F6`:   Print parameters");
+    println!("- `F10`:  Save shaders");
+    println!("- `F11`:  Take Screenshot");
+    println!("- `F12`:  Start/Stop record video");
+    println!("- `ESC`:  Exit the application");
+    println!("- `Arrows`: Change `Pos`\n");
+}
+
 pub fn create_folder<P: AsRef<Path>>(name: P) -> io::Result<()> {
     match std::fs::create_dir(name) {
         Ok(_) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e),
     }
 
@@ -59,20 +72,6 @@ pub fn parse_args() -> Args {
     }
 }
 
-pub fn print_help() {
-    println!("\n- `F1`:   Print help");
-    println!("- `F2`:   Toggle play/pause");
-    println!("- `F3`:   Pause and step back one frame");
-    println!("- `F4`:   Pause and step forward one frame");
-    println!("- `F5`:   Restart playback at frame 0 (`Time` and `Pos` = 0)");
-    println!("- `F6`:   Print parameters");
-    println!("- `F10`:  Save shaders");
-    println!("- `F11`:  Take Screenshot");
-    println!("- `F12`:  Start/Stop record video");
-    println!("- `ESC`:  Exit the application");
-    println!("- `Arrows`: Change `Pos`\n");
-}
-
 pub fn save_screenshot(
     frame: Vec<u8>,
     image_dimentions: ImageDimentions,
@@ -109,7 +108,7 @@ pub fn save_screenshot(
 }
 
 pub fn save_shaders<P: AsRef<Path>>(paths: &[P]) -> Result<()> {
-    let dump_folder = std::path::Path::new(SHADER_DUMP_FOLDER);
+    let dump_folder = Path::new(SHADER_DUMP_FOLDER);
     create_folder(dump_folder)?;
     let dump_folder =
         dump_folder.join(chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string());
@@ -124,7 +123,7 @@ pub fn save_shaders<P: AsRef<Path>>(paths: &[P]) -> Result<()> {
         );
         if !to.exists() {
             std::fs::create_dir_all(&to.parent().unwrap().canonicalize()?)?;
-            std::fs::File::create(&to)?;
+            File::create(&to)?;
         }
         std::fs::copy(path, &to)?;
         eprintln!("Saved: {}", &to.display());

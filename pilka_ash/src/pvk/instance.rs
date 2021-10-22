@@ -79,7 +79,7 @@ impl VkInstance {
         let extensions = [DebugUtils::name()]
             .iter()
             .chain(extention_names)
-            .map(|s| unsafe { CStr::from_ptr(s.as_ptr() as *const i8) })
+            .map(|s| unsafe { CStr::from_ptr(s.as_ptr()) })
             .filter_map(|ext| {
                 available_exts
                     .iter()

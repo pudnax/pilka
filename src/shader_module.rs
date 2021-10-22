@@ -1,10 +1,7 @@
 use std::path::Path;
 
+use crate::SHADER_PATH;
 use pilka_types::ShaderInfo;
-
-// TODO: Make them configurable
-pub const SHADER_PATH: &str = "shaders";
-pub const SHADER_ENTRY_POINT: &str = "main";
 
 pub fn create_shader_module(
     shader_info: &ShaderInfo,
@@ -20,9 +17,7 @@ pub fn create_shader_module(
         shaderc::EnvVersion::Vulkan1_2 as u32,
     );
 
-    // Wgpu validation doesn't like this
-    // compile_options.set_optimization_level(shaderc::OptimizationLevel::Performance);
-
+    compile_options.set_optimization_level(shaderc::OptimizationLevel::Performance);
     compile_options.set_generate_debug_info();
 
     match shader_type {

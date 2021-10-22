@@ -18,13 +18,12 @@ use std::{
 use pilka_types::{PipelineInfo, ShaderInfo};
 use recorder::{RecordEvent, RecordTimer};
 use render_trait::{RenderBundleStatic, Renderer};
-use shader_module::{SHADER_ENTRY_POINT, SHADER_PATH};
 use utils::{parse_args, print_help, save_screenshot, save_shaders, Args, PushConstant};
 
 use eyre::*;
 use notify::{
     event::{EventKind, ModifyKind},
-    RecommendedWatcher, RecursiveMode, Watcher,
+    RecursiveMode, Watcher,
 };
 use winit::{
     dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
@@ -36,6 +35,8 @@ use winit::{
 pub const SCREENSHOTS_FOLDER: &str = "screenshots";
 pub const SHADER_DUMP_FOLDER: &str = "shader_dump";
 pub const VIDEO_FOLDER: &str = "recordings";
+pub const SHADER_PATH: &str = "shaders";
+const SHADER_ENTRY_POINT: &str = "main";
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Initialize error hook.
@@ -120,7 +121,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (tx, rx) = crossbeam_channel::unbounded();
 
-    let mut watcher: RecommendedWatcher = notify::recommended_watcher(move |res| match res {
+    let mut watcher = notify::recommended_watcher(move |res| match res {
         Ok(event) => {
             tx.send(event).unwrap();
         }
@@ -191,7 +192,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
 
-                // pilka.paused = !pause;
                 render.pause();
 
                 push_constant.time = if pause {
@@ -312,7 +312,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         if VirtualKeyCode::F8 == keycode {
-                            pollster::block_on(render.switch(&window, &mut compiler)).unwrap();
+                            render.switch(&window, &mut compiler).unwrap();
                         }
 
                         if VirtualKeyCode::F10 == keycode {
