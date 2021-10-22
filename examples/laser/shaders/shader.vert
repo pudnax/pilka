@@ -9,6 +9,8 @@ layout(std430, push_constant) uniform PushConstant {
     vec2 mouse;
     bool mouse_pressed;
     uint frame;
+    float time_delta;
+    float record_period;
 } pc;
 
 void main() {
