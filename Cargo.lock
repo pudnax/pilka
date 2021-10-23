@@ -1802,6 +1802,7 @@ dependencies = [
  "pollster",
  "puffin",
  "raw-window-handle",
+ "smaa",
  "wgpu",
  "winit",
 ]
@@ -2120,6 +2121,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1e08e261d0e8f5c43123b7adf3e4ca1690d655377ac93a03b2c9d3e98de1342"
 dependencies = [
  "version_check",
+]
+
+[[package]]
+name = "smaa"
+version = "0.4.0"
+source = "git+https://github.com/pudnax/smaa-rs?branch=wgpuV0.11#b39a9602dbb4f37097a0d0073402849c9a2a5eb4"
+dependencies = [
+ "shaderc",
+ "wgpu",
 ]
 
 [[package]]

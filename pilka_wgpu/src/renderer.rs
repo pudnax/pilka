@@ -314,6 +314,7 @@ pub struct WgpuRender {
     screenshot_ctx: ScreenshotCtx,
 
     multisampled_framebuffer: wgpu::TextureView,
+    smaa_target: smaa::SmaaTarget,
 
     pub paused: bool,
 }
@@ -455,6 +456,15 @@ impl WgpuRender {
         let multisampled_framebuffer =
             Self::create_multisample_texture(&device, format, NUM_SAMPLES, extent);
 
+        let smaa_target = smaa::SmaaTarget::new(
+            &device,
+            &queue,
+            width,
+            height,
+            format,
+            smaa::SmaaMode::Smaa1X,
+        );
+
         Ok(Self {
             adapter,
             device,
@@ -479,6 +489,7 @@ impl WgpuRender {
             screenshot_ctx,
 
             multisampled_framebuffer,
+            smaa_target,
 
             paused: false,
         })
@@ -509,7 +520,8 @@ impl WgpuRender {
         self.screenshot_ctx.resize(&self.device, width, height);
 
         self.multisampled_framebuffer =
-            Self::create_multisample_texture(&self.device, self.format, NUM_SAMPLES, self.extent)
+            Self::create_multisample_texture(&self.device, self.format, NUM_SAMPLES, self.extent);
+        self.smaa_target.resize(&self.device, width, height);
     }
 
     fn create_multisample_texture(
@@ -669,8 +681,12 @@ impl WgpuRender {
         Ok(Pipeline::Render(pipeline))
     }
 
-    pub fn render(&self, push_constant: &[u8]) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self, push_constant: &[u8]) -> Result<(), wgpu::SurfaceError> {
         puffin::profile_function!();
+
+        let mut _pre_scope =
+            puffin::ProfilerScope::new("Aquiring frame", puffin::short_file_name(file!()), "");
+
         let frame = match self.surface.get_current_texture() {
             Ok(frame) => frame,
             Err(_) => {
@@ -683,12 +699,17 @@ impl WgpuRender {
         let frame_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        let smaa_frame = self
+            .smaa_target
+            .start_frame(&self.device, &self.queue, &frame_view);
 
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Main Encoder"),
             });
+
+        drop(_pre_scope);
 
         for (i, pipeline) in self.pipelines.iter().enumerate() {
             match pipeline {
@@ -700,7 +721,7 @@ impl WgpuRender {
                         label: Some(&label),
                         color_attachments: &[wgpu::RenderPassColorAttachment {
                             view: &self.multisampled_framebuffer,
-                            resolve_target: Some(&frame_view),
+                            resolve_target: Some(&*smaa_frame),
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Load,
                                 store: true,
@@ -736,6 +757,11 @@ impl WgpuRender {
                 }
                 Pipeline::Compute { .. } => {}
             }
+        }
+
+        {
+            puffin::profile_scope!("Post-Process Antialiasing");
+            drop(smaa_frame);
         }
 
         {

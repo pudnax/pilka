@@ -21,6 +21,7 @@ env_logger = "0.9.0"
 pilka_types = { version = "0.6.0", path = "../pilka_types" }
 puffin = "0.10.0"
 pollster = "0.2.4"
+smaa = { git = "https://github.com/pudnax/smaa-rs", branch = "wgpuV0.11" }
 # naga = { git = "https://github.com/gfx-rs/naga", branch = "master", features = ["glsl-in",
 #     "wgsl-in", "spv-in", "span", "spv-out", "wgsl-out", "glsl-validate"] }
 
