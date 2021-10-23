@@ -116,7 +116,7 @@ Vulkan, Metal, OpenGL and used for primary backend aside of `ash`.
 [pollster](https://github.com/zesterer/pollster) is smol blocking executor and needed for eliminating
 async `wgpu` API.
 
-**Ffmpeg** is used to record and save to video. For my concerns it's
+**Ffmpeg** is used to record videos. For my concerns it's
 temporary solution after which I switch to [rav1e](https://github.com/xiph/rav1e) on it's release.
 
 ### Places of inspiration (from where I steal code):
