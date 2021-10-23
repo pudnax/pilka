@@ -40,8 +40,6 @@ layout(set = 1, binding = 0) uniform sampler tex_sampler;
 #define Tuv(tex) (T(tex, in_uv))
 #define T_off(tex, off) (T(tex, vec2(in_uv.x + off.x, -(in_uv.y + off.y))))
 
-layout(set = 1, binding = 0) uniform sampler1D fft_texture;
-
 layout(std430, push_constant) uniform PushConstant {
     vec3 pos;
     float time;
@@ -123,8 +121,6 @@ layout (binding = 2, rgba8) uniform image2D dummy_texture;
 
 layout (binding = 3, rgba32f) uniform image2D float_texture1;
 layout (binding = 4, rgba32f) uniform image2D float_texture2;
-
-layout(set = 1, binding = 0) uniform sampler1D fft_texture;
 
 void main() {
     if (gl_GlobalInvocationID.x >= pc.resolution.x ||

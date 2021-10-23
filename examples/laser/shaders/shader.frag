@@ -16,8 +16,6 @@ layout(set = 0, binding = 2) uniform sampler2D dummy_texture;
 layout(set = 0, binding = 3) uniform sampler2D float_texture1;
 layout(set = 0, binding = 4) uniform sampler2D float_texture2;
 
-layout(set = 1, binding = 0) uniform sampler1D fft_texture;
-
 layout(std430, push_constant) uniform PushConstant {
     vec3 pos;
     float time;

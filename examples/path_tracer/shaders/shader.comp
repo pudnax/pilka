@@ -22,8 +22,6 @@ layout (binding = 2, rgba8) uniform image2D dummy_texture;
 layout (binding = 3, rgba32f) uniform image2D float_texture1;
 layout (binding = 4, rgba32f) uniform image2D float_texture2;
 
-layout(set = 1, binding = 0) uniform sampler1D fft_texture;
-
 const float SKYBOX_BRIGHTNESS_MULTIPLIER = 0.25;
 const float MINIMUM_RAY_HIT_TIME = 0.1;
 const float SUPER_FAR = 10000.;
