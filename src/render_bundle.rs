@@ -116,7 +116,8 @@ impl<'a> RenderBundleStatic<'a> {
             }
         }
         for include in includes {
-            self.shader_set.push_value(include.clone(), pipeline_number);
+            self.shader_set
+                .push_value(include.canonicalize()?, pipeline_number);
         }
         self.pipelines.push(pipeline);
         self.includes.push(includes.to_vec());
