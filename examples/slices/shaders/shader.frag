@@ -182,7 +182,7 @@ vec3 normal_vector(vec3 p, float rep) {
 void main() {
     vec2 uv = (in_uv + -0.5) * 2.0 / vec2(pc.resolution.y / pc.resolution.x, 1);
 
-    float anim = mod(time, 30.) * .1;
+    float anim = mod(time, 30.);
     /* tMorph = smoothstep(1.09,1.1,anim); */
     tMorph = 1.;
 

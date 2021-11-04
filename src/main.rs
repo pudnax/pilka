@@ -205,7 +205,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 });
                             }
                             Err(e) => {
-                                eprintln!("Compilation error:\n{}", e)
+                                eprintln!("{}", e)
                             }
                         };
                     }
