@@ -2,7 +2,7 @@
 
 #include <prelude.glsl>
 
-// In the beginning, colours never existed. There's nothing that can be done before you...
+// In the beginning, colours never existed. There's nothing that was done before you...
 
 /*
    Big credits to the example made by demofox

@@ -1906,9 +1906,9 @@ dependencies = [
 
 [[package]]
 name = "puffin_egui"
-version = "0.10.1"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e633cec7c896f55c1519358e3f95de7d0d52c61d6b82c27bc6e9870aa70a6ea"
+checksum = "bf6219f5b749acb21c511c2444719b03138c58dd4db344d95bba73ad5ac3fbb8"
 dependencies = [
  "chrono",
  "egui",

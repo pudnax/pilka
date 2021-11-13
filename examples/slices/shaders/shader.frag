@@ -2,7 +2,7 @@
 
 // Cone tracing and effects took from TekF's shader https://www.shadertoy.com/view/MsBGWm
 
-// In the beginning, colours never existed. There's nothing that can be done before you...
+// In the beginning, colours never existed. There's nothing that was done before you...
 
 layout(location = 0) in vec2 in_uv;
 layout(location = 0) out vec4 out_color;
