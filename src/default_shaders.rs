@@ -118,7 +118,7 @@ const float MISS_DIST = 10.0;
 const float WIDTH = 2.0;
 const float HALF_WIDTH = 1.0;
 
-void st_assert(bool cond, int v) {
+void assert(bool cond, int v) {
     if (!cond) {
         if      (v == 0) out_color.x = -1.0;
         else if (v == 1) out_color.y = -1.0;
@@ -126,7 +126,7 @@ void st_assert(bool cond, int v) {
         else             out_color.w = -1.0;
     }
 }
-void st_assert(bool cond) { if (!cond) out_color.x = -1.0; }
+void assert(bool cond) { if (!cond) out_color.x = -1.0; }
 #define catch_assert(col)          \
     if (out_color.x < 0.0)         \
         col = vec3(1.0, 0.0, 0.0); \
