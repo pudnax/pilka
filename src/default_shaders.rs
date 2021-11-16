@@ -51,32 +51,10 @@ layout(std430, push_constant) uniform PushConstant {
     float record_period;
 } pc;
 
-float worldSDF(in vec3 pos) {
-	float res = -1.0;
-	res = sphereSDF(pos);
-
-	return res;
-}
-
 void main() {
     vec2 uv = (in_uv + -0.5) * 2.0 * vec2(pc.resolution.x / pc.resolution.y, 1);
 
-	vec3 O = vec3(0.0, 0.0, 3.0);
-	vec3 D = normalize(vec3(uv, -2.));
-
-	vec2 path = ray_march(O, D);
-	vec3 normal = wnormal(O);
-	vec3 at = O + path.x * D;
-
-	float r = 2.0;
-	vec2 l = r * vec2(cos(pc.time), sin(pc.time));
-	vec3 l_pos = vec3(l.x, 3.0, l.y + 2.0);
-
-	vec3 l_col = vec3(1.0, 1.0, 0.7);
-    vec3 diffuse = vec3(0.5, 0.5, 0.5);
-	vec3 dlight = enlight(at, wnormal(at), diffuse, l_col, l_pos);
-
-    vec3 col = dlight * 10.;
+    vec3 col = vec3(uv, 1.);
     out_color = vec4(col, 1.0);
 }";
 
@@ -139,6 +117,28 @@ const float MISS_DIST = 10.0;
 
 const float WIDTH = 2.0;
 const float HALF_WIDTH = 1.0;
+
+void st_assert(bool cond, int v) {
+    if (!cond) {
+        if      (v == 0) out_color.x = -1.0;
+        else if (v == 1) out_color.y = -1.0;
+        else if (v == 2) out_color.z = -1.0;
+        else             out_color.w = -1.0;
+    }
+}
+void st_assert(bool cond) { if (!cond) out_color.x = -1.0; }
+#define catch_assert(col)          \
+    if (out_color.x < 0.0)         \
+        col = vec3(1.0, 0.0, 0.0); \
+    if (out_color.y < 0.0)         \
+        col = vec3(0.0, 1.0, 0.0); \
+    if (out_color.z < 0.0)         \
+        col = vec3(0.0, 0.0, 1.0); \
+    if (out_color.w < 0.0)         \
+        col = vec3(1.0, 1.0, 0.0);
+
+#define AAstep(thre, val) \
+    smoothstep(-.7, .7, (val - thre) / min(0.07, fwidth(val - thre)))
 
 float worldSDF(vec3 rayPos);
 

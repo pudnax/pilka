@@ -52,8 +52,8 @@ shaderc = "0.7.3"
 pollster = "0.2.4"
 
 # GUI profiler dependencies
-puffin = "0.10.0"
-puffin_egui = "0.10.3"
+puffin = "0.12.1"
+puffin_egui = "0.11.0"
 egui_wgpu_backend = "0.14.0"
 egui_winit_platform = "0.11.0"
 
