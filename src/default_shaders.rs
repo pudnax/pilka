@@ -118,24 +118,21 @@ const float MISS_DIST = 10.0;
 const float WIDTH = 2.0;
 const float HALF_WIDTH = 1.0;
 
+vec4 ASSERT_COL = vec4(0.);
 void assert(bool cond, int v) {
-    if (!cond) {
-        if      (v == 0) out_color.x = -1.0;
-        else if (v == 1) out_color.y = -1.0;
-        else if (v == 2) out_color.z = -1.0;
-        else             out_color.w = -1.0;
+    if (!(cond)) {
+        if      (v == 0) ASSERT_COL.x = -1.0;
+        else if (v == 1) ASSERT_COL.y = -1.0;
+        else if (v == 2) ASSERT_COL.z = -1.0;
+        else             ASSERT_COL.w = -1.0;
     }
 }
-void assert(bool cond) { if (!cond) out_color.x = -1.0; }
-#define catch_assert(col)          \
-    if (out_color.x < 0.0)         \
-        col = vec3(1.0, 0.0, 0.0); \
-    if (out_color.y < 0.0)         \
-        col = vec3(0.0, 1.0, 0.0); \
-    if (out_color.z < 0.0)         \
-        col = vec3(0.0, 0.0, 1.0); \
-    if (out_color.w < 0.0)         \
-        col = vec3(1.0, 1.0, 0.0);
+void assert(bool cond) { assert(cond, 0); }
+#define catch_assert(out)                                   \
+    if (ASSERT_COL.x < 0.0) out = vec4(1.0, 0.0, 0.0, 1.0); \
+    if (ASSERT_COL.y < 0.0) out = vec4(0.0, 1.0, 0.0, 1.0); \
+    if (ASSERT_COL.z < 0.0) out = vec4(0.0, 0.0, 1.0, 1.0); \
+    if (ASSERT_COL.w < 0.0) out = vec4(1.0, 1.0, 0.0, 1.0);
 
 #define AAstep(thre, val) \
     smoothstep(-.7, .7, (val - thre) / min(0.07, fwidth(val - thre)))
