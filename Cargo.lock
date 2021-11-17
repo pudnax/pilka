@@ -1764,7 +1764,7 @@ dependencies = [
 
 [[package]]
 name = "pilka"
-version = "0.6.5"
+version = "0.6.6"
 dependencies = [
  "chrono",
  "color-eyre",
@@ -1789,7 +1789,7 @@ dependencies = [
 
 [[package]]
 name = "pilka_ash"
-version = "0.6.0"
+version = "0.6.6"
 dependencies = [
  "ash",
  "ash-molten",
@@ -1806,7 +1806,7 @@ version = "0.6.0"
 
 [[package]]
 name = "pilka_wgpu"
-version = "0.6.1"
+version = "0.6.6"
 dependencies = [
  "bytemuck",
  "color-eyre",
