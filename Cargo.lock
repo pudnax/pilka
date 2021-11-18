@@ -2145,9 +2145,11 @@ dependencies = [
 
 [[package]]
 name = "smaa"
-version = "0.4.0"
-source = "git+https://github.com/pudnax/smaa-rs?branch=wgpuV0.11#33cb8eafaf504a1a7a26bf465bb1012f914f0a47"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "505ac8917ff50aebf6f7da8e9c7ca465ee0adb42c4b9960477e4f537e9102b07"
 dependencies = [
+ "env_logger",
  "shaderc",
  "wgpu",
 ]
