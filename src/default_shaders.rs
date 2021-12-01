@@ -107,15 +107,10 @@ void main() {
     }
 }";
 
-const PRELUDE: &str = "#define PI 3.14159265359
-#define TWOPI 6.28318530718
+const PRELUDE: &str = "
+const float PI = acos(-1.);
+const float TAU = 2. * PI;
 
-const vec3 EPS = vec3(0., 0.01, 0.001);
-const float HIT_DIST = EPS.y;
-const int MAX_STEPS = 100;
-const float MISS_DIST = 10.0;
-
-const float WIDTH = 2.0;
 const float HALF_WIDTH = 1.0;
 
 vec4 ASSERT_COL = vec4(0.);
@@ -140,6 +135,9 @@ void assert(bool cond) { assert(cond, 0); }
 float worldSDF(vec3 rayPos);
 
 vec2 ray_march(vec3 rayPos, vec3 rayDir) {
+    const float HIT_DIST = EPS.y;
+    const int MAX_STEPS = 100;
+    const float MISS_DIST = 10.0;
     float dist = 0.0;
 
     for(int i = 0; i < MAX_STEPS; i++) {
@@ -217,7 +215,8 @@ vec3 enlight(in vec3 at, vec3 normal, vec3 diffuse, vec3 l_color, vec3 l_pos) {
 }
 
 vec3 wnormal(in vec3 p) {
-  return normalize(vec3(worldSDF(p + EPS.yxx) - worldSDF(p - EPS.yxx),
+    const vec3 EPS = vec3(0., 0.01, 0.0001);
+    return normalize(vec3(worldSDF(p + EPS.yxx) - worldSDF(p - EPS.yxx),
                         worldSDF(p + EPS.xyx) - worldSDF(p - EPS.xyx),
                         worldSDF(p + EPS.xxy) - worldSDF(p - EPS.xxy)));
 }";
