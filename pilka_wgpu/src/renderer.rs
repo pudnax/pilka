@@ -792,9 +792,12 @@ impl WgpuRender {
 
     pub fn capture_frame(&mut self) -> Result<Frame, wgpu::SurfaceError> {
         puffin::profile_function!();
-        Ok(self
-            .screenshot_ctx
-            .capture_frame(&self.device, &self.queue, &self.textures[0]))
+        let frame = pollster::block_on(self.screenshot_ctx.capture_frame(
+            &self.device,
+            &self.queue,
+            &self.textures[0],
+        ));
+        Ok(frame)
     }
 
     pub fn wait_idle(&self) {

@@ -142,7 +142,7 @@ pub fn record_thread(rx: crossbeam_channel::Receiver<RecordEvent>) {
                 let dir_path = Path::new(VIDEO_FOLDER);
                 let filename = dir_path.join(format!(
                     "record-{}.mp4",
-                    chrono::Local::now().format("%d-%m-%Y-%H-%M-%S").to_string()
+                    chrono::Local::now().format("%d-%m-%Y-%H-%M-%S")
                 ));
                 recorder =
                     Some(new_ffmpeg_command(image_dimentions, filename.to_str().unwrap()).unwrap());

@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use pilka_types::ImageDimentions;
-use wgpu::{Device, Maintain, MapMode};
+use wgpu::{Device, MapMode};
 
 pub struct ScreenshotCtx {
     pub image_dimentions: ImageDimentions,
@@ -45,7 +45,7 @@ impl ScreenshotCtx {
         }
     }
 
-    pub fn capture_frame(
+    pub async fn capture_frame(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -80,9 +80,8 @@ impl ScreenshotCtx {
         let image_slice = self.data.slice(0..self.image_dimentions.linear_size());
         let map_future = image_slice.map_async(MapMode::Read);
 
-        device.poll(Maintain::Wait);
-
-        pollster::block_on(map_future).unwrap();
+        device.poll(wgpu::Maintain::Wait);
+        if let Ok(()) = map_future.await {}
 
         let mapped_slice = image_slice.get_mapped_range();
         let frame = mapped_slice.to_vec();

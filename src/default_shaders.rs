@@ -135,6 +135,7 @@ void assert(bool cond) { assert(cond, 0); }
 float worldSDF(vec3 rayPos);
 
 vec2 ray_march(vec3 rayPos, vec3 rayDir) {
+    const vec3 EPS = vec3(0., 0.001, 0.0001);
     const float HIT_DIST = EPS.y;
     const int MAX_STEPS = 100;
     const float MISS_DIST = 10.0;

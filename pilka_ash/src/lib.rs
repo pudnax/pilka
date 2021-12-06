@@ -1,7 +1,6 @@
 #![feature(crate_visibility_modifier)]
 #![warn(unsafe_op_in_unsafe_fn)]
 #![feature(array_methods)]
-#![feature(format_args_capture)]
 #![allow(
     // We use loops for getting early-out of scope without closures.
     clippy::never_loop,
