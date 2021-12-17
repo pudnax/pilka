@@ -21,7 +21,7 @@ members = ["pilka_ash", "pilka_wgpu", "pilka_types"]
 
 [dependencies]
 # Ecosystem choice for crossplatform window
-winit = "0.25.0"
+winit = "0.26.0"
 
 # Fancy-pants errors
 color-eyre = "0.5.11"
@@ -55,7 +55,7 @@ pollster = "0.2.4"
 puffin = "0.12.1"
 puffin_egui = "0.11.0"
 egui_wgpu_backend = "0.14.0"
-egui_winit_platform = "0.11.0"
+egui_winit_platform = "0.12.0"
 
 [profile.release]
 lto = true
