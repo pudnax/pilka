@@ -54,7 +54,7 @@ pollster = "0.2.4"
 # GUI profiler dependencies
 puffin = "0.12.1"
 puffin_egui = "0.11.0"
-egui_wgpu_backend = "0.14.0"
+egui_wgpu_backend = "0.15.0"
 egui_winit_platform = "0.12.0"
 
 [profile.release]

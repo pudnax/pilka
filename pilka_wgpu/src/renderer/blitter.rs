@@ -29,6 +29,7 @@ impl Blitter {
                 entry_point: "fs_main",
                 targets: &[Self::DST_FORMAT.into()],
             }),
+            multiview: None,
         });
 
         let bind_group_layout = pipeline.get_bind_group_layout(0);

@@ -99,10 +99,7 @@ impl<'a> RenderPipelineLayoutInfo {
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Sampler {
-                    filtering: true,
-                    comparison: false,
-                },
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
             }],
         }
@@ -657,9 +654,7 @@ impl WgpuRender {
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Ccw,
                     cull_mode: Some(wgpu::Face::Back),
-                    clamp_depth: false,
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    conservative: false,
+                    ..Default::default()
                 },
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState {
@@ -676,6 +671,7 @@ impl WgpuRender {
                         write_mask: wgpu::ColorWrites::ALL,
                     }],
                 }),
+                multiview: None,
             });
 
         Ok(Pipeline::Render(pipeline))
