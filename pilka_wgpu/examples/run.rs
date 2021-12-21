@@ -1,10 +1,10 @@
 use color_eyre::*;
 use notify::Config;
 use notify::{event::EventKind, RecursiveMode, Watcher};
-use pilka_types::ShaderCreateInfo;
+use pilka_types::{PushConstant, ShaderCreateInfo};
 use std::ffi::CString;
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -94,79 +94,12 @@ fn main() -> Result<()> {
                 _ => {}
             },
             Event::MainEventsCleared => {
-                if state.render(push_constant.as_slice()).is_ok() {};
+                if state.render(push_constant).is_ok() {};
             }
             Event::LoopDestroyed => {}
             _ => {}
         }
     });
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct PushConstant {
-    pub pos: [f32; 3],
-    pub time: f32,
-    pub wh: [f32; 2],
-    pub mouse: [f32; 2],
-    pub mouse_pressed: u32,
-    pub frame: u32,
-    pub time_delta: f32,
-    pub record_period: f32,
-}
-
-impl PushConstant {
-    fn as_slice(&self) -> &[u8] {
-        unsafe { any_as_u8_slice(self) }
-    }
-
-    pub fn size() -> u32 {
-        std::mem::size_of::<Self>() as _
-    }
-}
-
-/// # Safety
-/// Until you're using it on not ZST or DST it's fine
-pub unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-    std::slice::from_raw_parts((p as *const T) as *const _, std::mem::size_of::<T>())
-}
-
-impl Default for PushConstant {
-    fn default() -> Self {
-        Self {
-            pos: [0.; 3],
-            time: 0.,
-            wh: [1920.0, 780.],
-            mouse: [0.; 2],
-            mouse_pressed: false as _,
-            frame: 0,
-            time_delta: 1. / 60.,
-            record_period: 10.,
-        }
-    }
-}
-
-impl std::fmt::Display for PushConstant {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let time = Duration::from_secs_f32(self.time);
-        let time_delta = Duration::from_secs_f32(self.time_delta);
-        write!(
-            f,
-            "position:\t{:?}\n\
-             time duh?:\t\t{:.2} sec\n\
-             time delta:\t{:#.3?} ms, fps: {:.2}\n\
-             width, height:\t{:?}\nmouse:\t\t{:.2?}\n\
-             frame:\t\t{}\nrecord_period:\t{}\n",
-            self.pos,
-            time.as_secs_f32(),
-            time_delta, // * 1000.,
-            1. / time_delta.as_secs_f32(),
-            self.wh,
-            self.mouse,
-            self.frame,
-            self.record_period
-        )
-    }
 }
 
 pub fn make_spirv(data: &[u8]) -> std::borrow::Cow<[u32]> {

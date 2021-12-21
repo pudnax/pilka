@@ -61,7 +61,7 @@ pub fn create_shader_module(
         &shader_text,
         shader_type,
         shader_info.path.to_str().unwrap(),
-        shader_info.entry_point.to_str().unwrap(),
+        "main",
         Some(&compile_options),
     ) {
         Ok(compilation_artifact) => {

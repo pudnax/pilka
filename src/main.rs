@@ -3,7 +3,7 @@ mod input;
 mod profiler_window;
 mod recorder;
 mod render_bundle;
-mod shader_module;
+mod shader_compiler;
 mod utils;
 
 #[allow(dead_code)]
@@ -18,10 +18,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use pilka_types::{PipelineInfo, ShaderInfo};
+use pilka_types::{PipelineInfo, PushConstant, ShaderFlavour, ShaderInfo};
 use recorder::{RecordEvent, RecordTimer};
 use render_bundle::{RenderBundleStatic, Renderer};
-use utils::{parse_args, print_help, save_screenshot, save_shaders, Args, PushConstant};
+use utils::{parse_args, print_help, save_screenshot, save_shaders, Args};
 
 use eyre::*;
 use notify::{
@@ -89,7 +89,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Compute pipeline have to go first
     render.push_pipeline(
         PipelineInfo::Compute {
-            comp: ShaderInfo::new(shader_dir.join("shader.comp"), SHADER_ENTRY_POINT.into()),
+            comp: ShaderInfo::new(
+                shader_dir.join("shader.comp"),
+                SHADER_ENTRY_POINT.into(),
+                ShaderFlavour::Glsl,
+            ),
         },
         &[shader_dir.join("prelude.glsl")],
         &mut compiler,
@@ -97,8 +101,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     render.push_pipeline(
         PipelineInfo::Rendering {
-            vert: ShaderInfo::new(shader_dir.join("shader.vert"), SHADER_ENTRY_POINT.into()),
-            frag: ShaderInfo::new(shader_dir.join("shader.frag"), SHADER_ENTRY_POINT.into()),
+            vert: ShaderInfo::new(
+                shader_dir.join("shader.vert"),
+                SHADER_ENTRY_POINT.into(),
+                ShaderFlavour::Glsl,
+            ),
+            frag: ShaderInfo::new(
+                shader_dir.join("shader.frag"),
+                SHADER_ENTRY_POINT.into(),
+                ShaderFlavour::Glsl,
+            ),
         },
         &[shader_dir.join("prelude.glsl")],
         &mut compiler,
@@ -405,7 +417,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     w.render(&timeline);
                 }
 
-                render.render(push_constant.as_slice()).unwrap();
+                render.render(push_constant).unwrap();
                 start_event.try_send(()).ok();
                 if video_recording {
                     let (frame, _image_dimentions) = render.capture_frame().unwrap();

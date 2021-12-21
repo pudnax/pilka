@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 
-use crate::shader_module;
+use crate::shader_compiler;
 
 use color_eyre::Result;
 use pilka_ash::{AshRender, HasRawWindowHandle};
-use pilka_types::{ContiniousHashMap, Frame, ImageDimentions, PipelineInfo, ShaderCreateInfo};
+use pilka_types::{
+    ContiniousHashMap, Frame, ImageDimentions, PipelineInfo, PushConstant, ShaderCreateInfo,
+};
 use pilka_wgpu::WgpuRender;
 use shaderc::Compiler;
 
@@ -15,7 +17,7 @@ pub trait Renderer {
 
     fn resize(&mut self, width: u32, height: u32) -> Result<()>;
 
-    fn render(&mut self, push_constant: &[u8]) -> Result<()>;
+    fn render(&mut self, push_constant: PushConstant) -> Result<()>;
 
     fn capture_frame(&mut self) -> Result<Frame>;
     fn captured_frame_dimentions(&self) -> ImageDimentions;
@@ -79,14 +81,14 @@ impl<'a> RenderBundleStatic<'a> {
                 self.shader_set
                     .push_value(vert.path.canonicalize()?, pipeline_number);
 
-                let vert_artifact = shader_module::create_shader_module(
+                let vert_artifact = shader_compiler::create_shader_module(
                     vert,
                     shaderc::ShaderKind::Vertex,
                     shader_compiler,
                 )?;
                 let vert = ShaderCreateInfo::new(vert_artifact.as_binary(), &vert.entry_point);
 
-                let frag_arifact = shader_module::create_shader_module(
+                let frag_arifact = shader_compiler::create_shader_module(
                     frag,
                     shaderc::ShaderKind::Fragment,
                     shader_compiler,
@@ -102,7 +104,7 @@ impl<'a> RenderBundleStatic<'a> {
                 self.shader_set
                     .push_value(comp.path.canonicalize()?, pipeline_number);
 
-                let comp_artifact = shader_module::create_shader_module(
+                let comp_artifact = shader_compiler::create_shader_module(
                     comp,
                     shaderc::ShaderKind::Compute,
                     shader_compiler,
@@ -137,7 +139,7 @@ impl<'a> RenderBundleStatic<'a> {
                 for &index in pipeline_indices {
                     match &self.pipelines[index] {
                         PipelineInfo::Rendering { vert, frag } => {
-                            let vert_artifact = shader_module::create_shader_module(
+                            let vert_artifact = shader_compiler::create_shader_module(
                                 vert,
                                 shaderc::ShaderKind::Vertex,
                                 shader_compiler,
@@ -145,7 +147,7 @@ impl<'a> RenderBundleStatic<'a> {
                             let vert =
                                 ShaderCreateInfo::new(vert_artifact.as_binary(), &vert.entry_point);
 
-                            let frag_arifact = shader_module::create_shader_module(
+                            let frag_arifact = shader_compiler::create_shader_module(
                                 frag,
                                 shaderc::ShaderKind::Fragment,
                                 shader_compiler,
@@ -164,7 +166,7 @@ impl<'a> RenderBundleStatic<'a> {
                         }
 
                         PipelineInfo::Compute { comp } => {
-                            let comp_artifact = shader_module::create_shader_module(
+                            let comp_artifact = shader_compiler::create_shader_module(
                                 comp,
                                 shaderc::ShaderKind::Compute,
                                 shader_compiler,
@@ -233,14 +235,14 @@ impl<'a> RenderBundleStatic<'a> {
         for pipeline in &self.pipelines {
             match pipeline {
                 PipelineInfo::Rendering { vert, frag } => {
-                    let vert_artifact = shader_module::create_shader_module(
+                    let vert_artifact = shader_compiler::create_shader_module(
                         vert,
                         shaderc::ShaderKind::Vertex,
                         shader_compiler,
                     )?;
                     let vert = ShaderCreateInfo::new(vert_artifact.as_binary(), &vert.entry_point);
 
-                    let frag_arifact = shader_module::create_shader_module(
+                    let frag_arifact = shader_compiler::create_shader_module(
                         frag,
                         shaderc::ShaderKind::Fragment,
                         shader_compiler,
@@ -253,7 +255,7 @@ impl<'a> RenderBundleStatic<'a> {
                     }
                 }
                 PipelineInfo::Compute { comp } => {
-                    let comp_artifact = shader_module::create_shader_module(
+                    let comp_artifact = shader_compiler::create_shader_module(
                         comp,
                         shaderc::ShaderKind::Compute,
                         shader_compiler,
@@ -291,7 +293,7 @@ impl Renderer for RenderBundleStatic<'_> {
         self.wh = (width, height);
         self.get_active_mut().resize(width, height)
     }
-    fn render(&mut self, push_constant: &[u8]) -> Result<()> {
+    fn render(&mut self, push_constant: PushConstant) -> Result<()> {
         puffin::profile_function!();
         self.get_active_mut().render(push_constant)
     }
@@ -325,7 +327,7 @@ impl Renderer for AshRender<'_> {
         Ok(self.resize()?)
     }
 
-    fn render(&mut self, push_constant: &[u8]) -> Result<()> {
+    fn render(&mut self, push_constant: PushConstant) -> Result<()> {
         Ok(self.render(push_constant)?)
     }
 
@@ -358,7 +360,7 @@ impl Renderer for pilka_wgpu::WgpuRender {
         Ok(())
     }
 
-    fn render(&mut self, push_constant: &[u8]) -> Result<()> {
+    fn render(&mut self, push_constant: PushConstant) -> Result<()> {
         Ok(Self::render(self, push_constant)?)
     }
 

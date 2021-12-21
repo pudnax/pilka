@@ -8,7 +8,8 @@ use std::{fmt::Display, ops::Index, path::PathBuf};
 
 use color_eyre::Result;
 use pilka_types::{
-    dispatch_optimal_size, ContiniousHashMap, Frame, ImageDimentions, ShaderCreateInfo,
+    dispatch_optimal_size, ContiniousHashMap, Frame, ImageDimentions, PushConstant,
+    ShaderCreateInfo, Uniform,
 };
 use pollster::block_on;
 use raw_window_handle::HasRawWindowHandle;
@@ -37,10 +38,23 @@ trait Descriptor<'a, const N: usize> {
 #[derive(Debug)]
 struct RenderPipelineLayoutInfo;
 impl<'a> RenderPipelineLayoutInfo {
-    const N: usize = 2;
+    const N: usize = 3;
     const DESC: [BindGroupLayoutDescriptor<'a>; Self::N] = [
         wgpu::BindGroupLayoutDescriptor {
-            label: Some("Render Bind Group Layout"),
+            label: Some("Uniform Render Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        },
+        wgpu::BindGroupLayoutDescriptor {
+            label: Some("Texture Render Bind Group Layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -95,14 +109,14 @@ impl<'a> RenderPipelineLayoutInfo {
             ],
         },
         wgpu::BindGroupLayoutDescriptor {
-            label: Some("Render Bind Group Layout"),
+            label: Some("Sampler Render Bind Group Layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
             }],
-        }
+        },
         // wgpu::BindGroupLayoutDescriptor {
         //     label: Some("Fft Texture Bind Group Layout"),
         //     entries: &[wgpu::BindGroupLayoutEntry {
@@ -126,10 +140,23 @@ impl<'a> Descriptor<'a, { Self::N }> for RenderPipelineLayoutInfo {
 #[derive(Debug)]
 struct ComputePipelineLayoutInfo;
 impl<'a> ComputePipelineLayoutInfo {
-    const N: usize = 1;
+    const N: usize = 2;
     const DESC: [BindGroupLayoutDescriptor<'a>; Self::N] = [
         wgpu::BindGroupLayoutDescriptor {
-            label: Some("Compute Bind Group Layout"),
+            label: Some("Uniform Compute Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        },
+        wgpu::BindGroupLayoutDescriptor {
+            label: Some("Texture Compute Bind Group Layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -204,6 +231,7 @@ impl<'a> Descriptor<'a, { ComputePipelineLayoutInfo::N }> for ComputePipelineLay
 }
 
 enum Binding {
+    Uniform,
     Texture,
     Sampler,
     #[allow(dead_code)]
@@ -215,9 +243,10 @@ impl<const N: usize> Index<Binding> for [BindGroupLayout; N] {
 
     fn index(&self, index: Binding) -> &Self::Output {
         match index {
-            Binding::Texture => &self[0],
-            Binding::Sampler => &self[1],
-            Binding::Fft => &self[2],
+            Binding::Uniform => &self[0],
+            Binding::Texture => &self[1],
+            Binding::Sampler => &self[2],
+            Binding::Fft => &self[3],
         }
     }
 }
@@ -314,6 +343,11 @@ pub struct WgpuRender {
     smaa_target: smaa::SmaaTarget,
 
     pub paused: bool,
+
+    uniform: Uniform,
+    uniform_buffer: wgpu::Buffer,
+    compute_uniform_bind_group: wgpu::BindGroup,
+    render_uniform_bind_group: wgpu::BindGroup,
 }
 
 #[derive(Debug)]
@@ -462,6 +496,31 @@ impl WgpuRender {
             smaa::SmaaMode::Smaa1X,
         );
 
+        let uniform = Uniform::default();
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Uniform Buffer"),
+            size: std::mem::size_of::<Uniform>() as _,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let compute_uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Uniform Bind Group"),
+            layout: &ComputePipelineLayoutInfo::binding_group(&device)[Binding::Uniform],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
+        let render_uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Uniform Bind Group"),
+            layout: &RenderPipelineLayoutInfo::binding_group(&device)[Binding::Uniform],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
+
         Ok(Self {
             adapter,
             device,
@@ -489,6 +548,11 @@ impl WgpuRender {
             smaa_target,
 
             paused: false,
+
+            uniform,
+            uniform_buffer,
+            compute_uniform_bind_group,
+            render_uniform_bind_group,
         })
     }
 
@@ -516,9 +580,11 @@ impl WgpuRender {
 
         self.screenshot_ctx.resize(&self.device, width, height);
 
+        dbg!("On resize?");
         self.multisampled_framebuffer =
             Self::create_multisample_texture(&self.device, self.format, NUM_SAMPLES, self.extent);
         self.smaa_target.resize(&self.device, width, height);
+        dbg!("On resize?2");
     }
 
     fn create_multisample_texture(
@@ -677,8 +743,12 @@ impl WgpuRender {
         Ok(Pipeline::Render(pipeline))
     }
 
-    pub fn render(&mut self, push_constant: &[u8]) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self, push_constant: PushConstant) -> Result<(), wgpu::SurfaceError> {
         puffin::profile_function!();
+
+        self.uniform = push_constant.into();
+        self.queue
+            .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&self.uniform));
 
         let mut _pre_scope =
             puffin::ProfilerScope::new("Aquiring frame", puffin::short_file_name(file!()), "");
@@ -729,10 +799,11 @@ impl WgpuRender {
                     render_pass.set_push_constants(
                         wgpu::ShaderStages::VERTEX_FRAGMENT,
                         0,
-                        push_constant,
+                        bytemuck::bytes_of(&push_constant),
                     );
-                    render_pass.set_bind_group(0, &self.sampled_texture_bind_group, &[]);
-                    render_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                    render_pass.set_bind_group(0, &self.render_uniform_bind_group, &[]);
+                    render_pass.set_bind_group(1, &self.sampled_texture_bind_group, &[]);
+                    render_pass.set_bind_group(2, &self.sampler_bind_group, &[]);
                     render_pass.draw(0..3, 0..1);
                 }
                 Pipeline::Compute(ref pipeline) if !self.paused => {
@@ -743,8 +814,9 @@ impl WgpuRender {
                             label: Some(&format!("Compute Pass {}", i)),
                         });
                     compute_pass.set_pipeline(pipeline);
-                    compute_pass.set_push_constants(0, push_constant);
-                    compute_pass.set_bind_group(0, &self.storage_texture_bind_group, &[]);
+                    compute_pass.set_push_constants(0, bytemuck::bytes_of(&push_constant));
+                    compute_pass.set_bind_group(0, &self.compute_uniform_bind_group, &[]);
+                    compute_pass.set_bind_group(1, &self.storage_texture_bind_group, &[]);
                     compute_pass.dispatch(
                         dispatch_optimal_size(self.extent.width, SUBGROUP_SIZE),
                         dispatch_optimal_size(self.extent.height, SUBGROUP_SIZE),

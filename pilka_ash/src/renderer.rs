@@ -1,7 +1,7 @@
 mod images;
 mod screenshot;
 
-use pilka_types::{dispatch_optimal_size, Frame, ImageDimentions, ShaderCreateInfo};
+use pilka_types::{dispatch_optimal_size, Frame, ImageDimentions, PushConstant, ShaderCreateInfo};
 
 use crate::pvk::*;
 use ash::{
@@ -629,7 +629,7 @@ impl<'a> AshRender<'a> {
         }
     }
 
-    pub fn render(&mut self, push_constant: &[u8]) -> VkResult<()> {
+    pub fn render(&mut self, push_constant: PushConstant) -> VkResult<()> {
         puffin::profile_function!();
         let (present_index, is_suboptimal) = match unsafe {
             self.swapchain.swapchain_loader.acquire_next_image(
@@ -711,7 +711,7 @@ impl<'a> AshRender<'a> {
                                 pipeline.pipeline_layout,
                                 vk::ShaderStageFlags::COMPUTE,
                                 0,
-                                push_constant,
+                                bytemuck::bytes_of(&push_constant),
                             );
                             self.device.cmd_bind_descriptor_sets(
                                 cmd_buf,
@@ -812,7 +812,7 @@ impl<'a> AshRender<'a> {
                                     pipeline_layout,
                                     vk::ShaderStageFlags::ALL_GRAPHICS,
                                     0,
-                                    push_constant,
+                                    bytemuck::bytes_of(&push_constant),
                                 );
 
                                 // Or draw without the index buffer

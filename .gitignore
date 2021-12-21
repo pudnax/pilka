@@ -1,4 +1,5 @@
 *.rdc
+pilka.cap
 /.cargo
 /shaders
 /target

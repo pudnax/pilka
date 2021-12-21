@@ -1756,6 +1756,7 @@ dependencies = [
  "ash",
  "ash-molten",
  "ash-window",
+ "bytemuck",
  "ktx",
  "pilka_types",
  "puffin",
@@ -1765,6 +1766,9 @@ dependencies = [
 [[package]]
 name = "pilka_types"
 version = "0.6.0"
+dependencies = [
+ "bytemuck",
+]
 
 [[package]]
 name = "pilka_wgpu"
