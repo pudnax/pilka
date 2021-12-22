@@ -580,11 +580,9 @@ impl WgpuRender {
 
         self.screenshot_ctx.resize(&self.device, width, height);
 
-        dbg!("On resize?");
         self.multisampled_framebuffer =
             Self::create_multisample_texture(&self.device, self.format, NUM_SAMPLES, self.extent);
         self.smaa_target.resize(&self.device, width, height);
-        dbg!("On resize?2");
     }
 
     fn create_multisample_texture(

@@ -43,7 +43,7 @@ impl VkInstance {
         validation_layers: &[&str],
         extention_names: &[&CStr],
     ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
-        let entry = unsafe { ash::Entry::new() }?;
+        let entry = ash::Entry::new();
 
         #[cfg(target_os = "macos")]
         let entry = ash_molten::MoltenEntry::load()?;
@@ -118,7 +118,11 @@ impl VkInstance {
                         // | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
                         | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
                 )
-                .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
+                .message_type(
+                    vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
+                        | vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+                )
                 .pfn_user_callback(Some(vulkan_debug_callback));
             let dbg_loader = DebugUtils::new(&entry, &instance);
             let dbg_callbk = unsafe { dbg_loader.create_debug_utils_messenger(&dbg_info, None)? };
