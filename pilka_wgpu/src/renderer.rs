@@ -27,32 +27,16 @@ pub enum Pipeline {
     Compute(ComputePipeline),
 }
 
-trait Descriptor<'a, const N: usize> {
-    const DESC: [BindGroupLayoutDescriptor<'a>; N];
-
-    fn binding_group(device: &Device) -> [BindGroupLayout; N] {
-        Self::DESC.map(|x| device.create_bind_group_layout(&x))
-    }
+enum Binding {
+    Uniform,
+    Texture,
+    Sampler,
 }
 
 #[derive(Debug)]
-struct RenderPipelineLayoutInfo;
-impl<'a> RenderPipelineLayoutInfo {
-    const N: usize = 3;
-    const DESC: [BindGroupLayoutDescriptor<'a>; Self::N] = [
-        wgpu::BindGroupLayoutDescriptor {
-            label: Some("Uniform Render Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        },
+struct RenderPipelineLayoutInfo<const N: usize>([BindGroupLayout; N]);
+impl<'a> RenderPipelineLayoutInfo<3> {
+    const DESC: [BindGroupLayoutDescriptor<'a>; 3] = [
         wgpu::BindGroupLayoutDescriptor {
             label: Some("Texture Render Bind Group Layout"),
             entries: &[
@@ -117,6 +101,19 @@ impl<'a> RenderPipelineLayoutInfo {
                 count: None,
             }],
         },
+        wgpu::BindGroupLayoutDescriptor {
+            label: Some("Uniform Render Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        },
         // wgpu::BindGroupLayoutDescriptor {
         //     label: Some("Fft Texture Bind Group Layout"),
         //     entries: &[wgpu::BindGroupLayoutEntry {
@@ -131,30 +128,28 @@ impl<'a> RenderPipelineLayoutInfo {
         //     }],
         // },
     ];
+
+    pub fn new(device: &Device) -> Self {
+        Self(Self::DESC.map(|x| device.create_bind_group_layout(&x)))
+    }
 }
 
-impl<'a> Descriptor<'a, { Self::N }> for RenderPipelineLayoutInfo {
-    const DESC: [BindGroupLayoutDescriptor<'a>; Self::N] = Self::DESC;
+impl<const N: usize> Index<Binding> for RenderPipelineLayoutInfo<N> {
+    type Output = BindGroupLayout;
+
+    fn index(&self, index: Binding) -> &Self::Output {
+        match index {
+            Binding::Texture => &self.0[0],
+            Binding::Sampler => &self.0[1],
+            Binding::Uniform => &self.0[2],
+        }
+    }
 }
 
 #[derive(Debug)]
-struct ComputePipelineLayoutInfo;
-impl<'a> ComputePipelineLayoutInfo {
-    const N: usize = 2;
-    const DESC: [BindGroupLayoutDescriptor<'a>; Self::N] = [
-        wgpu::BindGroupLayoutDescriptor {
-            label: Some("Uniform Compute Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        },
+struct ComputePipelineLayoutInfo<const N: usize>([BindGroupLayout; N]);
+impl<'a> ComputePipelineLayoutInfo<2> {
+    const DESC: [BindGroupLayoutDescriptor<'a>; 2] = [
         wgpu::BindGroupLayoutDescriptor {
             label: Some("Texture Compute Bind Group Layout"),
             entries: &[
@@ -210,6 +205,19 @@ impl<'a> ComputePipelineLayoutInfo {
                 },
             ],
         },
+        wgpu::BindGroupLayoutDescriptor {
+            label: Some("Uniform Compute Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        },
         // wgpu::BindGroupLayoutDescriptor {
         //     label: Some("fft Texture Bind Group Layout"),
         //     entries: &[wgpu::BindGroupLayoutEntry {
@@ -224,32 +232,35 @@ impl<'a> ComputePipelineLayoutInfo {
         //     }],
         // },
     ];
+
+    pub fn new(device: &Device) -> Self {
+        Self(Self::DESC.map(|x| device.create_bind_group_layout(&x)))
+    }
 }
 
-impl<'a> Descriptor<'a, { ComputePipelineLayoutInfo::N }> for ComputePipelineLayoutInfo {
-    const DESC: [BindGroupLayoutDescriptor<'a>; ComputePipelineLayoutInfo::N] = Self::DESC;
-}
-
-enum Binding {
-    Uniform,
-    Texture,
-    Sampler,
-    #[allow(dead_code)]
-    Fft,
-}
-
-impl<const N: usize> Index<Binding> for [BindGroupLayout; N] {
+impl<const N: usize> Index<Binding> for ComputePipelineLayoutInfo<N> {
     type Output = BindGroupLayout;
 
     fn index(&self, index: Binding) -> &Self::Output {
         match index {
-            Binding::Uniform => &self[0],
-            Binding::Texture => &self[1],
-            Binding::Sampler => &self[2],
-            Binding::Fft => &self[3],
+            Binding::Texture => &self.0[0],
+            Binding::Uniform => &self.0[1],
+            _ => panic!(),
         }
     }
 }
+
+// impl<const N: usize> Index<Binding> for [BindGroupLayout; N] {
+//     type Output = BindGroupLayout;
+
+//     fn index(&self, index: Binding) -> &Self::Output {
+//         match index {
+//             Binding::Uniform => &self[0],
+//             Binding::Texture => &self[1],
+//             Binding::Sampler => &self[2],
+//         }
+//     }
+// }
 
 fn create_textures(
     device: &Device,
@@ -298,13 +309,13 @@ fn create_textures(
 
     let sampled_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("Render Bind Group"),
-        layout: &RenderPipelineLayoutInfo::binding_group(device)[Binding::Texture],
+        layout: &RenderPipelineLayoutInfo::new(device)[Binding::Texture],
         entries: &entries,
     });
 
     let storage_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("Compute Bind Group"),
-        layout: &ComputePipelineLayoutInfo::binding_group(device)[Binding::Texture],
+        layout: &ComputePipelineLayoutInfo::new(device)[Binding::Texture],
         entries: &entries,
     });
 
@@ -474,7 +485,7 @@ impl WgpuRender {
         });
         let sampler_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Render Bind Group"),
-            layout: &RenderPipelineLayoutInfo::binding_group(&device)[Binding::Sampler],
+            layout: &RenderPipelineLayoutInfo::new(&device)[Binding::Sampler],
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::Sampler(&sampler),
@@ -506,7 +517,7 @@ impl WgpuRender {
 
         let compute_uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Uniform Bind Group"),
-            layout: &ComputePipelineLayoutInfo::binding_group(&device)[Binding::Uniform],
+            layout: &ComputePipelineLayoutInfo::new(&device)[Binding::Uniform],
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: uniform_buffer.as_entire_binding(),
@@ -514,7 +525,7 @@ impl WgpuRender {
         });
         let render_uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Uniform Bind Group"),
-            layout: &RenderPipelineLayoutInfo::binding_group(&device)[Binding::Uniform],
+            layout: &RenderPipelineLayoutInfo::new(&device)[Binding::Uniform],
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: uniform_buffer.as_entire_binding(),
@@ -651,8 +662,7 @@ impl WgpuRender {
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Compute Pipeline Layout"),
-                bind_group_layouts: &ComputePipelineLayoutInfo::binding_group(&self.device)
-                    .each_ref(),
+                bind_group_layouts: &ComputePipelineLayoutInfo::new(&self.device).0.each_ref(),
                 push_constant_ranges: &[wgpu::PushConstantRange {
                     stages: wgpu::ShaderStages::COMPUTE,
                     range: 0..self.push_constant_ranges,
@@ -695,8 +705,7 @@ impl WgpuRender {
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &RenderPipelineLayoutInfo::binding_group(&self.device)
-                    .each_ref(),
+                bind_group_layouts: &RenderPipelineLayoutInfo::new(&self.device).0.each_ref(),
                 push_constant_ranges: &[wgpu::PushConstantRange {
                     stages: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     range: 0..self.push_constant_ranges,
@@ -799,9 +808,9 @@ impl WgpuRender {
                         0,
                         bytemuck::bytes_of(&push_constant),
                     );
-                    render_pass.set_bind_group(0, &self.render_uniform_bind_group, &[]);
-                    render_pass.set_bind_group(1, &self.sampled_texture_bind_group, &[]);
-                    render_pass.set_bind_group(2, &self.sampler_bind_group, &[]);
+                    render_pass.set_bind_group(0, &self.sampled_texture_bind_group, &[]);
+                    render_pass.set_bind_group(1, &self.sampler_bind_group, &[]);
+                    render_pass.set_bind_group(2, &self.render_uniform_bind_group, &[]);
                     render_pass.draw(0..3, 0..1);
                 }
                 Pipeline::Compute(ref pipeline) if !self.paused => {
@@ -813,8 +822,8 @@ impl WgpuRender {
                         });
                     compute_pass.set_pipeline(pipeline);
                     compute_pass.set_push_constants(0, bytemuck::bytes_of(&push_constant));
-                    compute_pass.set_bind_group(0, &self.compute_uniform_bind_group, &[]);
-                    compute_pass.set_bind_group(1, &self.storage_texture_bind_group, &[]);
+                    compute_pass.set_bind_group(0, &self.storage_texture_bind_group, &[]);
+                    compute_pass.set_bind_group(1, &self.compute_uniform_bind_group, &[]);
                     compute_pass.dispatch(
                         dispatch_optimal_size(self.extent.width, SUBGROUP_SIZE),
                         dispatch_optimal_size(self.extent.height, SUBGROUP_SIZE),
