@@ -1,12 +1,13 @@
 use color_eyre::*;
 
 use crate::{SCREENSHOTS_FOLDER, SHADER_DUMP_FOLDER, SHADER_PATH};
-use pilka_types::ImageDimentions;
+use pilka_types::{ImageDimentions, ShaderFlavor};
 
 use std::{
+    ffi::OsStr,
     fs::File,
     io::{self, BufWriter, Write},
-    path::Path,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
@@ -132,4 +133,59 @@ pub fn save_shaders<P: AsRef<Path>>(paths: &[P]) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[derive(Debug, Clone)]
+pub struct PilkaSpec {
+    pub frag: ShaderInfo,
+    pub comp: ShaderInfo,
+    pub vert: ShaderInfo,
+    pub glsl_prelude: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShaderInfo {
+    pub path: PathBuf,
+    pub ty: ShaderFlavor,
+}
+
+pub fn parse_folder(folder: &str) -> Result<PilkaSpec, Box<dyn std::error::Error>> {
+    let mut frag_si = None;
+    let mut comp_si = None;
+    let mut vert_si = None;
+    let mut prelude = None;
+    let shader_dir = PathBuf::new().join(folder);
+    for path in shader_dir.read_dir()? {
+        let path = path?.path();
+
+        let ty = match path.extension().and_then(OsStr::to_str) {
+            Some("wgsl") => ShaderFlavor::Wgsl,
+            Some("glsl" | "frag" | "comp" | "vert") => ShaderFlavor::Glsl,
+            _ => {
+                println!("This file have been ignored: {}", path.display());
+                continue;
+            }
+        };
+
+        let si = ShaderInfo { path, ty };
+        let file_name = si.path.to_str().unwrap();
+        if file_name.find("frag").is_some() && frag_si.is_none() {
+            frag_si = Some(si);
+        } else if file_name.find("comp").is_some() && comp_si.is_none() {
+            comp_si = Some(si);
+        } else if file_name.find("vert").is_some() && vert_si.is_none() {
+            vert_si = Some(si);
+        } else if file_name.find("prelude").is_some() {
+            prelude = Some(si.path);
+        } else {
+            println!("This file have been rejected: {}", si.path.display());
+        }
+    }
+
+    Ok(PilkaSpec {
+        frag: frag_si.expect("Fragment shader is not provided"),
+        vert: vert_si.expect("Vertex shader is not provided"),
+        comp: comp_si.expect("Compute shader is not provided"),
+        glsl_prelude: prelude,
+    })
 }

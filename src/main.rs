@@ -18,7 +18,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use pilka_types::{PipelineInfo, PushConstant, ShaderFlavour, ShaderInfo};
+use pilka_types::{PipelineInfo, PushConstant, ShaderInfo};
 use recorder::{RecordEvent, RecordTimer};
 use render_bundle::{RenderBundleStatic, Renderer};
 use utils::{parse_args, print_help, save_screenshot, save_shaders, Args};
@@ -84,35 +84,25 @@ fn main() -> Result<(), Box<dyn Error>> {
         default_shaders::create_default_shaders(&shader_dir)?;
     }
 
+    let spec = utils::parse_folder(SHADER_PATH)?;
+
     let mut compiler = shaderc::Compiler::new().expect("Failed to create shader compiler");
 
     // Compute pipeline have to go first
     render.push_pipeline(
         PipelineInfo::Compute {
-            comp: ShaderInfo::new(
-                shader_dir.join("shader.comp"),
-                SHADER_ENTRY_POINT.into(),
-                ShaderFlavour::Glsl,
-            ),
+            comp: ShaderInfo::new(spec.comp.path, SHADER_ENTRY_POINT.into(), spec.comp.ty),
         },
-        &[shader_dir.join("prelude.glsl")],
+        &[spec.glsl_prelude.as_ref().unwrap().clone()],
         &mut compiler,
     )?;
 
     render.push_pipeline(
         PipelineInfo::Rendering {
-            vert: ShaderInfo::new(
-                shader_dir.join("shader.vert"),
-                SHADER_ENTRY_POINT.into(),
-                ShaderFlavour::Glsl,
-            ),
-            frag: ShaderInfo::new(
-                shader_dir.join("shader.frag"),
-                SHADER_ENTRY_POINT.into(),
-                ShaderFlavour::Glsl,
-            ),
+            vert: ShaderInfo::new(spec.vert.path, SHADER_ENTRY_POINT.into(), spec.vert.ty),
+            frag: ShaderInfo::new(spec.frag.path, SHADER_ENTRY_POINT.into(), spec.frag.ty),
         },
-        &[shader_dir.join("prelude.glsl")],
+        &[spec.glsl_prelude.unwrap()],
         &mut compiler,
     )?;
 

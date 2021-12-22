@@ -42,7 +42,7 @@ pub enum PipelineInfo {
 }
 
 #[derive(Hash, Debug, Clone, Copy)]
-pub enum ShaderFlavour {
+pub enum ShaderFlavor {
     Glsl,
     Wgsl,
 }
@@ -51,11 +51,11 @@ pub enum ShaderFlavour {
 pub struct ShaderInfo {
     pub path: PathBuf,
     pub entry_point: CString,
-    pub flavour: ShaderFlavour,
+    pub flavour: ShaderFlavor,
 }
 
 impl ShaderInfo {
-    pub fn new(path: PathBuf, entry_point: String, flavour: ShaderFlavour) -> ShaderInfo {
+    pub fn new(path: PathBuf, entry_point: String, flavour: ShaderFlavor) -> ShaderInfo {
         ShaderInfo {
             path,
             entry_point: CString::new(entry_point).unwrap(),
