@@ -1,7 +1,9 @@
 mod images;
 mod screenshot;
 
-use pilka_types::{dispatch_optimal_size, Frame, ImageDimentions, PushConstant, ShaderCreateInfo};
+use pilka_types::{
+    dispatch_optimal_size, Frame, ImageDimentions, PushConstant, ShaderCreateInfo, Uniform,
+};
 
 use crate::pvk::*;
 use ash::{
@@ -64,22 +66,35 @@ fn graphics_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSet
         unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }?
     };
 
-    let fft_descriptor_set_layout = {
+    let uniform_descriptor_set_layout = {
         let descriptor_set_layout_binding_descs = [vk::DescriptorSetLayoutBinding::builder()
             .binding(0)
-            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX)
             .build()];
         let descriptor_set_layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
             .bindings(&descriptor_set_layout_binding_descs);
         unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }?
     };
 
+    // let fft_descriptor_set_layout = {
+    //     let descriptor_set_layout_binding_descs = [vk::DescriptorSetLayoutBinding::builder()
+    //         .binding(0)
+    //         .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+    //         .descriptor_count(1)
+    //         .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+    //         .build()];
+    //     let descriptor_set_layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
+    //         .bindings(&descriptor_set_layout_binding_descs);
+    //     unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }?
+    // };
+
     Ok(vec![
         descriptor_set_layout,
         sampler_descriptor_set_layout,
-        fft_descriptor_set_layout,
+        uniform_descriptor_set_layout,
+        // fft_descriptor_set_layout,
     ])
 }
 
@@ -122,10 +137,10 @@ fn compute_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetL
         unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }?
     };
 
-    let fft_descriptor_set_layout = {
+    let uniform_descriptor_set_layout = {
         let descriptor_set_layout_binding_descs = [vk::DescriptorSetLayoutBinding::builder()
             .binding(0)
-            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::COMPUTE)
             .build()];
@@ -134,7 +149,23 @@ fn compute_desc_set_leyout(device: &VkDevice) -> VkResult<Vec<vk::DescriptorSetL
         unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }?
     };
 
-    Ok(vec![descriptor_set_layout, fft_descriptor_set_layout])
+    // let fft_descriptor_set_layout = {
+    //     let descriptor_set_layout_binding_descs = [vk::DescriptorSetLayoutBinding::builder()
+    //         .binding(0)
+    //         .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+    //         .descriptor_count(1)
+    //         .stage_flags(vk::ShaderStageFlags::COMPUTE)
+    //         .build()];
+    //     let descriptor_set_layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
+    //         .bindings(&descriptor_set_layout_binding_descs);
+    //     unsafe { device.create_descriptor_set_layout(&descriptor_set_layout_info, None) }?
+    // };
+
+    Ok(vec![
+        descriptor_set_layout,
+        uniform_descriptor_set_layout,
+        // fft_descriptor_set_layout,
+    ])
 }
 
 /// The main struct that holds all render primitives
@@ -179,6 +210,16 @@ pub struct AshRender<'a> {
     pub framebuffers: Vec<vk::Framebuffer>,
     pub swapchain: VkSwapchain,
     pub surface: VkSurface,
+
+    #[allow(dead_code)]
+    uniform: Uniform,
+    #[allow(dead_code)]
+    uniform_buffer: vk::Buffer,
+    #[allow(dead_code)]
+    uniform_memory: vk::DeviceMemory,
+    #[allow(dead_code)]
+    uniform_desc: vk::DescriptorBufferInfo,
+    uniform_buffer_ptr: *mut Uniform,
 
     pub device_properties: VkDeviceProperties,
 
@@ -476,9 +517,13 @@ impl<'a> AshRender<'a> {
                 ty: vk::DescriptorType::SAMPLER,
                 descriptor_count: 16,
             },
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::UNIFORM_BUFFER,
+                descriptor_count: 16,
+            },
         ];
         let descriptor_pool_info = vk::DescriptorPoolCreateInfo::builder()
-            .max_sets(8)
+            .max_sets(12)
             .pool_sizes(&pool_sizes);
         let descriptor_pool =
             unsafe { device.create_descriptor_pool(&descriptor_pool_info, None) }?;
@@ -531,24 +576,27 @@ impl<'a> AshRender<'a> {
                 sampler,
                 ..Default::default()
             }],
-            &[vk::DescriptorImageInfo {
-                image_layout: vk::ImageLayout::GENERAL,
-                image_view: fft_texture.texture.image_view,
-                sampler: fft_texture.texture.sampler,
-            }],
+            // &[vk::DescriptorImageInfo {
+            //     image_layout: vk::ImageLayout::GENERAL,
+            //     image_view: fft_texture.texture.image_view,
+            //     sampler: fft_texture.texture.sampler,
+            // }],
         ];
         let desc_types = &[
             vk::DescriptorType::SAMPLED_IMAGE,
             vk::DescriptorType::SAMPLER,
-            vk::DescriptorType::SAMPLED_IMAGE,
+            // vk::DescriptorType::SAMPLED_IMAGE,
         ];
 
         AshRender::update_image_bindings(&device, image_infos, desc_types, &descriptor_sets_render);
 
-        let image_infos = &[image_infos[0], image_infos[2]];
+        let image_infos = &[
+            image_infos[0],
+            /* image_infos[2] */
+        ];
         let desc_types = &[
             vk::DescriptorType::STORAGE_IMAGE,
-            vk::DescriptorType::STORAGE_IMAGE,
+            // vk::DescriptorType::STORAGE_IMAGE,
         ];
 
         AshRender::update_image_bindings(
@@ -557,6 +605,74 @@ impl<'a> AshRender<'a> {
             desc_types,
             &descriptor_sets_compute,
         );
+
+        let uniform = Uniform::default();
+        let (uniform_buffer, uniform_memory, uniform_desc, uniform_buffer_ptr) = {
+            let size = std::mem::size_of::<Uniform>() as _;
+            let usage_flags = vk::BufferUsageFlags::UNIFORM_BUFFER;
+
+            let buffer_create_info = vk::BufferCreateInfo::builder()
+                .size(size)
+                .usage(usage_flags);
+            let buffer = unsafe { device.create_buffer(&buffer_create_info, None) }?;
+
+            let memory_reqs = unsafe { device.get_buffer_memory_requirements(buffer) };
+
+            let memory_prop_flags =
+                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
+
+            let memory_type_index = utils::find_memory_type_index(
+                &memory_reqs,
+                &device.memory_properties,
+                memory_prop_flags,
+            )
+            .unwrap();
+            let mut mem_alloc_flags = vk::MemoryAllocateFlagsInfoKHR::default();
+            let alloc_info = vk::MemoryAllocateInfo::builder()
+                .allocation_size(memory_reqs.size)
+                .memory_type_index(memory_type_index)
+                .push_next({
+                    if usage_flags.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
+                        mem_alloc_flags.flags = vk::MemoryAllocateFlagsKHR::DEVICE_ADDRESS_KHR;
+                    }
+                    &mut mem_alloc_flags
+                });
+            let buffer_memory = unsafe { device.device.allocate_memory(&alloc_info, None) }?;
+
+            let descriptor = vk::DescriptorBufferInfo::builder()
+                .offset(0)
+                .buffer(buffer)
+                .range(vk::WHOLE_SIZE)
+                .build();
+
+            unsafe { device.bind_buffer_memory(buffer, buffer_memory, 0) }?;
+
+            let mapped_ptr =
+                unsafe { device.map_memory(buffer_memory, 0, size, vk::MemoryMapFlags::empty()) }?
+                    .cast();
+
+            (buffer, buffer_memory, descriptor, mapped_ptr)
+        };
+
+        unsafe {
+            device.update_descriptor_sets(
+                &[
+                    *vk::WriteDescriptorSet::builder()
+                        .dst_set(descriptor_sets_compute[1])
+                        .dst_binding(0)
+                        .dst_array_element(0)
+                        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                        .buffer_info(&[uniform_desc]),
+                    *vk::WriteDescriptorSet::builder()
+                        .dst_set(descriptor_sets_render[2])
+                        .dst_binding(0)
+                        .dst_array_element(0)
+                        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                        .buffer_info(&[uniform_desc]),
+                ],
+                &[],
+            );
+        }
 
         Ok(Self {
             paused: false,
@@ -601,6 +717,12 @@ impl<'a> AshRender<'a> {
             descriptor_sets_compute,
             descriptor_set_layouts: descriptor_set_layouts_graphics,
             descriptor_set_layouts_compute,
+
+            uniform,
+            uniform_buffer,
+            uniform_memory,
+            uniform_desc,
+            uniform_buffer_ptr,
         })
     }
 
@@ -650,6 +772,8 @@ impl<'a> AshRender<'a> {
         if is_suboptimal {
             self.resize()?;
         }
+
+        unsafe { *self.uniform_buffer_ptr = push_constant.into() };
 
         let clear_values = [vk::ClearValue {
             color: vk::ClearColorValue {
