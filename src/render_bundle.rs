@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::shader_compiler;
+use crate::shader_compiler::ShaderCompiler;
 
 use color_eyre::Result;
 use pilka_ash::{AshRender, HasRawWindowHandle};
@@ -8,7 +8,6 @@ use pilka_types::{
     ContiniousHashMap, Frame, ImageDimentions, PipelineInfo, PushConstant, ShaderCreateInfo,
 };
 use pilka_wgpu::WgpuRender;
-use shaderc::Compiler;
 
 pub trait Renderer {
     fn get_info(&self) -> String;
@@ -70,7 +69,7 @@ impl<'a> RenderBundleStatic<'a> {
         &mut self,
         pipeline: PipelineInfo,
         includes: &[PathBuf],
-        shader_compiler: &mut Compiler,
+        shader_compiler: &mut ShaderCompiler,
     ) -> Result<()> {
         puffin::profile_function!();
         let pipeline_number = self.pipelines.len();
@@ -81,19 +80,13 @@ impl<'a> RenderBundleStatic<'a> {
                 self.shader_set
                     .push_value(vert.path.canonicalize()?, pipeline_number);
 
-                let vert_artifact = shader_compiler::create_shader_module(
-                    vert,
-                    shaderc::ShaderKind::Vertex,
-                    shader_compiler,
-                )?;
-                let vert = ShaderCreateInfo::new(vert_artifact.as_binary(), &vert.entry_point);
+                let vert_artifact =
+                    shader_compiler.create_shader_module(vert, shaderc::ShaderKind::Vertex)?;
+                let vert = ShaderCreateInfo::new(&vert_artifact, &vert.entry_point);
 
-                let frag_arifact = shader_compiler::create_shader_module(
-                    frag,
-                    shaderc::ShaderKind::Fragment,
-                    shader_compiler,
-                )?;
-                let frag = ShaderCreateInfo::new(frag_arifact.as_binary(), &frag.entry_point);
+                let frag_arifact =
+                    shader_compiler.create_shader_module(frag, shaderc::ShaderKind::Fragment)?;
+                let frag = ShaderCreateInfo::new(&frag_arifact, &frag.entry_point);
 
                 match self.kind.as_mut().unwrap() {
                     Backend::Ash(ash) => ash.push_render_pipeline(vert, frag)?,
@@ -104,12 +97,9 @@ impl<'a> RenderBundleStatic<'a> {
                 self.shader_set
                     .push_value(comp.path.canonicalize()?, pipeline_number);
 
-                let comp_artifact = shader_compiler::create_shader_module(
-                    comp,
-                    shaderc::ShaderKind::Compute,
-                    shader_compiler,
-                )?;
-                let comp = ShaderCreateInfo::new(comp_artifact.as_binary(), &comp.entry_point);
+                let comp_artifact =
+                    shader_compiler.create_shader_module(comp, shaderc::ShaderKind::Compute)?;
+                let comp = ShaderCreateInfo::new(&comp_artifact, &comp.entry_point);
 
                 match self.kind.as_mut().unwrap() {
                     Backend::Ash(ash) => ash.push_compute_pipeline(comp)?,
@@ -130,7 +120,7 @@ impl<'a> RenderBundleStatic<'a> {
     pub fn register_shader_change(
         &mut self,
         paths: &[PathBuf],
-        shader_compiler: &mut Compiler,
+        shader_compiler: &mut ShaderCompiler,
     ) -> Result<()> {
         puffin::profile_function!();
         self.wait_idle();
@@ -139,21 +129,13 @@ impl<'a> RenderBundleStatic<'a> {
                 for &index in pipeline_indices {
                     match &self.pipelines[index] {
                         PipelineInfo::Rendering { vert, frag } => {
-                            let vert_artifact = shader_compiler::create_shader_module(
-                                vert,
-                                shaderc::ShaderKind::Vertex,
-                                shader_compiler,
-                            )?;
-                            let vert =
-                                ShaderCreateInfo::new(vert_artifact.as_binary(), &vert.entry_point);
+                            let vert_artifact = shader_compiler
+                                .create_shader_module(vert, shaderc::ShaderKind::Vertex)?;
+                            let vert = ShaderCreateInfo::new(&vert_artifact, &vert.entry_point);
 
-                            let frag_arifact = shader_compiler::create_shader_module(
-                                frag,
-                                shaderc::ShaderKind::Fragment,
-                                shader_compiler,
-                            )?;
-                            let frag =
-                                ShaderCreateInfo::new(frag_arifact.as_binary(), &frag.entry_point);
+                            let frag_arifact = shader_compiler
+                                .create_shader_module(frag, shaderc::ShaderKind::Fragment)?;
+                            let frag = ShaderCreateInfo::new(&frag_arifact, &frag.entry_point);
 
                             match self.kind.as_mut().unwrap() {
                                 Backend::Ash(ash) => {
@@ -166,13 +148,9 @@ impl<'a> RenderBundleStatic<'a> {
                         }
 
                         PipelineInfo::Compute { comp } => {
-                            let comp_artifact = shader_compiler::create_shader_module(
-                                comp,
-                                shaderc::ShaderKind::Compute,
-                                shader_compiler,
-                            )?;
-                            let comp =
-                                ShaderCreateInfo::new(comp_artifact.as_binary(), &comp.entry_point);
+                            let comp_artifact = shader_compiler
+                                .create_shader_module(comp, shaderc::ShaderKind::Compute)?;
+                            let comp = ShaderCreateInfo::new(&comp_artifact, &comp.entry_point);
 
                             match self.kind.as_mut().unwrap() {
                                 Backend::Ash(ash) => ash.rebuild_compute_pipeline(index, comp)?,
@@ -206,7 +184,7 @@ impl<'a> RenderBundleStatic<'a> {
     pub fn switch(
         &mut self,
         window: &impl HasRawWindowHandle,
-        shader_compiler: &mut Compiler,
+        shader_compiler: &mut ShaderCompiler,
     ) -> Result<()> {
         puffin::profile_function!();
         self.wait_idle();
@@ -235,19 +213,13 @@ impl<'a> RenderBundleStatic<'a> {
         for pipeline in &self.pipelines {
             match pipeline {
                 PipelineInfo::Rendering { vert, frag } => {
-                    let vert_artifact = shader_compiler::create_shader_module(
-                        vert,
-                        shaderc::ShaderKind::Vertex,
-                        shader_compiler,
-                    )?;
-                    let vert = ShaderCreateInfo::new(vert_artifact.as_binary(), &vert.entry_point);
+                    let vert_artifact =
+                        shader_compiler.create_shader_module(vert, shaderc::ShaderKind::Vertex)?;
+                    let vert = ShaderCreateInfo::new(&vert_artifact, &vert.entry_point);
 
-                    let frag_arifact = shader_compiler::create_shader_module(
-                        frag,
-                        shaderc::ShaderKind::Fragment,
-                        shader_compiler,
-                    )?;
-                    let frag = ShaderCreateInfo::new(frag_arifact.as_binary(), &frag.entry_point);
+                    let frag_arifact = shader_compiler
+                        .create_shader_module(frag, shaderc::ShaderKind::Fragment)?;
+                    let frag = ShaderCreateInfo::new(&frag_arifact, &frag.entry_point);
 
                     match self.kind.as_mut().unwrap() {
                         Backend::Ash(ash) => ash.push_render_pipeline(vert, frag)?,
@@ -255,12 +227,9 @@ impl<'a> RenderBundleStatic<'a> {
                     }
                 }
                 PipelineInfo::Compute { comp } => {
-                    let comp_artifact = shader_compiler::create_shader_module(
-                        comp,
-                        shaderc::ShaderKind::Compute,
-                        shader_compiler,
-                    )?;
-                    let comp = ShaderCreateInfo::new(comp_artifact.as_binary(), &comp.entry_point);
+                    let comp_artifact =
+                        shader_compiler.create_shader_module(comp, shaderc::ShaderKind::Compute)?;
+                    let comp = ShaderCreateInfo::new(&comp_artifact, &comp.entry_point);
                     match self.kind.as_mut().unwrap() {
                         Backend::Ash(ash) => ash.push_compute_pipeline(comp)?,
                         Backend::Wgpu(wgpu) => wgpu.push_compute_pipeline(comp)?,

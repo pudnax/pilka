@@ -56,6 +56,7 @@ puffin = "0.12.1"
 puffin_egui = "0.11.0"
 egui_wgpu_backend = "0.15.0"
 egui_winit_platform = "0.12.0"
+naga = {version = "0.8.0", features = ["wgsl-in", "span", "spv-out", "wgsl-out", "glsl-validate"] }
 
 [profile.release]
 lto = true

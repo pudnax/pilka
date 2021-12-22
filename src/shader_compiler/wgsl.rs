@@ -1,55 +1,24 @@
+use std::borrow::Cow;
+
 use naga::{
-    back::spv::PipelineOptions,
-    front::{self, glsl, wgsl},
+    back::{spv::PipelineOptions, wgsl::WriterFlags},
+    front::{self, wgsl},
     valid::{Capabilities, ValidationFlags, Validator},
     Module,
 };
 
-struct ShaderCompiler {
+pub struct ShaderCompiler {
     wgsl: wgsl::Parser,
-    glsl: glsl::Parser,
     validator: Validator,
     out: Vec<u32>,
 }
 
 impl ShaderCompiler {
-    const SUPPORTED_SOURCES: &'static [&'static str] = &["glsl", "wgsl", "spv"];
-
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn is_supported(&self, path: impl AsRef<Path>) -> bool {
-        path.as_ref()
-            .extension()
-            .map(|ext| Self::SUPPORTED_SOURCES.contains(&ext.to_str().unwrap()))
-            .is_some()
-    }
-
-    // TODO: Move outside
-    pub fn from_path(
-        &mut self,
-        path: impl AsRef<Path>,
-        stage: naga::ShaderStage,
-    ) -> Option<Cow<str>> {
-        let file = || std::fs::read_to_string(&path).unwrap();
-        let module = match path.as_ref().extension() {
-            Some(ext) => match ext.to_str() {
-                Some("wgsl") => self.parse_wgsl(file(), stage),
-                Some("glsl" | "frag" | "vert" | "comp") => self.parse_glsl(file(), stage),
-                Some("spv") => self.parse_spv(file().as_bytes(), stage),
-                _ => None,
-            },
-            None => None,
-        }
-        .unwrap();
-        let module_info = self.validator.validate(&module).unwrap();
-        Some(Cow::Owned(
-            naga::back::wgsl::write_string(&module, &module_info).unwrap(),
-        ))
-    }
-
-    fn wgsl_to_wgsl(&mut self, source: impl AsRef<str>) -> Option<Cow<str>> {
+    pub fn wgsl_to_wgsl(&mut self, source: impl AsRef<str>) -> Option<Cow<str>> {
         let module = match self.wgsl.parse(source.as_ref()) {
             Ok(m) => m,
             Err(e) => {
@@ -59,7 +28,8 @@ impl ShaderCompiler {
         };
         let module_info = self.validator.validate(&module).unwrap();
         Some(Cow::Owned(
-            naga::back::wgsl::write_string(&module, &module_info).unwrap(),
+            naga::back::wgsl::write_string(&module, &module_info, WriterFlags::EXPLICIT_TYPES)
+                .unwrap(),
         ))
     }
 
@@ -96,25 +66,6 @@ impl ShaderCompiler {
             }
         }
     }
-    pub fn parse_glsl(
-        &mut self,
-        source: impl AsRef<str>,
-        stage: naga::ShaderStage,
-    ) -> Option<Module> {
-        match self
-            .glsl
-            .parse(&glsl::Options::from(stage), source.as_ref())
-        {
-            Ok(m) => Some(m),
-            Err(span) => {
-                println!("Got here");
-                for e in span {
-                    eprintln!("Glsl error: {e}");
-                }
-                return None;
-            }
-        }
-    }
     pub fn parse_spv(&mut self, data: &[u8], stage: naga::ShaderStage) -> Option<Module> {
         match naga::front::spv::parse_u8_slice(data, &front::spv::Options::default()) {
             Ok(m) => Some(m),
@@ -131,7 +82,6 @@ impl Default for ShaderCompiler {
         let validator = Validator::new(ValidationFlags::all(), Capabilities::all());
         Self {
             wgsl: wgsl::Parser::new(),
-            glsl: glsl::Parser::default(),
             validator,
             out: Vec::new(),
         }

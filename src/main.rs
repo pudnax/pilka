@@ -35,6 +35,8 @@ use winit::{
     window::WindowBuilder,
 };
 
+use crate::shader_compiler::ShaderCompiler;
+
 pub const SCREENSHOTS_FOLDER: &str = "screenshots";
 pub const SHADER_DUMP_FOLDER: &str = "shader_dump";
 pub const VIDEO_FOLDER: &str = "recordings";
@@ -86,7 +88,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let spec = utils::parse_folder(SHADER_PATH)?;
 
-    let mut compiler = shaderc::Compiler::new().expect("Failed to create shader compiler");
+    let mut compiler = ShaderCompiler::new();
 
     // Compute pipeline have to go first
     render.push_pipeline(

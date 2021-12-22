@@ -1742,6 +1742,7 @@ dependencies = [
  "egui_winit_platform",
  "env_logger",
  "eyre",
+ "naga",
  "notify",
  "pilka_ash",
  "pilka_types",
