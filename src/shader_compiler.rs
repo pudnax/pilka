@@ -45,7 +45,7 @@ impl ShaderCompiler {
 impl Default for ShaderCompiler {
     fn default() -> Self {
         Self {
-            wgsl: wgsl::ShaderCompiler::default(),
+            wgsl: wgsl::ShaderCompiler::new(),
             glsl: shaderc::Compiler::new().unwrap(),
         }
     }

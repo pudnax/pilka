@@ -1,27 +1,4 @@
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
-
-use super::utils::create_folder;
-
-pub fn create_default_shaders<P: AsRef<Path>>(name: P) -> std::io::Result<()> {
-    create_folder(&name)?;
-
-    let create_file = |filename: &str, content: &str| -> std::io::Result<()> {
-        let path = name.as_ref().join(filename);
-        let mut file = File::create(path)?;
-        file.write_all(content.as_bytes())
-    };
-
-    create_file("prelude.glsl", PRELUDE)?;
-    create_file("shader.frag", FRAG_SHADER)?;
-    create_file("shader.vert", VERT_SHADER)?;
-    create_file("shader.comp", COMP_SHADER)?;
-
-    Ok(())
-}
-
-const FRAG_SHADER: &str = "#version 460
+pub const FRAG_SHADER: &str = "#version 460
 
 // In the beginning, colours never existed. There's nothing that was done before you...
 
@@ -58,7 +35,7 @@ void main() {
     out_color = vec4(col, 1.0);
 }";
 
-const VERT_SHADER: &str = "#version 460
+pub const VERT_SHADER: &str = "#version 460
 
 layout(location = 0) out vec2 out_uv;
 
@@ -78,7 +55,7 @@ void main() {
     gl_Position = vec4(out_uv * 2.0f + -1.0f, 0.0, 1.0);
 }";
 
-const COMP_SHADER: &str = "#version 460
+pub const COMP_SHADER: &str = "#version 460
 
 layout(std430, push_constant) uniform PushConstant {
     vec3 pos;
@@ -107,7 +84,7 @@ void main() {
     }
 }";
 
-const PRELUDE: &str = "
+pub const PRELUDE: &str = "
 const float PI = acos(-1.);
 const float TAU = 2. * PI;
 

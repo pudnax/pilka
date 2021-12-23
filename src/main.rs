@@ -53,6 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let Args {
         record_time,
         inner_size,
+        wgsl_mode,
     } = parse_args();
 
     // let mut audio_context = audio::AudioContext::new()?;
@@ -83,7 +84,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let shader_dir = PathBuf::new().join(SHADER_PATH);
 
     if !shader_dir.is_dir() {
-        default_shaders::create_default_shaders(&shader_dir)?;
+        default_shaders::create_default_shaders(&shader_dir, wgsl_mode)?;
     }
 
     let spec = utils::parse_folder(SHADER_PATH)?;

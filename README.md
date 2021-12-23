@@ -58,6 +58,7 @@ emacs, vim, ed etc.) and `pilka` would fetch changes after each save.
 
  - `--record f32` - Specify duration of recorded video
  - `--size u32xu32` - Specify window size and lock from resizing
+ - `--wgsl` - Creates template for `wgsl` shaders
 
 ## Choosing backend
 

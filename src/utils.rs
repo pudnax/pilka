@@ -37,19 +37,19 @@ pub fn create_folder<P: AsRef<Path>>(name: P) -> io::Result<()> {
     Ok(())
 }
 
+#[derive(Debug)]
 pub struct Args {
     pub inner_size: Option<(u32, u32)>,
     pub record_time: Option<Duration>,
+    pub wgsl_mode: Option<()>,
 }
 
 pub fn parse_args() -> Args {
     let mut inner_size = None;
     let mut record_time = None;
-    for arg in std::env::args()
-        .skip(1)
-        .zip(std::env::args().skip(2))
-        .step_by(2)
-    {
+    let mut wgsl_mode = None;
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    for arg in args.iter().zip(args.iter().cycle().skip(1)) {
         match arg.0.as_str() {
             "--record" => {
                 record_time =
@@ -65,6 +65,7 @@ pub fn parse_args() -> Args {
                     .map(|x| x.expect(&format!("Failed to parse window size: {}", arg.1)[..]));
                 inner_size = Some((iter.next().unwrap(), iter.next().unwrap()));
             }
+            "--wgsl" => wgsl_mode = Some(()),
             _ => {}
         }
     }
@@ -72,6 +73,7 @@ pub fn parse_args() -> Args {
     Args {
         record_time,
         inner_size,
+        wgsl_mode,
     }
 }
 
