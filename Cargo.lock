@@ -1347,6 +1347,7 @@ dependencies = [
  "log",
  "num-traits",
  "petgraph",
+ "pp-rs",
  "rustc-hash",
  "spirv",
  "thiserror",
@@ -1732,7 +1733,7 @@ dependencies = [
 
 [[package]]
 name = "pilka"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "chrono",
  "color-eyre",
@@ -1779,7 +1780,7 @@ dependencies = [
 
 [[package]]
 name = "pilka_wgpu"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "bytemuck",
  "color-eyre",
@@ -1838,6 +1839,15 @@ name = "pollster"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb20dcc30536a1508e75d47dd0e399bb2fe7354dcf35cda9127f2bf1ed92e30e"
+
+[[package]]
+name = "pp-rs"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb458bb7f6e250e6eb79d5026badc10a3ebb8f9a15d1fff0f13d17c71f4d6dee"
+dependencies = [
+ "unicode-xid",
+]
 
 [[package]]
 name = "primal-check"
@@ -2108,11 +2118,11 @@ dependencies = [
 
 [[package]]
 name = "smaa"
-version = "0.5.0"
-source = "git+https://github.com/pudnax/smaa-rs?branch=webgpu12#86b4f8a4ac09373b8fad51426a456f4d4b43bc12"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6e32d6c5f90e57e7a2a7272c9745305377e2ddb0ec28b513080ff555e960e57"
 dependencies = [
- "env_logger",
- "shaderc",
+ "naga",
  "wgpu",
 ]
 
