@@ -23,7 +23,13 @@ impl ShaderCompiler {
     ) -> Result<Vec<u32>> {
         let module = match shader_info.flavour {
             ShaderFlavor::Wgsl => {
-                unimplemented!()
+                let stage = match shader_stage {
+                    shaderc::ShaderKind::Compute => naga::ShaderStage::Compute,
+                    shaderc::ShaderKind::Vertex => naga::ShaderStage::Vertex,
+                    shaderc::ShaderKind::Fragment => naga::ShaderStage::Fragment,
+                    _ => panic!("Unknown shader stage"),
+                };
+                self.wgsl.create_shader_module(shader_info, stage)?
             }
             ShaderFlavor::Glsl => {
                 glsl::create_shader_module(shader_info, shader_stage, &mut self.glsl)

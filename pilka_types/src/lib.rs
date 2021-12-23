@@ -221,6 +221,7 @@ pub struct Uniform {
     pub time_delta: f32,
     pub frame: u32,
     pub record_period: f32,
+    _padding2: [f32; 3],
 }
 
 impl From<PushConstant> for Uniform {

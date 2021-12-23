@@ -169,13 +169,13 @@ pub fn parse_folder(folder: &str) -> Result<PilkaSpec, Box<dyn std::error::Error
 
         let si = ShaderInfo { path, ty };
         let file_name = si.path.to_str().unwrap();
-        if file_name.find("frag").is_some() && frag_si.is_none() {
+        if file_name.contains("frag") && frag_si.is_none() {
             frag_si = Some(si);
-        } else if file_name.find("comp").is_some() && comp_si.is_none() {
+        } else if file_name.contains("comp") && comp_si.is_none() {
             comp_si = Some(si);
-        } else if file_name.find("vert").is_some() && vert_si.is_none() {
+        } else if file_name.contains("vert") && vert_si.is_none() {
             vert_si = Some(si);
-        } else if file_name.find("prelude").is_some() {
+        } else if file_name.contains("prelude") {
             prelude = Some(si.path);
         } else {
             println!("This file have been rejected: {}", si.path.display());
