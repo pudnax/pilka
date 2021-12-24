@@ -2,7 +2,6 @@ mod glsl;
 mod wgsl;
 
 use color_eyre::Result;
-use eyre::Context;
 pub use glsl::create_shader_module;
 use pilka_types::{ShaderFlavor, ShaderInfo};
 
@@ -32,8 +31,7 @@ impl ShaderCompiler {
                 self.wgsl.create_shader_module(shader_info, stage)?
             }
             ShaderFlavor::Glsl => {
-                glsl::create_shader_module(shader_info, shader_stage, &mut self.glsl)
-                    .context("Shader Compilation Error")?
+                glsl::create_shader_module(shader_info, shader_stage, &mut self.glsl)?
                     .as_binary()
                     .to_vec()
             }
