@@ -43,7 +43,7 @@ impl VkInstance {
         validation_layers: &[&str],
         extention_names: &[&CStr],
     ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
-        let entry = ash::Entry::new();
+        let entry = unsafe { ash::Entry::load()? };
 
         #[cfg(target_os = "macos")]
         let entry = ash_molten::MoltenEntry::load()?;
