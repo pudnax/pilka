@@ -1,6 +1,6 @@
 [package]
 name = "pilka_ash"
-version = "0.7.0"
+version = "0.7.4"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -18,8 +18,8 @@ maintenance = { status = "experimental" }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ash = "0.35.0"
-ash-molten = "0.11.0"
+ash = "0.35.1"
+ash-molten = "0.12.0"
 ash-window = "0.9.0"
 raw-window-handle = "0.4.2"
 bytemuck = { version = "1.7.3", features = ["derive"] }

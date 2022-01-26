@@ -1,6 +1,6 @@
 [package]
 name = "pilka_wgpu"
-version = "0.7.1"
+version = "0.7.4"
 edition = "2021"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 license = "MIT"
@@ -16,7 +16,7 @@ categories = ["graphics", "rendering"]
 wgpu = { version = "0.12.0", features = ["spirv"] }
 raw-window-handle = "0.4.2"
 bytemuck = { version = "1.7.3", features = ["derive"] }
-color-eyre = "0.5.11"
+color-eyre = "0.6.0"
 env_logger = "0.9.0"
 pilka_types = { version = "0.7.0", path = "../pilka_types" }
 puffin = "0.12.1"

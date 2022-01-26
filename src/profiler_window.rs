@@ -1,7 +1,7 @@
 use std::time::Instant;
 
+use egui::FontDefinitions;
 use egui_wgpu_backend::{
-    egui::FontDefinitions,
     wgpu::{
         self, Backends, Device, Features, Instance, Limits, Queue, RequestAdapterOptions, Surface,
         SurfaceConfiguration,
@@ -145,7 +145,7 @@ impl ProfilerWindow {
         self.render_pass.update_texture(
             &self.device,
             &self.queue,
-            &self.platform.context().texture(),
+            &self.platform.context().font_image(),
         );
         self.render_pass
             .update_user_textures(&self.device, &self.queue);

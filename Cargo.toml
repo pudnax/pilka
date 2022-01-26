@@ -1,6 +1,6 @@
 [package]
 name = "pilka"
-version = "0.7.3"
+version = "0.7.4"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -24,7 +24,7 @@ members = ["pilka_ash", "pilka_wgpu", "pilka_types"]
 winit = "0.26.0"
 
 # Fancy-pants errors
-color-eyre = "0.5.11"
+color-eyre = "0.6.0"
 eyre = "0.6.5"
 
 pilka_ash = { version = "0.7.0", path = "pilka_ash" }
@@ -53,10 +53,11 @@ pollster = "0.2.4"
 
 # GUI profiler dependencies
 puffin = "0.12.1"
-puffin_egui = "0.11.0"
-egui_wgpu_backend = "0.15.0"
-egui_winit_platform = "0.12.0"
+puffin_egui = "0.12.0"
+egui_wgpu_backend = "0.16.0"
+egui_winit_platform = "0.13.0"
 naga = {version = "0.8.0", features = ["wgsl-in", "span", "spv-out", "wgsl-out", "glsl-validate"] }
+egui = "0.16.1"
 
 [profile.release]
 lto = true
