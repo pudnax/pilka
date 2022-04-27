@@ -32,8 +32,8 @@ pub enum ProcessError {
 impl Display for ProcessError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ProcessError::SpawnError(_) => {
-                write!(f, "Could not start ffmpeg. Make sure you have\nffmpeg installed and present in PATH")
+            ProcessError::SpawnError(e) => {
+                write!(f, "Could not start ffmpeg. Make sure you have\nffmpeg installed and present in PATH\n\t{e}")
             }
             ProcessError::Other(e) => {
                 write!(f, "{}", e)
@@ -46,7 +46,7 @@ impl std::error::Error for ProcessError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             ProcessError::Other(e) => Some(e),
-            ProcessError::SpawnError(_) => None,
+            ProcessError::SpawnError(e) => Some(e),
         }
     }
 }

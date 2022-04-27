@@ -75,7 +75,7 @@ impl ScreenshotCtx {
             copy_size,
         );
 
-        queue.submit(std::iter::once(encoder.finish()));
+        queue.submit(Some(encoder.finish()));
 
         let image_slice = self.data.slice(0..self.image_dimentions.linear_size());
         let map_future = image_slice.map_async(MapMode::Read);

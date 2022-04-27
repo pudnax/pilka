@@ -29,7 +29,7 @@ layout(std430, push_constant) uniform PushConstant {
 } pc;
 
 void main() {
-    vec2 uv = (in_uv + -0.5) * 2.0 * vec2(pc.resolution.x / pc.resolution.y, 1);
+    vec2 uv = (in_uv + -0.5) * vec2(pc.resolution.x / pc.resolution.y, 1);
 
     vec3 col = vec3(uv, 1.);
     out_color = vec4(col, 1.0);
@@ -106,8 +106,7 @@ void assert(bool cond) { assert(cond, 0); }
     if (ASSERT_COL.z < 0.0) out = vec4(0.0, 0.0, 1.0, 1.0); \
     if (ASSERT_COL.w < 0.0) out = vec4(1.0, 1.0, 0.0, 1.0);
 
-#define AAstep(thre, val) \
-    smoothstep(-.7, .7, (val - thre) / min(0.07, fwidth(val - thre)))
+#define AAstep(x0, x) clamp(((x) - (x0)) / (4. / pc.resolution.y), 0., 1.)
 
 float worldSDF(vec3 rayPos);
 
