@@ -46,13 +46,13 @@ crossbeam-channel = "0.5.1"
 env_logger = "0.9.0"
 
 # Shader compiler
-shaderc = "0.7.3"
+shaderc = "0.8.0"
 
 # Blocking executor
 pollster = "0.2.4"
 
 # GUI profiler dependencies
-puffin = "0.12.1"
+puffin = "0.13.1"
 puffin_egui = "0.12.0"
 egui_wgpu_backend = "0.16.0"
 egui_winit_platform = "0.13.0"

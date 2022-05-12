@@ -306,7 +306,8 @@ impl<'a> AshRender<'a> {
         };
         // let validation_layers = vec!["VK_LAYER_KHRONOS_validation\0"];
         let extention_names = ash_window::enumerate_required_extensions(window)?;
-        let instance = VkInstance::new(&validation_layers, &extention_names)?;
+
+        let instance = VkInstance::new(&validation_layers, extention_names)?;
 
         let surface = instance.create_surface(window)?;
 

@@ -13,7 +13,7 @@ use ash::{
 
 use raw_window_handle::HasRawWindowHandle;
 
-use std::{ffi::CStr, ops::Deref, sync::Arc};
+use std::{ffi::CStr, ops::Deref, os::raw::c_char, sync::Arc};
 
 #[allow(unused_macros)]
 macro_rules! offset_of {
@@ -41,7 +41,7 @@ pub struct VkInstance {
 impl VkInstance {
     pub fn new(
         validation_layers: &[&str],
-        extention_names: &[&CStr],
+        extention_names: &[*const c_char],
     ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
         let entry = unsafe { ash::Entry::load()? };
 
@@ -73,11 +73,11 @@ impl VkInstance {
             })
             .collect::<Vec<_>>();
 
-        let available_exts = entry.enumerate_instance_extension_properties()?;
-        let extensions = [DebugUtils::name()]
+        let available_exts = entry.enumerate_instance_extension_properties(None)?;
+        let extensions = [DebugUtils::name().as_ptr()]
             .iter()
             .chain(extention_names)
-            .map(|s| unsafe { CStr::from_ptr(s.as_ptr()) })
+            .map(|&s| unsafe { CStr::from_ptr(s) })
             .filter_map(|ext| {
                 available_exts
                     .iter()
