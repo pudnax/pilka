@@ -14,7 +14,7 @@ use profiler_window::ProfilerWindow;
 
 use std::{
     error::Error,
-    path::Path,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
@@ -73,6 +73,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         window_builder.build(&event_loop)?
     };
 
+    let shader_dir = PathBuf::new().join(SHADER_PATH);
+    if !shader_dir.is_dir() {
+        default_shaders::create_default_shaders(&shader_dir, wgsl_mode)?;
+    }
+
     let (folder_tx, folder_rx) = crossbeam_channel::unbounded();
     let mut watcher = notify::recommended_watcher(move |res| match res {
         Ok(event) => {
@@ -82,7 +87,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     })?;
     watcher.watch(Path::new(SHADER_PATH), RecursiveMode::Recursive)?;
 
-    let mut app = App::new(&main_window, folder_rx, wgsl_mode)?;
+    let mut app = App::new(&main_window, folder_rx)?;
 
     let mut video_recording = false;
     let (video_tx, video_rx) = crossbeam_channel::unbounded();

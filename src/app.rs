@@ -1,8 +1,8 @@
 use std::{error::Error, io::Write, path::PathBuf};
 
+use crate::recorder;
 use crate::render_bundle::{RenderBundleStatic, Renderer};
 use crate::utils::{self, print_help};
-use crate::{default_shaders, recorder};
 use pilka_types::{PipelineInfo, PushConstant, ShaderInfo};
 
 use notify::event::{EventKind, ModifyKind};
@@ -26,16 +26,11 @@ impl<'a> App<'a> {
     pub fn new(
         window: &winit::window::Window,
         folder_events: crossbeam_channel::Receiver<notify::event::Event>,
-        wgsl_mode: Option<()>,
     ) -> Result<Self, Box<dyn Error>> {
         let PhysicalSize { width, height } = window.inner_size();
         let mut render = RenderBundleStatic::new(&window, PushConstant::size(), (width, height))?;
 
         let shader_dir = PathBuf::new().join(SHADER_PATH);
-
-        if !shader_dir.is_dir() {
-            default_shaders::create_default_shaders(&shader_dir, wgsl_mode)?;
-        }
 
         let spec = utils::parse_folder(SHADER_PATH)?;
 
