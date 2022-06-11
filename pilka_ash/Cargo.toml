@@ -24,5 +24,5 @@ ash-window = "0.10.0"
 raw-window-handle = "0.4.2"
 bytemuck = { version = "1.7.3", features = ["derive"] }
 ktx = "0.3.2"
-pilka_types = { version = "0.7.0", path = "../pilka_types" }
+pilka_types = { version = "0.7.1", path = "../pilka_types" }
 puffin = "0.13.2"
