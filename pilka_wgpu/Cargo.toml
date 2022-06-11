@@ -18,7 +18,7 @@ raw-window-handle = "0.4.2"
 bytemuck = { version = "1.7.3", features = ["derive"] }
 color-eyre = "0.6.0"
 env_logger = "0.9.0"
-pilka_types = { version = "0.7.0", path = "../pilka_types" }
+pilka_types = { version = "0.7.1", path = "../pilka_types" }
 puffin = "0.13.2"
 pollster = "0.2.4"
 smaa = "0.6.0"

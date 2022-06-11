@@ -27,9 +27,9 @@ winit = "0.26.0"
 color-eyre = "0.6.0"
 eyre = "0.6.5"
 
-pilka_ash = { version = "0.7.4", path = "pilka_ash" }
-pilka_wgpu = { version = "0.7.4", path = "pilka_wgpu" }
-pilka_types = { version = "0.7.0", path = "pilka_types" }
+pilka_ash = { version = "0.7.8", path = "pilka_ash" }
+pilka_wgpu = { version = "0.7.8", path = "pilka_wgpu" }
+pilka_types = { version = "0.7.1", path = "pilka_types" }
 
 # Crossplatform filesystem event handler
 notify = "5.0.0-pre.13"
