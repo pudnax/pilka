@@ -1,6 +1,6 @@
 [package]
 name = "pilka_ash"
-version = "0.7.7"
+version = "0.7.8"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -19,7 +19,7 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 ash = "0.37.0"
-ash-molten = "0.12.0"
+ash-molten = "0.13.0"
 ash-window = "0.10.0"
 raw-window-handle = "0.4.2"
 bytemuck = { version = "1.7.3", features = ["derive"] }
