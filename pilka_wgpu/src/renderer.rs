@@ -658,11 +658,14 @@ impl WgpuRender {
                 })
         };
 
+        let binding_layouts = ComputePipelineLayoutInfo::new(&self.device);
+        let layouts = array_cringing(&binding_layouts.0);
+
         let pipeline_layout = self
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Compute Pipeline Layout"),
-                bind_group_layouts: &ComputePipelineLayoutInfo::new(&self.device).0.each_ref(),
+                bind_group_layouts: &layouts,
                 push_constant_ranges: &[wgpu::PushConstantRange {
                     stages: wgpu::ShaderStages::COMPUTE,
                     range: 0..self.push_constant_ranges,
@@ -701,11 +704,14 @@ impl WgpuRender {
                 })
         };
 
+        let binding_layouts = RenderPipelineLayoutInfo::new(&self.device);
+        let layouts = array_cringing(&binding_layouts.0);
+
         let pipeline_layout = self
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &RenderPipelineLayoutInfo::new(&self.device).0.each_ref(),
+                bind_group_layouts: &layouts,
                 push_constant_ranges: &[wgpu::PushConstantRange {
                     stages: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     range: 0..self.push_constant_ranges,
@@ -879,4 +885,12 @@ impl WgpuRender {
         puffin::profile_function!();
         self.device.poll(wgpu::Maintain::Wait)
     }
+}
+
+fn array_cringing<T, const N: usize>(arr: &[T; N]) -> [&T; N] {
+    let mut res = [&arr[0]; N];
+    for i in 1..N {
+        res[i] = &arr[i];
+    }
+    res
 }

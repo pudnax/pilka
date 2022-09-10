@@ -4,7 +4,7 @@ use ash::{prelude::VkResult, vk};
 const FFT_SIZE: u32 = 1024 * 2;
 
 #[derive(Debug)]
-crate struct VkImage {
+pub(crate) struct VkImage {
     pub image: vk::Image,
     pub memory: vk::DeviceMemory,
     pub memory_requirements: vk::MemoryRequirements,
@@ -31,7 +31,7 @@ impl VkImage {
 }
 
 #[derive(Debug)]
-crate struct VkTexture {
+pub(crate) struct VkTexture {
     pub image: VkImage,
     pub image_view: vk::ImageView,
     pub sampler: vk::Sampler,
@@ -132,7 +132,7 @@ impl VkTexture {
     }
 }
 
-crate struct FftTexture<'a> {
+pub(crate) struct FftTexture<'a> {
     pub texture: VkTexture,
     staging_buffer: vk::Buffer,
     staging_buffer_memory: vk::DeviceMemory,

@@ -1,5 +1,5 @@
 #![warn(unsafe_op_in_unsafe_fn)]
-#![feature(array_methods)]
+#![warn(trivial_casts, trivial_numeric_casts, unused_extern_crates)]
 #![allow(
     // We use loops for getting early-out of scope without closures.
     clippy::never_loop,
@@ -15,7 +15,6 @@
     // though they are required.
     unused_braces,
 )]
-#![warn(trivial_casts, trivial_numeric_casts, unused_extern_crates)]
 
 mod renderer;
 
