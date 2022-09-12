@@ -78,10 +78,13 @@ impl ScreenshotCtx {
         queue.submit(Some(encoder.finish()));
 
         let image_slice = self.data.slice(0..self.image_dimentions.linear_size());
-        let map_future = image_slice.map_async(MapMode::Read);
+        image_slice.map_async(MapMode::Read, |err| {
+            if let Err(e) = err {
+                println!("Oh no, error on mapping buffer: {e}");
+            }
+        });
 
         device.poll(wgpu::Maintain::Wait);
-        if let Ok(()) = map_future.await {}
 
         let mapped_slice = image_slice.get_mapped_range();
         let frame = mapped_slice.to_vec();

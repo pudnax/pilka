@@ -1,6 +1,6 @@
 [package]
 name = "pilka"
-version = "0.7.8"
+version = "0.7.9"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -21,14 +21,14 @@ members = ["pilka_ash", "pilka_wgpu", "pilka_types"]
 
 [dependencies]
 # Ecosystem choice for crossplatform window
-winit = "0.26.0"
+winit = "0.27.2"
 
 # Fancy-pants errors
 color-eyre = "0.6.0"
 eyre = "0.6.5"
 
-pilka_ash = { version = "0.7.8", path = "pilka_ash" }
-pilka_wgpu = { version = "0.7.8", path = "pilka_wgpu" }
+pilka_ash = { version = "0.7.9", path = "pilka_ash" }
+pilka_wgpu = { version = "0.7.9", path = "pilka_wgpu" }
 pilka_types = { version = "0.7.1", path = "pilka_types" }
 
 # Crossplatform filesystem event handler
@@ -39,7 +39,7 @@ chrono = "0.4.19"
 png = "0.17.2"
 
 # Sounds analysis
-cpal = "0.13.4"
+cpal = "0.14.0"
 rustfft = "6.0.1"
 
 crossbeam-channel = "0.5.1"
@@ -53,11 +53,14 @@ pollster = "0.2.4"
 
 # GUI profiler dependencies
 puffin = "0.13.2"
-puffin_egui = "0.12.0"
-egui_wgpu_backend = "0.16.0"
-egui_winit_platform = "0.13.0"
-naga = {version = "0.8.0", features = ["wgsl-in", "span", "spv-out", "wgsl-out", "glsl-validate"] }
-egui = "0.16.1"
+puffin_egui = "0.16.0"
+egui_wgpu_backend = "0.19.0"
+egui_winit_platform = "0.16.0"
+egui = "0.19.0"
+egui-wgpu = { version = "0.19.0", features = ["winit"] }
+
+#Shader compiler
+naga = {version = "0.9.0", features = ["wgsl-in", "span", "spv-out", "wgsl-out", "glsl-validate"] }
 
 [profile.release]
 lto = true

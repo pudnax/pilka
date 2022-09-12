@@ -438,9 +438,10 @@ impl WgpuRender {
         }))
         .unwrap();
 
-        let format = surface
-            .get_preferred_format(&adapter)
-            .unwrap_or(wgpu::TextureFormat::Bgra8UnormSrgb);
+        let format = *surface
+            .get_supported_formats(&adapter)
+            .first()
+            .unwrap_or(&wgpu::TextureFormat::Bgra8UnormSrgb);
         let limits = adapter.limits();
         let features = adapter.features();
         let trace_dir = std::env::var("WGPU_TRACE");
@@ -744,11 +745,11 @@ impl WgpuRender {
                 fragment: Some(wgpu::FragmentState {
                     module: &fs_module,
                     entry_point: fs.entry_point.to_str().unwrap(),
-                    targets: &[wgpu::ColorTargetState {
+                    targets: &[Some(wgpu::ColorTargetState {
                         format: self.format,
                         blend: Some(wgpu::BlendState::REPLACE),
                         write_mask: wgpu::ColorWrites::ALL,
-                    }],
+                    })],
                 }),
                 multiview: None,
             });
@@ -798,14 +799,14 @@ impl WgpuRender {
                     let label = format!("Render Pass {}", i);
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some(&label),
-                        color_attachments: &[wgpu::RenderPassColorAttachment {
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: &self.multisampled_framebuffer,
                             resolve_target: Some(&*smaa_frame),
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Load,
                                 store: true,
                             },
-                        }],
+                        })],
                         depth_stencil_attachment: None,
                     });
                     render_pass.set_pipeline(pipeline);
@@ -830,7 +831,7 @@ impl WgpuRender {
                     compute_pass.set_push_constants(0, bytemuck::bytes_of(&push_constant));
                     compute_pass.set_bind_group(0, &self.storage_texture_bind_group, &[]);
                     compute_pass.set_bind_group(1, &self.compute_uniform_bind_group, &[]);
-                    compute_pass.dispatch(
+                    compute_pass.dispatch_workgroups(
                         dispatch_optimal_size(self.extent.width, SUBGROUP_SIZE),
                         dispatch_optimal_size(self.extent.height, SUBGROUP_SIZE),
                         1,
@@ -883,7 +884,7 @@ impl WgpuRender {
 
     pub fn wait_idle(&self) {
         puffin::profile_function!();
-        self.device.poll(wgpu::Maintain::Wait)
+        self.device.poll(wgpu::Maintain::Wait);
     }
 }
 

@@ -9,7 +9,7 @@ impl Blitter {
     pub const DST_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
     pub fn new(device: &Device) -> Self {
-        let shader = device.create_shader_module(&wgpu::include_wgsl!("blit.wgsl"));
+        let shader = device.create_shader_module(wgpu::include_wgsl!("blit.wgsl"));
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("blit"),
             layout: None,
@@ -27,7 +27,7 @@ impl Blitter {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: "fs_main",
-                targets: &[Self::DST_FORMAT.into()],
+                targets: &[Some(Self::DST_FORMAT.into())],
             }),
             multiview: None,
         });
@@ -78,14 +78,14 @@ impl Blitter {
         });
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Blit Pass"),
-            color_attachments: &[wgpu::RenderPassColorAttachment {
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: dst_texture,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
                     store: true,
                 },
-            }],
+            })],
             depth_stencil_attachment: None,
         });
 

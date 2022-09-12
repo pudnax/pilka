@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use color_eyre::Result;
 use naga::{
     back::spv,
@@ -102,6 +104,8 @@ fn get_options() -> spv::Options {
                     // } else {
                         // naga::proc::BoundsCheckPolicy::Restrict
                     // },
+                    binding_array: naga::proc::BoundsCheckPolicy::Unchecked,
                 },
+        binding_map: BTreeMap::default(),
     }
 }

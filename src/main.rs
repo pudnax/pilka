@@ -1,7 +1,7 @@
 mod app;
 mod default_shaders;
 mod input;
-mod profiler_window;
+// mod profiler_window;
 mod recorder;
 mod render_bundle;
 mod shader_compiler;
@@ -10,7 +10,7 @@ mod utils;
 #[allow(dead_code)]
 mod audio;
 
-use profiler_window::ProfilerWindow;
+// use profiler_window::ProfilerWindow;
 
 use std::{
     error::Error,
@@ -108,14 +108,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         app.push_constant.record_period = period.as_secs_f32();
     }
 
-    let mut profiler_window: Option<ProfilerWindow> = None;
+    // let mut profiler_window: Option<ProfilerWindow> = None;
 
-    event_loop.run(move |event, event_loop, control_flow| {
+    event_loop.run(move |event, _event_loop, control_flow| {
         *control_flow = winit::event_loop::ControlFlow::Poll;
 
-        if let Some(ref mut w) = profiler_window {
-            w.handle_event(&event);
-        }
+        // if let Some(ref mut w) = profiler_window {
+        //     w.handle_event(&event);
+        // }
 
         match event {
             Event::RedrawEventsCleared => {
@@ -124,9 +124,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 let time_since_last_frame = last_update_inst.elapsed();
                 if time_since_last_frame >= target_frametime {
                     main_window.request_redraw();
-                    if let Some(ref mut w) = profiler_window {
-                        w.request_redraw();
-                    }
+                    // if let Some(ref mut w) = profiler_window {
+                    //     w.request_redraw();
+                    // }
                     last_update_inst = Instant::now();
                 } else {
                     *control_flow = ControlFlow::WaitUntil(
@@ -178,11 +178,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 puffin::profile_scope!("Resize");
                 let PhysicalSize { width, height } = size;
 
-                if let Some(ref mut w) = profiler_window {
-                    if w.id() == window_id {
-                        w.resize();
-                    }
-                }
+                // if let Some(ref mut w) = profiler_window {
+                //     if w.id() == window_id {
+                //         w.resize();
+                //     }
+                // }
 
                 if main_window.id() == window_id {
                     app.resize(width.max(1), height.max(1)).unwrap();
@@ -197,12 +197,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
-                window_id,
+                window_id: _window_id,
             } => {
-                let sec_id = profiler_window.as_ref().unwrap().id();
-                if window_id == sec_id {
-                    profiler_window = None;
-                }
+                // let sec_id = profiler_window.as_ref().unwrap().id();
+                // if window_id == sec_id {
+                //     profiler_window = None;
+                // }
             }
 
             Event::WindowEvent { event, window_id } if main_window.id() == window_id => match event
@@ -268,11 +268,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         if VirtualKeyCode::F7 == keycode {
-                            if profiler_window.is_some() {
-                                profiler_window = None;
-                            } else {
-                                profiler_window = Some(ProfilerWindow::new(event_loop).unwrap());
-                            }
+                            // if profiler_window.is_some() {
+                            //     profiler_window = None;
+                            // } else {
+                            //     profiler_window = Some(ProfilerWindow::new(event_loop).unwrap());
+                            // }
                         }
 
                         if VirtualKeyCode::F8 == keycode {
@@ -327,9 +327,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 puffin::GlobalProfiler::lock().new_frame();
                 puffin::profile_scope!("Rendering");
 
-                if let Some(w) = &mut profiler_window {
-                    w.render(&timeline);
-                }
+                // if let Some(w) = &mut profiler_window {
+                //     w.render(&timeline);
+                // }
 
                 app.render();
 
