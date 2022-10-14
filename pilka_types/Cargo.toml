@@ -1,6 +1,6 @@
 [package]
 name = "pilka_types"
-version = "0.7.1"
+version = "0.7.10"
 edition = "2021"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 description = "Pilka types"

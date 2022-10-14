@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
 use crate::shader_compiler::ShaderCompiler;
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 use color_eyre::Result;
-use pilka_ash::{AshRender, HasRawWindowHandle};
+use pilka_ash::AshRender;
 use pilka_types::{
     ContiniousHashMap, Frame, ImageDimentions, PipelineInfo, PushConstant, ShaderCreateInfo,
 };
@@ -41,8 +42,8 @@ pub struct RenderBundleStatic<'a> {
 }
 
 impl<'a> RenderBundleStatic<'a> {
-    pub fn new(
-        window: &impl HasRawWindowHandle,
+    pub fn new<W: HasRawWindowHandle + HasRawDisplayHandle>(
+        window: &W,
         push_constant_range: u32,
         (width, height): (u32, u32),
     ) -> Result<RenderBundleStatic<'a>> {
@@ -181,9 +182,9 @@ impl<'a> RenderBundleStatic<'a> {
     pub fn shader_list(&self) -> Vec<PathBuf> {
         self.shader_set.keys().cloned().collect()
     }
-    pub fn switch(
+    pub fn switch<W: HasRawDisplayHandle + HasRawWindowHandle>(
         &mut self,
-        window: &impl HasRawWindowHandle,
+        window: &W,
         shader_compiler: &mut ShaderCompiler,
     ) -> Result<()> {
         puffin::profile_function!();

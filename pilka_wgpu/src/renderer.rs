@@ -12,7 +12,7 @@ use pilka_types::{
     ShaderCreateInfo, Uniform,
 };
 use pollster::block_on;
-use raw_window_handle::HasRawWindowHandle;
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use wgpu::{
     Adapter, BindGroup, BindGroupLayout, BindGroupLayoutDescriptor, ComputePipeline, Device,
     PrimitiveState, PrimitiveTopology, Queue, RenderPipeline, Surface, Texture, TextureFormat,
@@ -421,8 +421,8 @@ impl WgpuRender {
         }
     }
 
-    pub fn new(
-        window: &impl HasRawWindowHandle,
+    pub fn new<W: HasRawWindowHandle + HasRawDisplayHandle>(
+        window: &W,
         push_constant_ranges: u32,
         width: u32,
         height: u32,
@@ -467,6 +467,7 @@ impl WgpuRender {
             width: extent.width,
             height: extent.height,
             present_mode: wgpu::PresentMode::Immediate,
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
         };
         surface.configure(&device, &surface_config);
 

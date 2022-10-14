@@ -4,6 +4,7 @@ mod screenshot;
 use pilka_types::{
     dispatch_optimal_size, Frame, ImageDimentions, PushConstant, ShaderCreateInfo, Uniform,
 };
+use raw_window_handle::HasRawDisplayHandle;
 
 use crate::pvk::*;
 use ash::{
@@ -295,7 +296,7 @@ impl<'a> AshRender<'a> {
         Ok(name)
     }
 
-    pub fn new<W: HasRawWindowHandle>(
+    pub fn new<W: HasRawWindowHandle + HasRawDisplayHandle>(
         window: &W,
         push_constants_range: u32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
@@ -305,7 +306,8 @@ impl<'a> AshRender<'a> {
             vec![]
         };
         // let validation_layers = vec!["VK_LAYER_KHRONOS_validation\0"];
-        let extention_names = ash_window::enumerate_required_extensions(window)?;
+        let extention_names =
+            ash_window::enumerate_required_extensions(window.raw_display_handle())?;
 
         let instance = VkInstance::new(&validation_layers, extention_names)?;
 

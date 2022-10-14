@@ -11,7 +11,7 @@ use ash::{
     vk::{self, Handle},
 };
 
-use raw_window_handle::HasRawWindowHandle;
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 use std::{ffi::CStr, ops::Deref, os::raw::c_char, sync::Arc};
 
@@ -139,9 +139,19 @@ impl VkInstance {
     }
 
     /// Make surface and surface loader.
-    pub fn create_surface<W: HasRawWindowHandle>(&self, window: &W) -> VkResult<VkSurface> {
-        let surface =
-            unsafe { ash_window::create_surface(&self.entry, &self.instance, window, None) }?;
+    pub fn create_surface<W: HasRawWindowHandle + HasRawDisplayHandle>(
+        &self,
+        window: &W,
+    ) -> VkResult<VkSurface> {
+        let surface = unsafe {
+            ash_window::create_surface(
+                &self.entry,
+                &self.instance,
+                window.raw_display_handle(),
+                window.raw_window_handle(),
+                None,
+            )
+        }?;
         let surface_loader = Surface::new(&self.entry, &self.instance);
 
         Ok(VkSurface {
