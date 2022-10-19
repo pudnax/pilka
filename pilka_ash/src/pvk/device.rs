@@ -192,7 +192,7 @@ impl VkDevice {
             .get_present_modes(self)?
             .iter()
             .cloned()
-            .find(|&mode| mode == vk::PresentModeKHR::IMMEDIATE)
+            .find(|&mode| mode == vk::PresentModeKHR::FIFO)
             .unwrap_or(vk::PresentModeKHR::FIFO);
 
         let surface_format = {

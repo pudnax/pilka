@@ -45,7 +45,7 @@ macro_rules! include_bytes_from_outdir {
 #[macro_export]
 macro_rules! include_spirv_from_outdir {
     ($t: literal) => {
-        crate::utils::make_spirv(crate::include_bytes_from_outdir!($t))
+        $crate::utils::make_spirv(crate::include_bytes_from_outdir!($t))
     };
 }
 
