@@ -1,6 +1,6 @@
 [package]
 name = "pilka_ash"
-version = "0.7.10"
+version = "0.7.11"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2021"
 license = "MIT"
