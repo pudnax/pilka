@@ -101,9 +101,7 @@ the most of cross-platform issues for you.
 
 [notify](https://crates.io/crates/notify) is a file watcher and maintains the hot-reload.
 
-[shaderc](https://crates.io/crates/shaderc) is used to compile GLSL shaders on the runtime instead of opening
-a process with glslc or glslangValidator. I hope to switch to [naga](https://crates.io/crates/naga) soon,
-when it's mature enough.
+[naga](https://crates.io/crates/naga) is used to compile GLSL shaders on the runtime.
 
 [ash](https://crates.io/crates/ash) is a Vulkan bindings. I choose `ash` because I see `pilka` as a
 learning project and want to touch the maximum untouched Vulkan. For the
