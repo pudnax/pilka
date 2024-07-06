@@ -1,12 +1,24 @@
 pub const FRAG_SHADER: &str = "#version 460
 #extension GL_EXT_buffer_reference : require
+#extension GL_EXT_nonuniform_qualifier : require
 
 // In the beginning, colours never existed. There's nothing that was done before you...
 
 #include <prelude.glsl>
 
+layout(location = 0) in vec2 in_uv;
+layout(location = 0) out vec4 out_color;
+
 layout(set = 0, binding = 0) uniform sampler gsamplers[];
 layout(set = 0, binding = 1) uniform texture2D gtextures[];
+vec4 Tex(uint id) {
+    return texture(
+        nonuniformEXT(sampler2D(gtextures[id], gsamplers[LINER_SAMPL])), in_uv);
+}
+vec4 Tex(uint id, vec2 uv) {
+    return texture(
+        nonuniformEXT(sampler2D(gtextures[id], gsamplers[LINER_SAMPL])), uv);
+}
 
 layout(std430, push_constant) uniform PushConstant {
     vec3 pos;
@@ -20,9 +32,6 @@ layout(std430, push_constant) uniform PushConstant {
 }
 pc;
 
-layout(location = 0) in vec2 in_uv;
-layout(location = 0) out vec4 out_color;
-
 void main() {
     vec2 uv = (in_uv + -0.5) * vec2(pc.resolution.x / pc.resolution.y, 1);
 
@@ -32,6 +41,7 @@ void main() {
 
 pub const VERT_SHADER: &str = "#version 460
 #extension GL_EXT_buffer_reference : require
+#extension GL_EXT_nonuniform_qualifier : require
 
 layout(set = 0, binding = 0) uniform sampler gsamplers[];
 layout(set = 0, binding = 1) uniform texture2D gtextures[];
@@ -56,6 +66,7 @@ void main() {
 }";
 
 pub const COMP_SHADER: &str = "#version 460
+#extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_buffer_reference : require
 
 layout(set = 0, binding = 0) uniform sampler gsamplers[];

@@ -109,8 +109,8 @@ fn new_ffmpeg_command(image_dimensions: ImageDimensions, filename: &str) -> Resu
         "-f", "rawvideo",
         "-i", "pipe:",
         "-c:v", "libx264",
-        "-crf", "25",
-        "-preset", "ultrafast",
+        "-crf", "23",
+        // "-preset", "ultrafast",
         "-tune", "animation",
         "-color_primaries", "bt709",
         "-color_trc", "bt709",
@@ -118,7 +118,7 @@ fn new_ffmpeg_command(image_dimensions: ImageDimensions, filename: &str) -> Resu
         "-color_range", "tv",
         "-chroma_sample_location", "center",
         "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
+        // "-movflags", "+faststart",
         "-y",
     ];
 
@@ -127,8 +127,7 @@ fn new_ffmpeg_command(image_dimensions: ImageDimensions, filename: &str) -> Resu
         .arg("-video_size")
         .arg(format!(
             "{}x{}",
-            image_dimensions.unpadded_bytes_per_row / 4,
-            image_dimensions.height
+            image_dimensions.width, image_dimensions.height
         ))
         .args(args)
         .arg(filename)
