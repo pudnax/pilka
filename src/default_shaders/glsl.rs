@@ -1,21 +1,12 @@
 pub const FRAG_SHADER: &str = "#version 460
+#extension GL_EXT_buffer_reference : require
 
 // In the beginning, colours never existed. There's nothing that was done before you...
 
 #include <prelude.glsl>
 
-layout(location = 0) in vec2 in_uv;
-layout(location = 0) out vec4 out_color;
-
-layout(set = 0, binding = 0) uniform texture2D prev_frame;
-layout(set = 0, binding = 1) uniform texture2D generic_texture;
-layout(set = 0, binding = 2) uniform texture2D dummy_texture;
-layout(set = 0, binding = 3) uniform texture2D float_texture1;
-layout(set = 0, binding = 4) uniform texture2D float_texture2;
-layout(set = 1, binding = 0) uniform sampler tex_sampler;
-#define T(tex, uv_coord) (texture(sampler2D(tex, tex_sampler), uv_coord))
-#define Tuv(tex) (T(tex, in_uv))
-#define T_off(tex, off) (T(tex, vec2(in_uv.x + off.x, -(in_uv.y + off.y))))
+layout(set = 0, binding = 0) uniform sampler gsamplers[];
+layout(set = 0, binding = 1) uniform texture2D gtextures[];
 
 layout(std430, push_constant) uniform PushConstant {
     vec3 pos;
@@ -25,8 +16,12 @@ layout(std430, push_constant) uniform PushConstant {
     bool mouse_pressed;
     uint frame;
     float time_delta;
-    float record_period;
-} pc;
+    float record_time;
+}
+pc;
+
+layout(location = 0) in vec2 in_uv;
+layout(location = 0) out vec4 out_color;
 
 void main() {
     vec2 uv = (in_uv + -0.5) * vec2(pc.resolution.x / pc.resolution.y, 1);
@@ -36,8 +31,10 @@ void main() {
 }";
 
 pub const VERT_SHADER: &str = "#version 460
+#extension GL_EXT_buffer_reference : require
 
-layout(location = 0) out vec2 out_uv;
+layout(set = 0, binding = 0) uniform sampler gsamplers[];
+layout(set = 0, binding = 1) uniform texture2D gtextures[];
 
 layout(std430, push_constant) uniform PushConstant {
     vec3 pos;
@@ -47,8 +44,11 @@ layout(std430, push_constant) uniform PushConstant {
     bool mouse_pressed;
     uint frame;
     float time_delta;
-    float record_period;
-} pc;
+    float record_time;
+}
+pc;
+
+layout(location = 0) out vec2 out_uv;
 
 void main() {
     out_uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
@@ -56,6 +56,10 @@ void main() {
 }";
 
 pub const COMP_SHADER: &str = "#version 460
+#extension GL_EXT_buffer_reference : require
+
+layout(set = 0, binding = 0) uniform sampler gsamplers[];
+layout(set = 0, binding = 1) uniform texture2D gtextures[];
 
 layout(std430, push_constant) uniform PushConstant {
     vec3 pos;
@@ -65,17 +69,11 @@ layout(std430, push_constant) uniform PushConstant {
     bool mouse_pressed;
     uint frame;
     float time_delta;
-    float record_period;
-} pc;
+    float record_time;
+}
+pc;
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
-
-layout (binding = 0, rgba8) uniform image2D previous_frame;
-layout (binding = 1, rgba8) uniform image2D generic_texture;
-layout (binding = 2, rgba8) uniform image2D dummy_texture;
-
-layout (binding = 3, rgba32f) uniform image2D float_texture1;
-layout (binding = 4, rgba32f) uniform image2D float_texture2;
 
 void main() {
     if (gl_GlobalInvocationID.x >= pc.resolution.x ||
@@ -84,11 +82,18 @@ void main() {
     }
 }";
 
-pub const PRELUDE: &str = "
-const float PI = acos(-1.);
+pub const PRELUDE: &str = "const float PI = acos(-1.);
 const float TAU = 2. * PI;
 
-const float HALF_WIDTH = 1.0;
+const uint PREV_TEX = 0;
+const uint GENERIC_TEX1 = 1;
+const uint GENERIC_TEX2 = 2;
+const uint DITHER_TEX = 3;
+const uint NOISE_TEX = 4;
+const uint BLUE_TEX = 5;
+
+const uint LINER_SAMPL = 0;
+const uint NEAREST_SAMPL = 1;
 
 vec4 ASSERT_COL = vec4(0.);
 void assert(bool cond, int v) {
@@ -106,9 +111,14 @@ void assert(bool cond) { assert(cond, 0); }
     if (ASSERT_COL.z < 0.0) out = vec4(0.0, 0.0, 1.0, 1.0); \
     if (ASSERT_COL.w < 0.0) out = vec4(1.0, 1.0, 0.0, 1.0);
 
-#define AAstep(x0, x) clamp(((x) - (x0)) / (4. / pc.resolution.y), 0., 1.)
+float AAstep(float threshold, float val) {
+    return smoothstep(-.5, .5, (val - threshold) / min(0.005, fwidth(val - threshold)));
+}
+float AAstep(float val) {
+    return AAstep(val, 0.);
+}
 
-float worldSDF(vec3 rayPos);
+float worldsdf(vec3 rayPos);
 
 vec2 ray_march(vec3 rayPos, vec3 rayDir) {
     const vec3 EPS = vec3(0., 0.001, 0.0001);
@@ -119,64 +129,13 @@ vec2 ray_march(vec3 rayPos, vec3 rayDir) {
 
     for(int i = 0; i < MAX_STEPS; i++) {
         vec3 pos = rayPos + (dist * rayDir);
-        float posToScene = worldSDF(pos);
+        float posToScene = worldsdf(pos);
         dist += posToScene;
         if(abs(posToScene) < HIT_DIST) return vec2(dist, i);
         if(posToScene > MISS_DIST) break;
     }
 
     return vec2(-dist, MAX_STEPS);
-}
-
-float crossSDF(vec3 rayPos) {
-    const vec3 corner = vec3(HALF_WIDTH);
-    vec3 ray = abs(rayPos);
-    vec3 cornerToRay = ray - corner;
-    float minComp = min(min(cornerToRay.x, cornerToRay.y), cornerToRay.z);
-    float maxComp = max(max(cornerToRay.x, cornerToRay.y), cornerToRay.z);
-    float midComp = cornerToRay.x + cornerToRay.y + cornerToRay.z
-                                             - minComp - maxComp;
-    vec2 closestOutsidePoint = max(vec2(minComp, midComp), 0.0);
-    vec2 closestInsidePoint = min(vec2(midComp, maxComp), 0.0);
-    return (midComp > 0.0) ? length(closestOutsidePoint) : -length(closestInsidePoint);
-}
-
-float cubeSDF(vec3 rayPos) {
-    const vec3 corner = vec3(HALF_WIDTH);
-    vec3 ray = abs(rayPos);
-    vec3 cornerToRay = ray - corner;
-    float cornerToRayMaxComponent = max(max(cornerToRay.x, cornerToRay.y), cornerToRay.z);
-    float distToInsideRay = min(cornerToRayMaxComponent, 0.0);
-    vec3 closestToOusideRay = max(cornerToRay, 0.0);
-    return length(closestToOusideRay) + distToInsideRay;
-}
-
-float squareSDF(vec2 rayPos) {
-    const vec2 corner = vec2(HALF_WIDTH);
-    vec2 ray = abs(rayPos.xy);
-    vec2 cornerToRay = ray - corner;
-    float cornerToRayMaxComponent = max(cornerToRay.x, cornerToRay.y);
-    float distToInsideRay = min(cornerToRayMaxComponent, 0.0);
-    vec2 closestToOusideRay = max(cornerToRay, 0.0);
-    return length(closestToOusideRay) + distToInsideRay;
-}
-
-float sphereSDF(vec3 rayPosition, vec3 sphereCenterPosition, float radius) {
-    vec3 centerToRay = rayPosition - sphereCenterPosition;
-    float distToCenter = length(centerToRay);
-    return distToCenter - radius;
-}
-
-float sphereSDF(vec3 rayPos, float radius) {
-    return length(rayPos) - radius;
-}
-
-float sphereSDF(vec3 rayPos) {
-    return length(rayPos) - HALF_WIDTH;
-}
-
-float yplaneSDF(vec3 rayPos) {
-    return abs(rayPos.y);
 }
 
 mat2 rotate(float angle) {
@@ -193,7 +152,7 @@ vec3 enlight(in vec3 at, vec3 normal, vec3 diffuse, vec3 l_color, vec3 l_pos) {
 
 vec3 wnormal(in vec3 p) {
     const vec3 EPS = vec3(0., 0.01, 0.0001);
-    return normalize(vec3(worldSDF(p + EPS.yxx) - worldSDF(p - EPS.yxx),
-                        worldSDF(p + EPS.xyx) - worldSDF(p - EPS.xyx),
-                        worldSDF(p + EPS.xxy) - worldSDF(p - EPS.xxy)));
+    return normalize(vec3(worldsdf(p + EPS.yxx) - worldsdf(p - EPS.yxx),
+                        worldsdf(p + EPS.xyx) - worldsdf(p - EPS.xyx),
+                        worldsdf(p + EPS.xxy) - worldsdf(p - EPS.xxy)));
 }";

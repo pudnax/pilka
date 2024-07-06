@@ -1,16 +1,17 @@
 use super::PushConstant;
-use winit::event::{ElementState, VirtualKeyCode};
+use winit::{
+    event::{ElementState, KeyEvent, RawKeyEvent},
+    keyboard::{KeyCode, PhysicalKey},
+};
 
 #[derive(Debug, Default)]
 pub struct Input {
-    pub up_pressed: bool,
-    pub down_pressed: bool,
-    pub right_pressed: bool,
-    pub left_pressed: bool,
-    pub slash_pressed: bool,
-    pub right_shift_pressed: bool,
-    pub enter_pressed: bool,
-    pub space_pressed: bool,
+    pub move_forward: bool,
+    pub move_backward: bool,
+    pub move_right: bool,
+    pub move_left: bool,
+    pub move_up: bool,
+    pub move_down: bool,
 }
 
 impl Input {
@@ -18,63 +19,52 @@ impl Input {
         Default::default()
     }
 
-    pub fn update(&mut self, key: &VirtualKeyCode, state: &ElementState) -> bool {
-        let pressed = state == &ElementState::Pressed;
-        match key {
-            VirtualKeyCode::Up => {
-                self.up_pressed = pressed;
-                true
+    pub fn update_window_input(&mut self, key_event: &KeyEvent) {
+        let pressed = key_event.state == ElementState::Pressed;
+        if let PhysicalKey::Code(key) = key_event.physical_key {
+            match key {
+                KeyCode::KeyA => self.move_left = pressed,
+                KeyCode::KeyD => self.move_right = pressed,
+                KeyCode::KeyS => self.move_backward = pressed,
+                KeyCode::KeyW => self.move_forward = pressed,
+                KeyCode::Period | KeyCode::KeyQ => self.move_down = pressed,
+                KeyCode::Slash | KeyCode::KeyE => self.move_up = pressed,
+                _ => {}
             }
-            VirtualKeyCode::Down => {
-                self.down_pressed = pressed;
-                true
+        }
+    }
+
+    pub fn update_device_input(&mut self, key_event: RawKeyEvent) {
+        let pressed = key_event.state == ElementState::Pressed;
+        if let PhysicalKey::Code(key) = key_event.physical_key {
+            match key {
+                KeyCode::ArrowLeft => self.move_left = pressed,
+                KeyCode::ArrowRight => self.move_right = pressed,
+                KeyCode::ArrowDown => self.move_backward = pressed,
+                KeyCode::ArrowUp => self.move_forward = pressed,
+                _ => {}
             }
-            VirtualKeyCode::Left => {
-                self.left_pressed = pressed;
-                true
-            }
-            VirtualKeyCode::Right => {
-                self.right_pressed = pressed;
-                true
-            }
-            VirtualKeyCode::Slash => {
-                self.slash_pressed = pressed;
-                true
-            }
-            VirtualKeyCode::RShift => {
-                self.right_shift_pressed = pressed;
-                true
-            }
-            VirtualKeyCode::Return => {
-                self.enter_pressed = pressed;
-                true
-            }
-            VirtualKeyCode::Space => {
-                self.space_pressed = pressed;
-                true
-            }
-            _ => false,
         }
     }
 
     pub fn process_position(&self, push_constant: &mut PushConstant) {
         let dx = 0.01;
-        if self.left_pressed {
+        if self.move_left {
             push_constant.pos[0] -= dx;
         }
-        if self.right_pressed {
+        if self.move_right {
             push_constant.pos[0] += dx;
         }
-        if self.down_pressed {
+        if self.move_backward {
             push_constant.pos[1] -= dx;
         }
-        if self.up_pressed {
+        if self.move_forward {
             push_constant.pos[1] += dx;
         }
-        if self.slash_pressed {
+        if self.move_down {
             push_constant.pos[2] -= dx;
         }
-        if self.right_shift_pressed {
+        if self.move_up {
             push_constant.pos[2] += dx;
         }
     }

@@ -1,5 +1,6 @@
 *.rdc
 pilka.cap
+_typos.toml
 /.cargo
 /shaders
 /target

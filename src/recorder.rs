@@ -1,84 +1,107 @@
-use color_eyre::*;
-use crossbeam_channel::{Receiver, Sender};
+use anyhow::{Context, Result};
 use std::{
-    error::Error,
-    fmt::{self, Display, Formatter},
-    io::{self, BufWriter, Write},
+    fs::File,
+    io::{BufWriter, Write},
     path::Path,
     process::{Child, Command, Stdio},
-    time::{Duration, Instant},
+    thread::JoinHandle,
+    time::Instant,
 };
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
-use pilka_types::ImageDimentions;
-
-use super::utils::create_folder;
-use crate::VIDEO_FOLDER;
+use crate::{create_folder, ImageDimensions, ManagedImage, SCREENSHOT_FOLDER, VIDEO_FOLDER};
+use crossbeam_channel::{Receiver, Sender};
 
 pub enum RecordEvent {
-    Start(ImageDimentions),
-    Record(Vec<u8>),
+    Start(ImageDimensions),
+    Record(ManagedImage),
     Finish,
-}
-
-#[derive(Debug)]
-pub enum ProcessError {
-    SpawnError(io::Error),
-    Other(io::Error),
-}
-
-impl Display for ProcessError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ProcessError::SpawnError(e) => {
-                write!(f, "Could not start ffmpeg. Make sure you have\nffmpeg installed and present in PATH\n\t{e}")
-            }
-            ProcessError::Other(e) => {
-                write!(f, "{}", e)
-            }
-        }
-    }
-}
-
-impl std::error::Error for ProcessError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            ProcessError::Other(e) => Some(e),
-            ProcessError::SpawnError(e) => Some(e),
-        }
-    }
-}
-
-pub fn ffmpeg_version() -> Result<(String, bool), ProcessError> {
-    let mut command = Command::new("ffmpeg");
-    command.arg("-version");
-
-    let res = match command.output().map_err(ProcessError::Other) {
-        Ok(output) => (
-            String::from_utf8(output.stdout)
-                .unwrap()
-                .lines()
-                .next()
-                .unwrap()
-                .to_string(),
-            true,
-        ),
-        Err(e) => (e.to_string(), false),
-    };
-    Ok(res)
+    Screenshot(ManagedImage),
+    CloseThread,
 }
 
 pub struct Recorder {
-    process: Child,
-    image_dimentions: ImageDimentions,
+    pub sender: Sender<RecordEvent>,
+    ffmpeg_installed: bool,
+    pub ffmpeg_version: String,
+    pub thread_handle: Option<JoinHandle<()>>,
+    is_active: bool,
 }
 
-pub fn new_ffmpeg_command(
-    image_dimentions: ImageDimentions,
-    filename: &str,
-) -> Result<Recorder, ProcessError> {
+impl Recorder {
+    pub fn new() -> Self {
+        let mut command = Command::new("ffmpeg");
+        command.arg("-version");
+        let (version, installed) = match command.output() {
+            Ok(output) => (
+                String::from_utf8(output.stdout)
+                    .unwrap()
+                    .lines()
+                    .next()
+                    .unwrap()
+                    .to_string(),
+                true,
+            ),
+            Err(e) => (e.to_string(), false),
+        };
+
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let thread_handle = std::thread::spawn(move || record_thread(rx));
+
+        Self {
+            sender: tx,
+            ffmpeg_installed: installed,
+            ffmpeg_version: version,
+            thread_handle: Some(thread_handle),
+            is_active: false,
+        }
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.is_active
+    }
+
+    pub fn ffmpeg_installed(&self) -> bool {
+        self.ffmpeg_installed
+    }
+
+    pub fn screenshot(&self, image: ManagedImage) {
+        let _ = self
+            .sender
+            .send(RecordEvent::Screenshot(image))
+            .context("Failed to send screenshot");
+    }
+
+    pub fn start(&mut self, dims: ImageDimensions) {
+        self.is_active = true;
+        self.send(RecordEvent::Start(dims));
+    }
+
+    pub fn record(&self, image: ManagedImage) {
+        self.send(RecordEvent::Record(image));
+    }
+
+    pub fn finish(&mut self) {
+        self.is_active = false;
+        self.send(RecordEvent::Finish);
+    }
+
+    pub fn close_thread(&self) {
+        self.sender.send(RecordEvent::CloseThread).unwrap();
+    }
+
+    pub fn send(&self, event: RecordEvent) {
+        if !(self.ffmpeg_installed || matches!(event, RecordEvent::Screenshot(_))) {
+            return;
+        }
+        self.sender.send(event).unwrap()
+    }
+}
+
+struct RecorderThread {
+    process: Child,
+}
+
+fn new_ffmpeg_command(image_dimensions: ImageDimensions, filename: &str) -> Result<RecorderThread> {
     #[rustfmt::skip]
     let args = [
         "-framerate", "60",
@@ -86,7 +109,7 @@ pub fn new_ffmpeg_command(
         "-f", "rawvideo",
         "-i", "pipe:",
         "-c:v", "libx264",
-        "-crf", "15",
+        "-crf", "25",
         "-preset", "ultrafast",
         "-tune", "animation",
         "-color_primaries", "bt709",
@@ -104,8 +127,8 @@ pub fn new_ffmpeg_command(
         .arg("-video_size")
         .arg(format!(
             "{}x{}",
-            image_dimentions.unpadded_bytes_per_row / 4,
-            image_dimentions.height
+            image_dimensions.unpadded_bytes_per_row / 4,
+            image_dimensions.height
         ))
         .args(args)
         .arg(filename)
@@ -120,117 +143,104 @@ pub fn new_ffmpeg_command(
         command.creation_flags(WINAPI_UM_WINBASE_CREATE_NO_WINDOW);
     }
 
-    let child = command.spawn().map_err(ProcessError::SpawnError)?;
+    let child = command.spawn()?;
 
-    Ok(Recorder {
-        process: child,
-        image_dimentions,
-    })
+    Ok(RecorderThread { process: child })
 }
 
-pub fn record_thread(rx: crossbeam_channel::Receiver<RecordEvent>) {
-    puffin::profile_function!();
-
+fn record_thread(rx: Receiver<RecordEvent>) {
     let mut recorder = None;
 
     while let Ok(event) = rx.recv() {
         match event {
-            RecordEvent::Start(image_dimentions) => {
-                puffin::profile_scope!("Start Recording");
-
+            RecordEvent::Start(image_dimensions) => {
                 create_folder(VIDEO_FOLDER).unwrap();
                 let dir_path = Path::new(VIDEO_FOLDER);
                 let filename = dir_path.join(format!(
                     "record-{}.mp4",
-                    chrono::Local::now().format("%d-%m-%Y-%H-%M-%S")
+                    chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
                 ));
                 recorder =
-                    Some(new_ffmpeg_command(image_dimentions, filename.to_str().unwrap()).unwrap());
+                    Some(new_ffmpeg_command(image_dimensions, filename.to_str().unwrap()).unwrap());
             }
-            RecordEvent::Record(frame) => {
-                puffin::profile_scope!("Process Frame");
-
+            RecordEvent::Record(mut frame) => {
                 if let Some(ref mut recorder) = recorder {
                     let writer = recorder.process.stdin.as_mut().unwrap();
                     let mut writer = BufWriter::new(writer);
 
-                    let padded_bytes = recorder.image_dimentions.padded_bytes_per_row as _;
-                    let unpadded_bytes = recorder.image_dimentions.unpadded_bytes_per_row as _;
-                    for chunk in frame
+                    let padded_bytes = frame.image_dimensions.padded_bytes_per_row as _;
+                    let unpadded_bytes = frame.image_dimensions.unpadded_bytes_per_row as _;
+                    let data = match frame.map_memory() {
+                        Ok(data) => data,
+                        Err(err) => {
+                            eprintln!("Failed to map memory: {err}");
+                            continue;
+                        }
+                    };
+
+                    for chunk in data
                         .chunks(padded_bytes)
                         .map(|chunk| &chunk[..unpadded_bytes])
                     {
-                        writer.write_all(chunk).unwrap();
+                        let _ = writer.write_all(chunk);
                     }
-                    // writer.write_all(&frame).unwrap();
-                    writer.flush().unwrap();
+                    let _ = writer.flush();
                 }
             }
             RecordEvent::Finish => {
-                puffin::profile_scope!("Stop Recording");
-
-                if let Some(ref mut process) = recorder {
-                    process.process.wait().unwrap();
+                if let Some(ref mut p) = recorder {
+                    p.process.wait().unwrap();
                 }
-                drop(recorder);
                 recorder = None;
+                eprintln!("Recording finished");
+            }
+            RecordEvent::Screenshot(mut frame) => {
+                let image_dimensions = frame.image_dimensions;
+                let data = match frame.map_memory() {
+                    Ok(data) => data,
+                    Err(err) => {
+                        eprintln!("Failed to map memory: {err}");
+                        continue;
+                    }
+                };
+
+                let _ = save_screenshot(data, image_dimensions).map_err(|err| eprintln!("{err}"));
+            }
+            RecordEvent::CloseThread => {
+                return;
             }
         }
     }
 }
 
-/// ---------------RecordTimer------------------
-/// |<-              until                   ->|
-/// |<-  start_rx  ->|<-      counter        ->|
-///                  |<-         tx          ->|
-pub struct RecordTimer {
-    until: Option<Duration>,
-    pub counter: Option<Instant>,
-    start_rx: Option<Receiver<()>>,
-    tx: Sender<RecordEvent>,
-}
-
-impl RecordTimer {
-    const NUM_SKIPPED_FRAMES: usize = 3;
-    pub fn new(until: Option<Duration>, tx: Sender<RecordEvent>) -> (Self, Sender<()>) {
-        let (start_tx, start_rx) = crossbeam_channel::bounded(Self::NUM_SKIPPED_FRAMES);
-        let counter = None;
-        (
-            Self {
-                until,
-                counter,
-                start_rx: Some(start_rx),
-                tx,
-            },
-            start_tx,
-        )
+pub fn save_screenshot(frame: &[u8], image_dimensions: ImageDimensions) -> Result<()> {
+    let now = Instant::now();
+    let screenshots_folder = Path::new(SCREENSHOT_FOLDER);
+    create_folder(screenshots_folder)?;
+    let path = screenshots_folder.join(format!(
+        "screenshot-{}.png",
+        chrono::Local::now().format("%Y-%m-%d_%H-%M-%S%.9f")
+    ));
+    let file = File::create(path)?;
+    let w = BufWriter::new(file);
+    let mut encoder =
+        png::Encoder::new(w, image_dimensions.width as _, image_dimensions.height as _);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let padded_bytes = image_dimensions.padded_bytes_per_row;
+    let unpadded_bytes = image_dimensions.unpadded_bytes_per_row;
+    let mut writer = encoder
+        .write_header()?
+        .into_stream_writer_with_size(unpadded_bytes)?;
+    writer.set_filter(png::FilterType::Paeth);
+    writer.set_adaptive_filter(png::AdaptiveFilterType::Adaptive);
+    for chunk in frame
+        .chunks(padded_bytes)
+        .map(|chunk| &chunk[..unpadded_bytes])
+    {
+        writer.write_all(chunk)?;
     }
-
-    pub fn update(
-        &mut self,
-        video_recording: &mut bool,
-        image_dimentions: ImageDimentions,
-    ) -> Result<()> {
-        if let Some(until) = self.until {
-            if let Some(ref start_rx) = self.start_rx {
-                if start_rx.is_full() {
-                    self.counter = Some(Instant::now());
-                    self.tx.send(RecordEvent::Start(image_dimentions))?;
-                    *video_recording = true;
-
-                    self.start_rx = None;
-                }
-            }
-
-            if let Some(now) = self.counter {
-                if until < now.elapsed() {
-                    *video_recording = false;
-                    self.tx.send(RecordEvent::Finish).unwrap();
-                    std::thread::sleep(Duration::from_millis(100));
-                    std::process::exit(0);
-                }
-            }
-        }
-        Ok(())
-    }
+    writer.finish()?;
+    eprintln!("Encode image: {:#.2?}", now.elapsed());
+    Ok(())
 }

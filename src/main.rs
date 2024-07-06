@@ -1,349 +1,696 @@
-mod app;
-mod default_shaders;
-mod input;
-// mod profiler_window;
-mod recorder;
-mod render_bundle;
-mod shader_compiler;
-mod utils;
-
-#[allow(dead_code)]
-mod audio;
-
-// use profiler_window::ProfilerWindow;
-
+use core::panic;
 use std::{
-    error::Error,
+    io::Write,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
-use pilka_types::{PushConstant, ShaderInfo};
-use recorder::{RecordEvent, RecordTimer};
-use render_bundle::Renderer;
-use utils::{parse_args, print_help, save_screenshot, save_shaders, Args};
-
-use eyre::*;
-use notify::{RecursiveMode, Watcher};
+use anyhow::{bail, Result};
+use ash::{khr, vk};
+use either::Either;
+use pilka::{
+    align_to, default_shaders, dispatch_optimal, parse_args, print_help, save_shaders, Args,
+    ComputeHandle, Device, FragmentOutputDesc, FragmentShaderDesc, Input, Instance, PipelineArena,
+    PushConstant, Recorder, RenderHandle, ShaderKind, ShaderSource, Surface, Swapchain,
+    TextureArena, UserEvent, VertexInputDesc, VertexShaderDesc, Watcher, COLOR_SUBRESOURCE_MASK,
+    PREV_FRAME_IMAGE_IDX, SCREENSIZED_IMAGE_INDICES, SHADER_FOLDER,
+};
 use winit::{
+    application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    event::{ElementState, KeyEvent, MouseButton, StartCause, WindowEvent},
+    event_loop::EventLoopProxy,
+    keyboard::{Key, NamedKey},
+    window::{Window, WindowAttributes},
 };
 
-use app::App;
+pub const UPDATES_PER_SECOND: u32 = 60;
+pub const FIXED_TIME_STEP: f64 = 1. / UPDATES_PER_SECOND as f64;
+pub const MAX_FRAME_TIME: f64 = 15. * FIXED_TIME_STEP; // 0.25;
 
-pub const SCREENSHOTS_FOLDER: &str = "screenshots";
-pub const SHADER_DUMP_FOLDER: &str = "shader_dump";
-pub const VIDEO_FOLDER: &str = "recordings";
-pub const SHADER_PATH: &str = "shaders";
+#[allow(dead_code)]
+struct AppInit {
+    window: Window,
+    input: Input,
 
-fn main() -> Result<(), Box<dyn Error>> {
-    // Initialize error hook.
-    color_eyre::install()?;
-    env_logger::init();
-    puffin::set_scopes_on(true);
+    pause: bool,
+    timeline: Instant,
+    backup_time: Duration,
+    frame_instant: Instant,
+    frame_accumulated_time: f64,
+
+    texture_arena: TextureArena,
+
+    file_watcher: Watcher,
+    recorder: Recorder,
+    video_recording: bool,
+    record_time: Option<Duration>,
+
+    push_constant: PushConstant,
+    render_pipeline: RenderHandle,
+    compute_pipeline: ComputeHandle,
+    pipeline_arena: PipelineArena,
+
+    queue: vk::Queue,
+    transfer_queue: vk::Queue,
+
+    swapchain: Swapchain,
+    surface: Surface,
+    device: Device,
+    instance: Instance,
+}
+
+impl AppInit {
+    fn new(
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        proxy: EventLoopProxy<UserEvent>,
+        window_attributes: WindowAttributes,
+        record_time: Option<Duration>,
+    ) -> Result<Self> {
+        let window = event_loop.create_window(window_attributes)?;
+        let watcher = Watcher::new(proxy)?;
+        let mut recorder = Recorder::new();
+
+        let instance = Instance::new(Some(&window))?;
+        let surface = instance.create_surface(&window)?;
+        let (device, queue, transfer_queue) = instance.create_device_and_queues(&surface)?;
+
+        let swapchain_loader = khr::swapchain::Device::new(&instance, &device);
+        let swapchain = Swapchain::new(&device, &surface, swapchain_loader)?;
+
+        let mut pipeline_arena = PipelineArena::new(&device, watcher.clone())?;
+
+        let extent = swapchain.extent();
+        let video_recording = record_time.is_some();
+        let push_constant = PushConstant {
+            wh: [extent.width as f32, extent.height as f32],
+            record_time: record_time.map(|t| t.as_secs_f32()).unwrap_or(10.),
+            ..Default::default()
+        };
+
+        let mut texture_arena = TextureArena::new(&device, swapchain.extent())?;
+
+        let bytes = include_bytes!("../assets/dither.dds");
+        let dds = ddsfile::Dds::read(&bytes[..])?;
+        let mut extent = vk::Extent3D {
+            width: dds.get_width(),
+            height: dds.get_height(),
+            depth: 1,
+        };
+        let mut info = vk::ImageCreateInfo::default()
+            .extent(extent)
+            .image_type(vk::ImageType::TYPE_2D)
+            .format(vk::Format::R8G8B8A8_UNORM)
+            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .mip_levels(1)
+            .array_layers(1)
+            .tiling(vk::ImageTiling::OPTIMAL);
+        texture_arena.push_image(&device, &queue, info, dds.get_data(0)?)?;
+
+        let bytes = include_bytes!("../assets/noise.dds");
+        let dds = ddsfile::Dds::read(&bytes[..])?;
+        extent.width = dds.get_width();
+        extent.height = dds.get_height();
+        info.extent = extent;
+        texture_arena.push_image(&device, &queue, info, dds.get_data(0)?)?;
+
+        let bytes = include_bytes!("../assets/BLUE_RGBA_0.dds");
+        let dds = ddsfile::Dds::read(&bytes[..])?;
+        extent.width = dds.get_width();
+        extent.height = dds.get_height();
+        info.extent = extent;
+        texture_arena.push_image(&device, &queue, info, dds.get_data(0)?)?;
+
+        let vertex_shader_desc = VertexShaderDesc {
+            shader_path: "shaders/shader.vert".into(),
+            ..Default::default()
+        };
+        let fragment_shader_desc = FragmentShaderDesc {
+            shader_path: "shaders/shader.frag".into(),
+        };
+        let fragment_output_desc = FragmentOutputDesc {
+            surface_format: swapchain.format(),
+            ..Default::default()
+        };
+        let push_constant_range = vk::PushConstantRange::default()
+            .size(size_of::<PushConstant>() as _)
+            .stage_flags(
+                vk::ShaderStageFlags::VERTEX
+                    | vk::ShaderStageFlags::FRAGMENT
+                    | vk::ShaderStageFlags::COMPUTE,
+            );
+        let render_pipeline = pipeline_arena.create_render_pipeline(
+            &VertexInputDesc::default(),
+            &vertex_shader_desc,
+            &fragment_shader_desc,
+            &fragment_output_desc,
+            &[push_constant_range],
+            &[texture_arena.images_set_layout],
+        )?;
+
+        let compute_pipeline = pipeline_arena.create_compute_pipeline(
+            "shaders/shader.comp",
+            &[push_constant_range],
+            &[texture_arena.images_set_layout],
+        )?;
+
+        if record_time.is_some() {
+            let mut image_dimensions = swapchain.image_dimensions;
+            image_dimensions.width = align_to(image_dimensions.width, 2);
+            image_dimensions.height = align_to(image_dimensions.height, 2);
+            recorder.start(image_dimensions);
+        }
+
+        Ok(Self {
+            window,
+            input: Input::default(),
+
+            pause: false,
+            timeline: Instant::now(),
+            backup_time: Duration::from_secs(0),
+            frame_instant: Instant::now(),
+            frame_accumulated_time: 0.,
+
+            texture_arena,
+
+            file_watcher: watcher,
+            video_recording,
+            record_time,
+            recorder,
+
+            push_constant,
+            render_pipeline,
+            compute_pipeline,
+            pipeline_arena,
+
+            queue,
+            transfer_queue,
+
+            surface,
+            swapchain,
+            device,
+            instance,
+        })
+    }
+
+    fn update(&mut self) {
+        self.input.process_position(&mut self.push_constant);
+    }
+
+    fn reload_shaders(&mut self, path: PathBuf) -> Result<()> {
+        if let Some(frame) = self.swapchain.get_current_frame() {
+            let fences = std::slice::from_ref(&frame.present_finished);
+            unsafe { self.device.wait_for_fences(fences, true, u64::MAX)? };
+        }
+
+        let resolved = {
+            let mapping = self.file_watcher.include_mapping.lock();
+            mapping[&path].clone()
+        };
+
+        for ShaderSource { path, kind } in resolved {
+            let handles = &self.pipeline_arena.path_mapping[&path];
+            for handle in handles {
+                let compiler = &self.pipeline_arena.shader_compiler;
+                match handle {
+                    Either::Left(handle) => {
+                        let pipeline = &mut self.pipeline_arena.render.pipelines[*handle];
+                        match kind {
+                            ShaderKind::Vertex => pipeline.reload_vertex_lib(compiler, &path),
+                            ShaderKind::Fragment => pipeline.reload_fragment_lib(compiler, &path),
+                            ShaderKind::Compute => {
+                                bail!("Supplied compute shader into the render pipeline!")
+                            }
+                        }?;
+                        pipeline.link()?;
+                    }
+                    Either::Right(handle) => {
+                        let pipeline = &mut self.pipeline_arena.compute.pipelines[*handle];
+                        pipeline.reload(compiler)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn recreate_swapchain(&mut self) -> Result<()> {
+        self.swapchain
+            .recreate(&self.device, &self.surface)
+            .expect("Failed to recreate swapchain");
+        let extent = self.swapchain.extent();
+        self.push_constant.wh = [extent.width as f32, extent.height as f32];
+
+        for i in SCREENSIZED_IMAGE_INDICES {
+            self.texture_arena.image_infos[i].extent = vk::Extent3D {
+                width: extent.width,
+                height: extent.height,
+                depth: 1,
+            };
+        }
+        self.texture_arena
+            .update_images(&SCREENSIZED_IMAGE_INDICES)?;
+
+        Ok(())
+    }
+}
+
+impl ApplicationHandler<UserEvent> for AppInit {
+    fn new_events(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        cause: winit::event::StartCause,
+    ) {
+        self.push_constant.time = if !self.pause {
+            self.timeline.elapsed().as_secs_f32()
+        } else {
+            self.backup_time.as_secs_f32()
+        };
+        if let StartCause::WaitCancelled { .. } = cause {
+            let new_instant = Instant::now();
+            let frame_time = new_instant
+                .duration_since(self.frame_instant)
+                .as_secs_f64()
+                .min(MAX_FRAME_TIME);
+            self.frame_instant = new_instant;
+            self.push_constant.time_delta = frame_time as _;
+
+            self.frame_accumulated_time += frame_time;
+            while self.frame_accumulated_time >= FIXED_TIME_STEP {
+                self.update();
+
+                self.frame_accumulated_time -= FIXED_TIME_STEP;
+            }
+        }
+
+        if let Some(limit) = self.record_time {
+            if self.timeline.elapsed() >= limit && self.recorder.is_active() {
+                self.recorder.finish();
+                event_loop.exit();
+            }
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        _event_loop: &winit::event_loop::ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        if let winit::event::DeviceEvent::Key(key_event) = event {
+            self.input.update_device_input(key_event);
+        }
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        _window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
+        match event {
+            WindowEvent::CloseRequested
+            | WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        logical_key: Key::Named(NamedKey::Escape),
+                        state: ElementState::Pressed,
+                        ..
+                    },
+                ..
+            } => event_loop.exit(),
+
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        logical_key: Key::Named(key),
+                        state: ElementState::Pressed,
+                        repeat: false,
+                        ..
+                    },
+                ..
+            } => {
+                let dt = Duration::from_secs_f32(1. / 60.);
+                match key {
+                    NamedKey::F1 => print_help(),
+                    NamedKey::F2 => {
+                        if !self.pause {
+                            self.backup_time = self.timeline.elapsed();
+                        } else {
+                            self.timeline = Instant::now() - self.backup_time;
+                        }
+                        self.pause = !self.pause;
+                    }
+                    NamedKey::F3 => {
+                        if !self.pause {
+                            self.backup_time = self.timeline.elapsed();
+                            self.pause = true;
+                        }
+                        self.backup_time = self.backup_time.saturating_sub(dt);
+                    }
+                    NamedKey::F4 => {
+                        if !self.pause {
+                            self.backup_time = self.timeline.elapsed();
+                            self.pause = true;
+                        }
+                        self.backup_time += dt;
+                    }
+                    NamedKey::F5 => {
+                        self.push_constant.pos = [0.; 3];
+                        self.push_constant.time = 0.;
+                        self.push_constant.frame = 0;
+                        self.timeline = Instant::now();
+                        self.backup_time = self.timeline.elapsed();
+                    }
+                    NamedKey::F6 => {
+                        eprintln!("{}", self.push_constant);
+                    }
+                    NamedKey::F10 => {
+                        let _ = save_shaders(SHADER_FOLDER).map_err(|err| eprintln!("{err}"));
+                    }
+                    NamedKey::F11 => {
+                        let _ = self
+                            .device
+                            .capture_image_data(
+                                &self.queue,
+                                self.swapchain.get_current_image(),
+                                self.swapchain.extent(),
+                                |tex| self.recorder.screenshot(tex),
+                            )
+                            .map_err(|err| eprintln!("{err}"));
+                    }
+                    NamedKey::F12 => {
+                        if !self.video_recording {
+                            let mut image_dimensions = self.swapchain.image_dimensions;
+                            image_dimensions.width = align_to(image_dimensions.width, 2);
+                            image_dimensions.height = align_to(image_dimensions.height, 2);
+                            self.recorder.start(image_dimensions);
+                        } else {
+                            self.recorder.finish();
+                        }
+                        self.video_recording = !self.video_recording;
+                    }
+                    _ => {}
+                }
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                self.input.update_window_input(&event);
+            }
+
+            WindowEvent::MouseInput {
+                state,
+                button: MouseButton::Left,
+                ..
+            } => {
+                self.push_constant.mouse_pressed = (ElementState::Pressed == state) as u32;
+            }
+            WindowEvent::CursorMoved {
+                position: PhysicalPosition { x, y },
+                ..
+            } => {
+                if !self.pause {
+                    let PhysicalSize { width, height } = self.window.inner_size();
+                    let x = (x as f32 / width as f32 - 0.5) * 2.;
+                    let y = -(y as f32 / height as f32 - 0.5) * 2.;
+                    self.push_constant.mouse = [x, y];
+                }
+            }
+            WindowEvent::RedrawRequested => {
+                let mut frame = match self.swapchain.acquire_next_image() {
+                    Ok(frame) => frame,
+                    Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                        let _ = self.recreate_swapchain().map_err(|err| eprintln!("{err}"));
+                        self.window.request_redraw();
+                        return;
+                    }
+                    Err(e) => panic!("error: {e}\n"),
+                };
+
+                let stages = vk::ShaderStageFlags::VERTEX
+                    | vk::ShaderStageFlags::FRAGMENT
+                    | vk::ShaderStageFlags::COMPUTE;
+                let pipeline = self.pipeline_arena.get_pipeline(self.compute_pipeline);
+                frame.push_constant(pipeline.layout, stages, &[self.push_constant]);
+                frame.bind_descriptor_sets(
+                    vk::PipelineBindPoint::COMPUTE,
+                    pipeline.layout,
+                    &[self.texture_arena.images_set],
+                );
+                frame.bind_pipeline(vk::PipelineBindPoint::COMPUTE, &pipeline.pipeline);
+                const SUBGROUP_SIZE: u32 = 16;
+                let extent = self.swapchain.extent();
+                frame.dispatch(
+                    dispatch_optimal(extent.width, SUBGROUP_SIZE),
+                    dispatch_optimal(extent.height, SUBGROUP_SIZE),
+                    1,
+                );
+
+                unsafe {
+                    let image_barrier = vk::ImageMemoryBarrier2::default()
+                        .subresource_range(COLOR_SUBRESOURCE_MASK)
+                        .src_stage_mask(vk::PipelineStageFlags2::COMPUTE_SHADER)
+                        .dst_stage_mask(vk::PipelineStageFlags2::ALL_GRAPHICS)
+                        .image(self.texture_arena.images[PREV_FRAME_IMAGE_IDX].image);
+                    self.device.cmd_pipeline_barrier2(
+                        *frame.command_buffer(),
+                        &vk::DependencyInfo::default()
+                            .image_memory_barriers(std::slice::from_ref(&image_barrier)),
+                    )
+                };
+
+                frame.begin_rendering(
+                    self.swapchain.get_current_image_view(),
+                    [0., 0.025, 0.025, 1.0],
+                );
+                let pipeline = self.pipeline_arena.get_pipeline(self.render_pipeline);
+                frame.push_constant(pipeline.layout, stages, &[self.push_constant]);
+                frame.bind_descriptor_sets(
+                    vk::PipelineBindPoint::GRAPHICS,
+                    pipeline.layout,
+                    &[self.texture_arena.images_set],
+                );
+                frame.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, &pipeline.pipeline);
+
+                frame.draw(3, 0, 1, 0);
+                frame.end_rendering();
+
+                self.device.blit_image(
+                    frame.command_buffer(),
+                    self.swapchain.get_current_image(),
+                    self.swapchain.extent(),
+                    vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    &self.texture_arena.images[PREV_FRAME_IMAGE_IDX].image,
+                    self.swapchain.extent(),
+                    vk::ImageLayout::UNDEFINED,
+                );
+
+                match self.swapchain.submit_image(&self.queue, frame) {
+                    Ok(_) => {}
+                    Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                        let _ = self.recreate_swapchain().map_err(|err| eprintln!("{err}"));
+                    }
+                    Err(e) => panic!("error: {e}\n"),
+                }
+
+                self.window.request_redraw();
+
+                if self.video_recording && self.recorder.ffmpeg_installed() {
+                    let res = self.device.capture_image_data(
+                        &self.queue,
+                        self.swapchain.get_current_image(),
+                        self.swapchain.extent(),
+                        |tex| self.recorder.record(tex),
+                    );
+                    if let Err(err) = res {
+                        eprintln!("{err}");
+                        self.video_recording = false;
+                    }
+                }
+
+                self.push_constant.frame = self.push_constant.frame.saturating_add(1);
+            }
+            _ => {}
+        }
+    }
+
+    fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
+        match event {
+            UserEvent::Glsl { path } => {
+                match self.reload_shaders(path) {
+                    Err(err) => eprintln!("{err}"),
+                    Ok(()) => {
+                        const ESC: &str = "\x1B[";
+                        const RESET: &str = "\x1B[0m";
+                        eprint!("\r{}42m{}K{}\r", ESC, ESC, RESET);
+                        std::io::stdout().flush().unwrap();
+                        std::thread::spawn(|| {
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                            eprint!("\r{}40m{}K{}\r", ESC, ESC, RESET);
+                            std::io::stdout().flush().unwrap();
+                        });
+                    }
+                };
+            }
+        }
+    }
+
+    fn exiting(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.recorder.close_thread();
+        if let Some(handle) = self.recorder.thread_handle.take() {
+            let _ = handle.join();
+        }
+        let _ = unsafe { self.device.device_wait_idle() };
+        println!("// End from the loop. Bye bye~⏎ ");
+    }
+
+    fn resumed(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
+        panic!("On native platforms `resumed` can be called only once.")
+    }
+}
+
+fn main() -> Result<()> {
+    let event_loop = winit::event_loop::EventLoop::with_user_event().build()?;
 
     let Args {
         record_time,
         inner_size,
-        wgsl_mode,
-    } = parse_args();
+    } = parse_args()?;
 
-    // let mut audio_context = audio::AudioContext::new()?;
+    let shader_dir = PathBuf::new().join(SHADER_FOLDER);
+    if !shader_dir.is_dir() {
+        default_shaders::create_default_shaders(&shader_dir)?;
+    }
 
-    let event_loop = EventLoop::new();
+    let mut app = App::new(event_loop.create_proxy(), record_time, inner_size);
+    event_loop.run_app(&mut app)?;
+    Ok(())
+}
 
-    let main_window = {
-        let mut window_builder = WindowBuilder::new().with_title("Pilka");
-        #[cfg(unix)]
-        {
-            use winit::platform::unix::WindowBuilderExtUnix;
-            window_builder =
-                window_builder.with_resize_increments(LogicalSize::<u32>::from((8, 2)));
+struct App {
+    proxy: EventLoopProxy<UserEvent>,
+    record_time: Option<Duration>,
+    initial_window_size: Option<(u32, u32)>,
+    inner: AppEnum,
+}
+
+impl App {
+    fn new(
+        proxy: EventLoopProxy<UserEvent>,
+        record_time: Option<Duration>,
+        inner_size: Option<(u32, u32)>,
+    ) -> Self {
+        Self {
+            proxy,
+            record_time,
+            initial_window_size: inner_size,
+            inner: AppEnum::Uninitialized,
         }
-        if let Some(size) = inner_size {
-            window_builder = window_builder
+    }
+}
+
+#[derive(Default)]
+enum AppEnum {
+    #[default]
+    Uninitialized,
+    Init(AppInit),
+}
+
+impl ApplicationHandler<UserEvent> for App {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        let mut window_attributes = WindowAttributes::default().with_title("myndgera");
+        if let Some(size) = self.initial_window_size {
+            window_attributes = window_attributes
                 .with_resizable(false)
                 .with_inner_size(LogicalSize::<u32>::from(size));
-        } else {
-            window_builder = window_builder.with_inner_size(LogicalSize::new(1280, 720));
         }
-        window_builder.build(&event_loop)?
-    };
+        match self.inner {
+            AppEnum::Uninitialized => {
+                let app = AppInit::new(
+                    event_loop,
+                    self.proxy.clone(),
+                    window_attributes,
+                    self.record_time,
+                )
+                .expect("Failed to create application");
 
-    let shader_dir = PathBuf::new().join(SHADER_PATH);
-    if !shader_dir.is_dir() {
-        default_shaders::create_default_shaders(&shader_dir, wgsl_mode)?;
+                println!("{}", app.device.get_info());
+                println!("{}", app.recorder.ffmpeg_version);
+                println!(
+                    "Default shader path:\n\t{}",
+                    Path::new(SHADER_FOLDER).canonicalize().unwrap().display()
+                );
+                print_help();
+
+                println!("// Set up our new world⏎ ");
+                println!("// And let's begin the⏎ ");
+                println!("\tSIMULATION⏎ \n");
+
+                self.inner = AppEnum::Init(app);
+            }
+            AppEnum::Init(_) => {}
+        }
     }
 
-    let (folder_tx, folder_rx) = crossbeam_channel::unbounded();
-    let mut watcher = notify::recommended_watcher(move |res| match res {
-        Ok(event) => {
-            folder_tx.send(event).unwrap();
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
+        if let AppEnum::Init(app) = &mut self.inner {
+            app.window_event(event_loop, window_id, event);
         }
-        Err(e) => eprintln!("watch error: {:?}", e),
-    })?;
-    watcher.watch(Path::new(SHADER_PATH), RecursiveMode::Recursive)?;
-
-    let mut app = App::new(&main_window, folder_rx)?;
-
-    let mut video_recording = false;
-    let (video_tx, video_rx) = crossbeam_channel::unbounded();
-    std::thread::spawn(move || recorder::record_thread(video_rx));
-
-    let mut input = input::Input::new();
-    let mut pause = false;
-
-    let mut timeline = Instant::now();
-    let mut prev_time = timeline.elapsed();
-    let mut backup_time = timeline.elapsed();
-    let mut dt = Duration::from_secs_f32(1. / 60.);
-
-    let mut last_update_inst = Instant::now();
-
-    let (mut timer, start_event) = RecordTimer::new(record_time, video_tx.clone());
-    if let Some(period) = record_time {
-        app.push_constant.record_period = period.as_secs_f32();
     }
 
-    // let mut profiler_window: Option<ProfilerWindow> = None;
-
-    event_loop.run(move |event, _event_loop, control_flow| {
-        *control_flow = winit::event_loop::ControlFlow::Poll;
-
-        // if let Some(ref mut w) = profiler_window {
-        //     w.handle_event(&event);
-        // }
-
-        match event {
-            Event::RedrawEventsCleared => {
-                puffin::profile_scope!("Redraw Timeout");
-                let target_frametime = Duration::from_secs_f64(1.0 / 60.0);
-                let time_since_last_frame = last_update_inst.elapsed();
-                if time_since_last_frame >= target_frametime {
-                    main_window.request_redraw();
-                    // if let Some(ref mut w) = profiler_window {
-                    //     w.request_redraw();
-                    // }
-                    last_update_inst = Instant::now();
-                } else {
-                    *control_flow = ControlFlow::WaitUntil(
-                        Instant::now() + target_frametime - time_since_last_frame,
-                    );
-                }
-            }
-            Event::NewEvents(_) => {
-                puffin::profile_scope!("Frame setup");
-
-                app.setup_frame();
-
-                app.push_constant.time = if pause {
-                    backup_time.as_secs_f32()
-                } else if let Some(recording_time) = timer.counter {
-                    recording_time.elapsed().as_secs_f32()
-                } else {
-                    timeline.elapsed().as_secs_f32()
-                };
-
-                app.push_constant.wh = main_window.inner_size().into();
-
-                input.process_position(&mut app.push_constant);
-
-                if !pause {
-                    // let mut tmp_buf = [0f32; audio::FFT_SIZE];
-                    // audio_context.get_fft(&mut tmp_buf);
-                    // pilka.update_fft_texture(&tmp_buf).unwrap();
-
-                    dt = timeline.elapsed().saturating_sub(prev_time);
-                    app.push_constant.time_delta = dt.as_secs_f32();
-
-                    prev_time = timeline.elapsed();
-                }
-
-                timer
-                    .update(&mut video_recording, app.render.captured_frame_dimentions())
-                    .unwrap();
-            }
-            Event::WindowEvent {
-                event:
-                    WindowEvent::Resized(size)
-                    | WindowEvent::ScaleFactorChanged {
-                        new_inner_size: &mut size,
-                        ..
-                    },
-                window_id,
-            } => {
-                puffin::profile_scope!("Resize");
-                let PhysicalSize { width, height } = size;
-
-                // if let Some(ref mut w) = profiler_window {
-                //     if w.id() == window_id {
-                //         w.resize();
-                //     }
-                // }
-
-                if main_window.id() == window_id {
-                    app.resize(width.max(1), height.max(1)).unwrap();
-                }
-
-                if video_recording {
-                    println!("Stop recording. Resolution has been changed.",);
-                    video_recording = false;
-                    video_tx.send(RecordEvent::Finish).unwrap();
-                }
-            }
-
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                window_id: _window_id,
-            } => {
-                // let sec_id = profiler_window.as_ref().unwrap().id();
-                // if window_id == sec_id {
-                //     profiler_window = None;
-                // }
-            }
-
-            Event::WindowEvent { event, window_id } if main_window.id() == window_id => match event
-            {
-                WindowEvent::KeyboardInput {
-                    input:
-                        KeyboardInput {
-                            virtual_keycode: Some(keycode),
-                            state,
-                            ..
-                        },
-                    ..
-                } => {
-                    puffin::profile_scope!("Keyboard Events");
-
-                    input.update(&keycode, &state);
-
-                    if VirtualKeyCode::Escape == keycode {
-                        *control_flow = ControlFlow::Exit;
-                    }
-
-                    if ElementState::Pressed == state {
-                        if VirtualKeyCode::F1 == keycode {
-                            print_help();
-                        }
-
-                        if VirtualKeyCode::F2 == keycode {
-                            if !pause {
-                                backup_time = timeline.elapsed();
-                                pause = true;
-                            } else {
-                                timeline = Instant::now() - backup_time;
-                                pause = false;
-                            }
-                        }
-
-                        if VirtualKeyCode::F3 == keycode {
-                            if !pause {
-                                backup_time = timeline.elapsed();
-                                pause = true;
-                            }
-                            backup_time = backup_time.saturating_sub(dt);
-                        }
-
-                        if VirtualKeyCode::F4 == keycode {
-                            if !pause {
-                                backup_time = timeline.elapsed();
-                                pause = true;
-                            }
-                            backup_time += dt;
-                        }
-
-                        if VirtualKeyCode::F5 == keycode {
-                            app.push_constant.pos = [0.; 3];
-                            app.push_constant.time = 0.;
-                            app.push_constant.frame = 0;
-                            timeline = Instant::now();
-                            backup_time = timeline.elapsed();
-                        }
-
-                        if VirtualKeyCode::F6 == keycode {
-                            eprintln!("{}", app.push_constant);
-                        }
-
-                        if VirtualKeyCode::F7 == keycode {
-                            // if profiler_window.is_some() {
-                            //     profiler_window = None;
-                            // } else {
-                            //     profiler_window = Some(ProfilerWindow::new(event_loop).unwrap());
-                            // }
-                        }
-
-                        if VirtualKeyCode::F8 == keycode {
-                            app.render.switch(&main_window, &mut app.compiler).unwrap();
-                        }
-
-                        if VirtualKeyCode::F10 == keycode {
-                            save_shaders(&app.render.shader_list()).unwrap();
-                        }
-
-                        if VirtualKeyCode::F11 == keycode {
-                            let now = Instant::now();
-                            let (frame, image_dimentions) = app.render.capture_frame().unwrap();
-                            eprintln!("Capture image: {:#.2?}", now.elapsed());
-                            save_screenshot(frame, image_dimentions);
-                        }
-
-                        if app.has_ffmpeg && VirtualKeyCode::F12 == keycode {
-                            if video_recording {
-                                video_tx.send(RecordEvent::Finish).unwrap()
-                            } else {
-                                let (_, image_dimentions) = app.render.capture_frame().unwrap();
-                                video_tx.send(RecordEvent::Start(image_dimentions)).unwrap()
-                            }
-                            video_recording = !video_recording;
-                        }
-                    }
-                }
-
-                WindowEvent::CursorMoved {
-                    position: PhysicalPosition { x, y },
-                    ..
-                } => {
-                    if !pause {
-                        let PhysicalSize { width, height } = main_window.inner_size();
-                        let x = (x as f32 / width as f32 - 0.5) * 2.;
-                        let y = -(y as f32 / height as f32 - 0.5) * 2.;
-                        app.push_constant.mouse = [x, y];
-                    }
-                }
-                WindowEvent::MouseInput {
-                    button: winit::event::MouseButton::Left,
-                    state,
-                    ..
-                } => match state {
-                    ElementState::Pressed => app.push_constant.mouse_pressed = true as _,
-                    ElementState::Released => app.push_constant.mouse_pressed = false as _,
-                },
-                _ => {}
-            },
-            Event::RedrawRequested(_) => {
-                puffin::GlobalProfiler::lock().new_frame();
-                puffin::profile_scope!("Rendering");
-
-                // if let Some(w) = &mut profiler_window {
-                //     w.render(&timeline);
-                // }
-
-                app.render();
-
-                start_event.try_send(()).ok();
-                if video_recording {
-                    let (frame, _image_dimentions) = app.render.capture_frame().unwrap();
-                    video_tx.send(RecordEvent::Record(frame)).unwrap()
-                }
-            }
-            Event::LoopDestroyed => {
-                app.shut_down();
-                println!("// End from the loop. Bye bye~⏎ ");
-            }
-            _ => {}
+    fn new_events(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        cause: winit::event::StartCause,
+    ) {
+        if let AppEnum::Init(app) = &mut self.inner {
+            app.new_events(event_loop, cause);
         }
-    });
+    }
+
+    fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
+        if let AppEnum::Init(app) = &mut self.inner {
+            app.user_event(event_loop, event)
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        if let AppEnum::Init(app) = &mut self.inner {
+            app.device_event(event_loop, device_id, event)
+        }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        if let AppEnum::Init(app) = &mut self.inner {
+            app.about_to_wait(event_loop)
+        }
+    }
+
+    fn suspended(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        if let AppEnum::Init(app) = &mut self.inner {
+            app.suspended(event_loop)
+        }
+    }
+
+    fn exiting(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        if let AppEnum::Init(app) = &mut self.inner {
+            app.exiting(event_loop)
+        }
+    }
+
+    fn memory_warning(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        if let AppEnum::Init(app) = &mut self.inner {
+            app.memory_warning(event_loop)
+        }
+    }
 }
