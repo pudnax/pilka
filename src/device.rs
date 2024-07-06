@@ -257,8 +257,8 @@ impl Device {
             self,
             &vk::ImageCreateInfo::default()
                 .extent(vk::Extent3D {
-                    width: dbg!(align_to(extent.width, 2)),
-                    height: dbg!(align_to(extent.height, 2)),
+                    width: align_to(extent.width, 2),
+                    height: align_to(extent.height, 2),
                     depth: 1,
                 })
                 .image_type(vk::ImageType::TYPE_2D)
