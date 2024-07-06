@@ -1,13 +1,13 @@
 [package]
 name = "pilka"
-version = "0.7.11"
+version = "0.8.0"
 authors = ["Alex Komissarov <k.a.komissar@gmail.com>"]
 edition = "2021"
 license = "MIT"
 description = "Another live-coding tool for creating shaders demos."
 repository = "https://github.com/pudnax/pilka/"
 readme = "README.md"
-keywords = ["graphics", "vulkan", "wgpu", "shaders", "creative"]
+keywords = ["graphics", "vulkan", "shaders", "creative"]
 exclude = [".gitignore", "examples", ".github", "menger_sponge.png", "screenshots", "recordings", "shader_dump"]
 categories = ["command-line-utilities", "graphics", "rendering"]
 
@@ -15,55 +15,41 @@ categories = ["command-line-utilities", "graphics", "rendering"]
 appveyor = { repository = "https://github.com/pudnax/pilka", branch = "master", service = "github" }
 maintenance = { status = "experimental" }
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[workspace]
-members = ["pilka_ash", "pilka_wgpu", "pilka_types"]
-
 [dependencies]
-# Ecosystem choice for crossplatform window
-winit = "0.27.4"
-raw-window-handle = "0.5.0"
+# Ecosystem choice for crossplatform windows
+raw-window-handle = "0.6.2"
+winit = "0.30"
+ash = "0.38"
+ash-window = "0.13"
+bitflags = "2"
+bytemuck = "1.16"
+ahash = "0.8"
+slotmap = "1.0"
+either = "1.13"
+parking_lot = "0.12"
+gpu-alloc = "0.6.0"
+gpu-alloc-ash = "0.7.0"
 
 # Fancy-pants errors
-color-eyre = "0.6.2"
-eyre = "0.6.8"
-
-pilka_ash = { version = "0.7.9", path = "pilka_ash" }
-pilka_wgpu = { version = "0.7.9", path = "pilka_wgpu" }
-pilka_types = { version = "0.7.1", path = "pilka_types" }
+anyhow = "1.0"
 
 # Crossplatform filesystem event handler
-notify = "5.0.0"
+notify = "^6"
+notify-debouncer-mini = "0.4"
 
 # Deps for image manipulations
-chrono = "0.4.22"
-png = "0.17.6"
+chrono = "0.4"
+png = "0.17"
 
-# Sounds analysis
-cpal = "0.14.0"
-rustfft = "6.0.1"
-
-crossbeam-channel = "0.5.1"
-env_logger = "0.9.1"
+crossbeam-channel = "0.5.13"
+env_logger = "0.11.3"
 
 # Shader compiler
-shaderc = "0.8.0"
+shaderc = "0.8"
+ddsfile = "0.5.2"
 
-# Blocking executor
-pollster = "0.2.5"
-
-# GUI profiler dependencies
-puffin = "0.13.3"
-puffin_egui = "0.17.0"
-egui_wgpu_backend = "0.20.0"
-egui_winit_platform = "0.16.0"
-egui = "0.19.0"
-egui-wgpu = { version = "0.19.0", features = ["winit"] }
-
-#Shader compiler
-naga = {version = "0.10.0", features = ["wgsl-in", "span", "spv-out", "wgsl-out", "validate"] }
-
-[profile.release]
+[profile.deploy]
+inherits = "release"
 lto = true
 
 [profile.dev.package.'*']
