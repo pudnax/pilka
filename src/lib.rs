@@ -17,7 +17,7 @@ use std::{
     fs::File,
     io,
     mem::ManuallyDrop,
-    ops::{Add, Rem, Sub},
+    ops::{Add, BitAnd, Not, Sub},
     path::Path,
     sync::Arc,
     time::Duration,
@@ -55,21 +55,22 @@ pub const COLOR_SUBRESOURCE_MASK: vk::ImageSubresourceRange = vk::ImageSubresour
     layer_count: vk::REMAINING_ARRAY_LAYERS,
 };
 
-// pub fn align_to(value: u64, alignment: u64) -> u64 {
-//     (value + alignment - 1) & !(alignment - 1)
-// }
-
 pub fn align_to<T>(value: T, alignment: T) -> T
 where
-    T: Add<Output = T> + Copy + Default + PartialEq<T> + Rem<Output = T> + Sub<Output = T>,
+    T: Add<Output = T> + Copy + One + Not<Output = T> + BitAnd<Output = T> + Sub<Output = T>,
 {
-    let remainder = value % alignment;
-    if remainder == T::default() {
-        value
-    } else {
-        value + alignment - remainder
+    (value + alignment - T::one()) & !(alignment - T::one())
+}
+
+pub trait One {
+    fn one() -> Self;
+}
+macro_rules! impl_one {
+    ( $($t:ty),+) => {
+        $(impl One for $t { fn one() -> $t { 1 } })*
     }
 }
+impl_one!(i32, u32, i64, u64, usize);
 
 pub fn dispatch_optimal(len: u32, subgroup_size: u32) -> u32 {
     let padded_size = (subgroup_size - len % subgroup_size) % subgroup_size;
