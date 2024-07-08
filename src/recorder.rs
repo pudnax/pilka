@@ -174,7 +174,7 @@ fn record_thread(rx: Receiver<RecordEvent>) {
                     let data = match frame.map_memory() {
                         Ok(data) => data,
                         Err(err) => {
-                            eprintln!("Failed to map memory: {err}");
+                            log::error!("Failed to map memory: {err}");
                             continue;
                         }
                     };
@@ -193,19 +193,19 @@ fn record_thread(rx: Receiver<RecordEvent>) {
                     p.process.wait().unwrap();
                 }
                 recorder = None;
-                eprintln!("Recording finished");
+                println!("Recording finished");
             }
             RecordEvent::Screenshot(mut frame) => {
                 let image_dimensions = frame.image_dimensions;
                 let data = match frame.map_memory() {
                     Ok(data) => data,
                     Err(err) => {
-                        eprintln!("Failed to map memory: {err}");
+                        log::error!("Failed to map memory: {err}");
                         continue;
                     }
                 };
 
-                let _ = save_screenshot(data, image_dimensions).map_err(|err| eprintln!("{err}"));
+                let _ = save_screenshot(data, image_dimensions).map_err(|err| log::error!("{err}"));
             }
             RecordEvent::CloseThread => {
                 return;
@@ -242,6 +242,6 @@ pub fn save_screenshot(frame: &[u8], image_dimensions: ImageDimensions) -> Resul
         writer.write_all(chunk)?;
     }
     writer.finish()?;
-    eprintln!("Encode image: {:#.2?}", now.elapsed());
+    println!("Encode image: {:#.2?}", now.elapsed());
     Ok(())
 }

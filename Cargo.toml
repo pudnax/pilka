@@ -47,6 +47,8 @@ env_logger = "0.11.3"
 # Shader compiler
 shaderc = "0.8"
 ddsfile = "0.5.2"
+log = "0.4.22"
+pretty-type-name = "1.0.1"
 
 [profile.deploy]
 inherits = "release"

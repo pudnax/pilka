@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, ffi::CStr, sync::Arc};
 
 use crate::{device::Device, surface::Surface};
 
@@ -7,16 +7,37 @@ use ash::{ext, khr, vk, Entry};
 use parking_lot::Mutex;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
+unsafe extern "system" fn vulkan_debug_callback(
+    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _user_data: *mut std::os::raw::c_void,
+) -> vk::Bool32 {
+    let callback_data = &unsafe { *p_callback_data };
+    let message = unsafe { CStr::from_ptr(callback_data.p_message) }.to_string_lossy();
+
+    if message.starts_with("Validation Performance Warning") {
+    } else if message.starts_with("Validation Warning: [ VUID_Undefined ]") {
+        log::warn!("{:?}:\n{:?}: {}\n", message_severity, message_type, message,);
+    } else {
+        log::error!("{:?}:\n{:?}: {}\n", message_severity, message_type, message,);
+    }
+
+    vk::FALSE
+}
+
 pub struct Instance {
     pub entry: ash::Entry,
-    pub instance: ash::Instance,
+    pub inner: ash::Instance,
+    dbg_loader: ext::debug_utils::Instance,
+    dbg_callbk: vk::DebugUtilsMessengerEXT,
 }
 
 impl std::ops::Deref for Instance {
     type Target = ash::Instance;
 
     fn deref(&self) -> &Self::Target {
-        &self.instance
+        &self.inner
     }
 }
 
@@ -28,6 +49,7 @@ impl Instance {
             c"VK_LAYER_KHRONOS_validation".as_ptr(),
         ];
         let mut extensions = vec![
+            ext::debug_utils::NAME.as_ptr(),
             khr::surface::NAME.as_ptr(),
             khr::display::NAME.as_ptr(),
             khr::get_physical_device_properties2::NAME.as_ptr(),
@@ -46,8 +68,31 @@ impl Instance {
             .flags(vk::InstanceCreateFlags::default())
             .enabled_layer_names(&layers)
             .enabled_extension_names(&extensions);
-        let instance = unsafe { entry.create_instance(&instance_info, None) }?;
-        Ok(Self { entry, instance })
+        let inner = unsafe { entry.create_instance(&instance_info, None) }?;
+
+        let dbg_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
+            .message_severity(
+                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                    // | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+                    // | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
+            )
+            .message_type(
+                vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                    | vk::DebugUtilsMessageTypeFlagsEXT::DEVICE_ADDRESS_BINDING
+                    | vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+            )
+            .pfn_user_callback(Some(vulkan_debug_callback));
+        let dbg_loader = ext::debug_utils::Instance::new(&entry, &inner);
+        let dbg_callbk = unsafe { dbg_loader.create_debug_utils_messenger(&dbg_info, None)? };
+
+        Ok(Self {
+            dbg_loader,
+            dbg_callbk,
+            entry,
+            inner,
+        })
     }
 
     pub fn create_device_and_queues(
@@ -167,7 +212,7 @@ impl Instance {
             .queue_create_infos(&queue_infos)
             .enabled_extension_names(&required_device_extensions)
             .push_next(&mut default_features);
-        let device = unsafe { self.instance.create_device(pdevice, &device_info, None) }?;
+        let device = unsafe { self.inner.create_device(pdevice, &device_info, None) }?;
 
         let memory_properties = unsafe { self.get_physical_device_memory_properties(pdevice) };
 
@@ -193,6 +238,9 @@ impl Instance {
             )?
         };
 
+        {};
+        let dbg_utils = ext::debug_utils::Device::new(&self.inner, &device);
+
         let device = Device {
             physical_device: pdevice,
             device_properties: device_properties.properties,
@@ -204,6 +252,7 @@ impl Instance {
             allocator: Arc::new(Mutex::new(allocator)),
             device,
             dynamic_rendering,
+            dbg_utils,
         };
         let main_queue = unsafe { device.get_device_queue(main_queue_family_idx, 0) };
         let transfer_queue = unsafe { device.get_device_queue(transfer_queue_family_idx, 0) };
@@ -215,12 +264,16 @@ impl Instance {
         &self,
         handle: &(impl HasDisplayHandle + HasWindowHandle),
     ) -> Result<Surface> {
-        Surface::new(&self.entry, &self.instance, handle)
+        Surface::new(&self.entry, &self.inner, handle)
     }
 }
 
 impl Drop for Instance {
     fn drop(&mut self) {
-        unsafe { self.instance.destroy_instance(None) };
+        unsafe {
+            self.dbg_loader
+                .destroy_debug_utils_messenger(self.dbg_callbk, None);
+            self.inner.destroy_instance(None);
+        }
     }
 }

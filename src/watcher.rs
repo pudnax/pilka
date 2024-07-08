@@ -66,10 +66,10 @@ fn watch_callback(proxy: EventLoopProxy<UserEvent>) -> impl FnMut(DebounceEventR
                         .send_event(UserEvent::Glsl {
                             path: path.canonicalize().unwrap(),
                         })
-                        .map_err(|err| eprintln!("Event Loop has been dropped: {err}"));
+                        .map_err(|err| log::error!("Event Loop has been dropped: {err}"));
                 }
             }
         }
-        Err(errors) => eprintln!("File watcher error: {errors}"),
+        Err(errors) => log::error!("File watcher error: {errors}"),
     }
 }

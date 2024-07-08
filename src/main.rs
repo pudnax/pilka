@@ -90,39 +90,7 @@ impl AppInit {
             ..Default::default()
         };
 
-        let mut texture_arena = TextureArena::new(&device, swapchain.extent())?;
-
-        let bytes = include_bytes!("../assets/dither.dds");
-        let dds = ddsfile::Dds::read(&bytes[..])?;
-        let mut extent = vk::Extent3D {
-            width: dds.get_width(),
-            height: dds.get_height(),
-            depth: 1,
-        };
-        let mut info = vk::ImageCreateInfo::default()
-            .extent(extent)
-            .image_type(vk::ImageType::TYPE_2D)
-            .format(vk::Format::R8G8B8A8_UNORM)
-            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .mip_levels(1)
-            .array_layers(1)
-            .tiling(vk::ImageTiling::OPTIMAL);
-        texture_arena.push_image(&device, &queue, info, dds.get_data(0)?)?;
-
-        let bytes = include_bytes!("../assets/noise.dds");
-        let dds = ddsfile::Dds::read(&bytes[..])?;
-        extent.width = dds.get_width();
-        extent.height = dds.get_height();
-        info.extent = extent;
-        texture_arena.push_image(&device, &queue, info, dds.get_data(0)?)?;
-
-        let bytes = include_bytes!("../assets/BLUE_RGBA_0.dds");
-        let dds = ddsfile::Dds::read(&bytes[..])?;
-        extent.width = dds.get_width();
-        extent.height = dds.get_height();
-        info.extent = extent;
-        texture_arena.push_image(&device, &queue, info, dds.get_data(0)?)?;
+        let texture_arena = TextureArena::new(&device, &queue, swapchain.extent())?;
 
         let vertex_shader_desc = VertexShaderDesc {
             shader_path: "shaders/shader.vert".into(),
@@ -238,6 +206,11 @@ impl AppInit {
     }
 
     fn recreate_swapchain(&mut self) -> Result<()> {
+        if let Some(frame) = self.swapchain.get_current_frame() {
+            let fences = std::slice::from_ref(&frame.present_finished);
+            unsafe { self.device.wait_for_fences(fences, true, u64::MAX)? };
+        }
+
         self.swapchain
             .recreate(&self.device, &self.surface)
             .expect("Failed to recreate swapchain");
@@ -366,10 +339,10 @@ impl ApplicationHandler<UserEvent> for AppInit {
                         self.backup_time = self.timeline.elapsed();
                     }
                     NamedKey::F6 => {
-                        eprintln!("{}", self.push_constant);
+                        println!("{}", self.push_constant);
                     }
                     NamedKey::F10 => {
-                        let _ = save_shaders(SHADER_FOLDER).map_err(|err| eprintln!("{err}"));
+                        let _ = save_shaders(SHADER_FOLDER).map_err(|err| log::error!("{err}"));
                     }
                     NamedKey::F11 => {
                         let _ = self
@@ -380,7 +353,7 @@ impl ApplicationHandler<UserEvent> for AppInit {
                                 self.swapchain.extent(),
                                 |tex| self.recorder.screenshot(tex),
                             )
-                            .map_err(|err| eprintln!("{err}"));
+                            .map_err(|err| log::error!("{err}"));
                     }
                     NamedKey::F12 => {
                         if !self.video_recording {
@@ -422,7 +395,7 @@ impl ApplicationHandler<UserEvent> for AppInit {
                 let mut frame = match self.swapchain.acquire_next_image() {
                     Ok(frame) => frame,
                     Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                        let _ = self.recreate_swapchain().map_err(|err| eprintln!("{err}"));
+                        let _ = self.recreate_swapchain().map_err(|err| log::warn!("{err}"));
                         self.window.request_redraw();
                         return;
                     }
@@ -490,7 +463,7 @@ impl ApplicationHandler<UserEvent> for AppInit {
                 match self.swapchain.submit_image(&self.queue, frame) {
                     Ok(_) => {}
                     Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                        let _ = self.recreate_swapchain().map_err(|err| eprintln!("{err}"));
+                        let _ = self.recreate_swapchain().map_err(|err| log::warn!("{err}"));
                     }
                     Err(e) => panic!("error: {e}\n"),
                 }
@@ -505,7 +478,7 @@ impl ApplicationHandler<UserEvent> for AppInit {
                         |tex| self.recorder.record(tex),
                     );
                     if let Err(err) = res {
-                        eprintln!("{err}");
+                        log::error!("{err}");
                         self.video_recording = false;
                     }
                 }
@@ -552,6 +525,7 @@ impl ApplicationHandler<UserEvent> for AppInit {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
     let event_loop = winit::event_loop::EventLoop::with_user_event().build()?;
 
     let Args {

@@ -2,12 +2,16 @@ use anyhow::Result;
 use gpu_alloc::{GpuAllocator, MemoryBlock, Request, UsageFlags};
 use gpu_alloc_ash::AshMemoryDevice;
 use parking_lot::Mutex;
-use std::{ffi::CStr, mem::ManuallyDrop, sync::Arc};
+use std::{
+    ffi::{CStr, CString},
+    mem::ManuallyDrop,
+    sync::Arc,
+};
 
 use ash::{
-    khr,
+    ext, khr,
     prelude::VkResult,
-    vk::{self, DeviceMemory},
+    vk::{self, DeviceMemory, Handle},
 };
 
 use crate::{align_to, ManagedImage, COLOR_SUBRESOURCE_MASK};
@@ -23,6 +27,7 @@ pub struct Device {
     pub allocator: Arc<Mutex<GpuAllocator<DeviceMemory>>>,
     pub device: ash::Device,
     pub dynamic_rendering: khr::dynamic_rendering::Device,
+    pub(crate) dbg_utils: ext::debug_utils::Device,
 }
 
 impl std::ops::Deref for Device {
@@ -34,6 +39,17 @@ impl std::ops::Deref for Device {
 }
 
 impl Device {
+    pub fn name_object(&self, handle: impl Handle, name: &str) {
+        let name = CString::new(name).unwrap();
+        let _ = unsafe {
+            self.dbg_utils.set_debug_utils_object_name(
+                &vk::DebugUtilsObjectNameInfoEXT::default()
+                    .object_handle(handle)
+                    .object_name(&name),
+            )
+        };
+    }
+
     pub fn create_2d_view(&self, image: &vk::Image, format: vk::Format) -> VkResult<vk::ImageView> {
         let view = unsafe {
             self.create_image_view(
@@ -311,6 +327,10 @@ impl Device {
         let address = unsafe {
             self.get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer))
         };
+        self.name_object(
+            buffer,
+            &format!("HostBuffer<{}>", pretty_type_name::pretty_type_name::<T>()),
+        );
 
         let ptr = unsafe {
             memory.map(

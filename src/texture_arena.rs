@@ -18,6 +18,7 @@ pub const GENERIC_IMAGE2_IDX: usize = 2;
 pub const DITHER_IMAGE_IDX: usize = 3;
 pub const NOISE_IMAGE_IDX: usize = 4;
 pub const BLUE_IMAGE_IDX: usize = 5;
+
 pub const SCREENSIZED_IMAGE_INDICES: [usize; 3] =
     [PREV_FRAME_IMAGE_IDX, GENERIC_IMAGE1_IDX, GENERIC_IMAGE2_IDX];
 
@@ -77,7 +78,7 @@ impl TextureArena {
         self.images.len()
     }
 
-    pub fn new(device: &Arc<Device>, extent: vk::Extent2D) -> Result<Self> {
+    pub fn new(device: &Arc<Device>, queue: &vk::Queue, extent: vk::Extent2D) -> Result<Self> {
         let pool_sizes = [
             vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::SAMPLED_IMAGE)
@@ -214,7 +215,7 @@ impl TextureArena {
         unsafe { device.update_descriptor_sets(&[desc_write], &[]) };
         samplers[1] = sampler;
 
-        Ok(Self {
+        let mut texture_arena = Self {
             images,
             image_infos: image_infos.to_vec(),
             views,
@@ -223,7 +224,69 @@ impl TextureArena {
             images_set,
             images_set_layout,
             device: device.clone(),
-        })
+        };
+
+        texture_arena.device.name_object(
+            texture_arena.images[PREV_FRAME_IMAGE_IDX].image,
+            "Previous Frame Image",
+        );
+        texture_arena.device.name_object(
+            texture_arena.views[PREV_FRAME_IMAGE_IDX],
+            "Previous Frame Image View",
+        );
+
+        let bytes = include_bytes!("../assets/dither.dds");
+        let dds = ddsfile::Dds::read(&bytes[..])?;
+        let mut extent = vk::Extent3D {
+            width: dds.get_width(),
+            height: dds.get_height(),
+            depth: 1,
+        };
+        let mut info = vk::ImageCreateInfo::default()
+            .extent(extent)
+            .image_type(vk::ImageType::TYPE_2D)
+            .format(vk::Format::R8G8B8A8_UNORM)
+            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .mip_levels(1)
+            .array_layers(1)
+            .tiling(vk::ImageTiling::OPTIMAL);
+        texture_arena.push_image(&device, &queue, info, dds.get_data(0)?)?;
+        texture_arena
+            .device
+            .name_object(texture_arena.images[DITHER_IMAGE_IDX].image, "Dither Image");
+        texture_arena
+            .device
+            .name_object(texture_arena.views[DITHER_IMAGE_IDX], "Dither Image View");
+
+        let bytes = include_bytes!("../assets/noise.dds");
+        let dds = ddsfile::Dds::read(&bytes[..])?;
+        extent.width = dds.get_width();
+        extent.height = dds.get_height();
+        info.extent = extent;
+        texture_arena.push_image(&device, &queue, info, dds.get_data(0)?)?;
+        texture_arena
+            .device
+            .name_object(texture_arena.images[NOISE_IMAGE_IDX].image, "Noise Image");
+        texture_arena
+            .device
+            .name_object(texture_arena.views[NOISE_IMAGE_IDX], "Noise Image View");
+
+        let bytes = include_bytes!("../assets/BLUE_RGBA_0.dds");
+        let dds = ddsfile::Dds::read(&bytes[..])?;
+        extent.width = dds.get_width();
+        extent.height = dds.get_height();
+        info.extent = extent;
+        texture_arena.push_image(&device, &queue, info, dds.get_data(0)?)?;
+        texture_arena.device.name_object(
+            texture_arena.images[BLUE_IMAGE_IDX].image,
+            "Blue Noise Image",
+        );
+        texture_arena
+            .device
+            .name_object(texture_arena.views[BLUE_IMAGE_IDX], "Blue Noise Image View");
+
+        Ok(texture_arena)
     }
 
     pub fn push_image(

@@ -206,16 +206,15 @@ pub fn save_shaders<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
     }
     let shaders = path.as_ref().read_dir()?;
 
-    // for path in paths {
     for shader in shaders {
         let shader = shader?.path();
-        let to = dump_folder.join(shader.strip_prefix(Path::new(SHADER_FOLDER).canonicalize()?)?);
+        let to = dump_folder.join(shader.file_name().and_then(|s| s.to_str()).unwrap());
         if !to.exists() {
             std::fs::create_dir_all(&to.parent().unwrap().canonicalize()?)?;
             File::create(&to)?;
         }
         std::fs::copy(shader, &to)?;
-        eprintln!("Saved: {}", &to.display());
+        println!("Saved: {}", &to.display());
     }
 
     Ok(())

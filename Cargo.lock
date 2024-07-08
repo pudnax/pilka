@@ -1264,10 +1264,12 @@ dependencies = [
  "env_logger",
  "gpu-alloc",
  "gpu-alloc-ash",
+ "log",
  "notify",
  "notify-debouncer-mini",
  "parking_lot",
  "png",
+ "pretty-type-name",
  "raw-window-handle",
  "shaderc",
  "slotmap",
@@ -1333,6 +1335,12 @@ dependencies = [
  "tracing",
  "windows-sys 0.52.0",
 ]
+
+[[package]]
+name = "pretty-type-name"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0f73cdaf19b52e6143685c3606206e114a4dfa969d6b14ec3894c88eb38bd4b"
 
 [[package]]
 name = "proc-macro-crate"
