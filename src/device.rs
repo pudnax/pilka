@@ -21,38 +21,19 @@ pub struct Device {
     pub main_queue_family_idx: u32,
     pub transfer_queue_family_idx: u32,
     pub allocator: Arc<Mutex<GpuAllocator<DeviceMemory>>>,
-    pub device: Arc<RawDevice>,
-    pub ext: Arc<DeviceExt>,
-}
-
-pub struct DeviceExt {
+    pub device: ash::Device,
     pub dynamic_rendering: khr::dynamic_rendering::Device,
 }
 
 impl std::ops::Deref for Device {
-    type Target = RawDevice;
+    type Target = ash::Device;
 
     fn deref(&self) -> &Self::Target {
         &self.device
     }
 }
 
-#[derive(Clone)]
-pub struct RawDevice {
-    inner: ash::Device,
-}
-
-impl RawDevice {
-    pub fn new(inner: ash::Device) -> Self {
-        Self { inner }
-    }
-
-    pub fn get_buffer_address(&self, buffer: vk::Buffer) -> u64 {
-        unsafe {
-            self.get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer))
-        }
-    }
-
+impl Device {
     pub fn create_2d_view(&self, image: &vk::Image, format: vk::Format) -> VkResult<vk::ImageView> {
         let view = unsafe {
             self.create_image_view(
@@ -74,29 +55,8 @@ impl RawDevice {
         Ok(view)
     }
 
-    pub fn alloc_memory(
-        &self,
-        allocator: &mut GpuAllocator<DeviceMemory>,
-        memory_reqs: vk::MemoryRequirements,
-        usage: UsageFlags,
-    ) -> Result<gpu_alloc::MemoryBlock<DeviceMemory>, gpu_alloc::AllocationError> {
-        let memory_block = unsafe {
-            allocator.alloc(
-                AshMemoryDevice::wrap(self),
-                Request {
-                    size: memory_reqs.size,
-                    align_mask: memory_reqs.alignment - 1,
-                    usage: usage | UsageFlags::DEVICE_ADDRESS,
-                    memory_types: memory_reqs.memory_type_bits,
-                },
-            )
-        };
-        memory_block
-    }
-
     pub fn one_time_submit(
         &self,
-        command_pool: &vk::CommandPool,
         queue: &vk::Queue,
         callbk: impl FnOnce(&Self, vk::CommandBuffer),
     ) -> VkResult<()> {
@@ -104,7 +64,7 @@ impl RawDevice {
         let command_buffer = unsafe {
             self.allocate_command_buffers(
                 &vk::CommandBufferAllocateInfo::default()
-                    .command_pool(*command_pool)
+                    .command_pool(self.command_pool)
                     .command_buffer_count(1)
                     .level(vk::CommandBufferLevel::PRIMARY),
             )?[0]
@@ -128,10 +88,35 @@ impl RawDevice {
             self.wait_for_fences(&[fence], true, u64::MAX)?;
 
             self.destroy_fence(fence, None);
-            self.free_command_buffers(*command_pool, &[command_buffer]);
+            self.free_command_buffers(self.command_pool, &[command_buffer]);
         }
 
         Ok(())
+    }
+
+    pub fn alloc_memory(
+        &self,
+        memory_reqs: vk::MemoryRequirements,
+        usage: UsageFlags,
+    ) -> Result<gpu_alloc::MemoryBlock<DeviceMemory>, gpu_alloc::AllocationError> {
+        let mut allocator = self.allocator.lock();
+        let memory_block = unsafe {
+            allocator.alloc(
+                AshMemoryDevice::wrap(self),
+                Request {
+                    size: memory_reqs.size,
+                    align_mask: memory_reqs.alignment - 1,
+                    usage: usage | UsageFlags::DEVICE_ADDRESS,
+                    memory_types: memory_reqs.memory_type_bits,
+                },
+            )
+        };
+        memory_block
+    }
+
+    pub fn dealloc_memory(&self, block: MemoryBlock<DeviceMemory>) {
+        let mut allocator = self.allocator.lock();
+        unsafe { allocator.dealloc(AshMemoryDevice::wrap(&self), block) };
     }
 
     pub fn blit_image(
@@ -217,37 +202,9 @@ impl RawDevice {
             vk::DependencyInfo::default().image_memory_barriers(image_memory_barriers);
         unsafe { self.cmd_pipeline_barrier2(*command_buffer, &dependency_info) };
     }
-}
-
-impl std::ops::Deref for RawDevice {
-    type Target = ash::Device;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl Device {
-    pub fn one_time_submit(
-        &self,
-        queue: &vk::Queue,
-        callbk: impl FnOnce(&RawDevice, vk::CommandBuffer),
-    ) -> VkResult<()> {
-        self.device
-            .one_time_submit(&self.command_pool, queue, callbk)
-    }
-
-    pub fn alloc_memory(
-        &self,
-        memory_reqs: vk::MemoryRequirements,
-        usage: UsageFlags,
-    ) -> Result<gpu_alloc::MemoryBlock<DeviceMemory>, gpu_alloc::AllocationError> {
-        let mut allocator = self.allocator.lock();
-        self.device.alloc_memory(&mut allocator, memory_reqs, usage)
-    }
 
     pub fn capture_image_data(
-        &self,
+        self: &Arc<Self>,
         queue: &vk::Queue,
         src_image: &vk::Image,
         extent: vk::Extent2D,
@@ -289,7 +246,7 @@ impl Device {
     }
 
     pub fn create_host_buffer(
-        &self,
+        self: &Arc<Self>,
         size: u64,
         usage: vk::BufferUsageFlags,
         memory_usage: gpu_alloc::UsageFlags,
@@ -314,7 +271,7 @@ impl Device {
 
         let ptr = unsafe {
             memory.map(
-                AshMemoryDevice::wrap(self),
+                AshMemoryDevice::wrap(&self),
                 memory.offset(),
                 memory.size() as usize,
             )?
@@ -327,13 +284,12 @@ impl Device {
             buffer,
             memory: ManuallyDrop::new(memory),
             data,
-            device: self.device.clone(),
-            allocator: self.allocator.clone(),
+            device: self.clone(),
         })
     }
 
     pub fn create_host_buffer_typed<T>(
-        &self,
+        self: Arc<Self>,
         usage: vk::BufferUsageFlags,
         memory_usage: gpu_alloc::UsageFlags,
     ) -> Result<HostBufferTyped<T>> {
@@ -363,15 +319,14 @@ impl Device {
                 memory.size() as usize,
             )?
         };
-        let ptr = unsafe { &mut *ptr.as_ptr().cast::<T>() };
+        let data = unsafe { &mut *ptr.as_ptr().cast::<T>() };
 
         Ok(HostBufferTyped {
             address,
             buffer,
             memory: ManuallyDrop::new(memory),
-            data: ptr,
-            device: self.device.clone(),
-            allocator: self.allocator.clone(),
+            data,
+            device: self.clone(),
         })
     }
 
@@ -426,8 +381,7 @@ pub struct HostBuffer {
     pub buffer: vk::Buffer,
     pub memory: ManuallyDrop<MemoryBlock<DeviceMemory>>,
     pub data: &'static mut [u8],
-    device: Arc<RawDevice>,
-    allocator: Arc<Mutex<GpuAllocator<DeviceMemory>>>,
+    device: Arc<Device>,
 }
 
 impl std::ops::Deref for HostBuffer {
@@ -447,11 +401,8 @@ impl Drop for HostBuffer {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_buffer(self.buffer, None);
-            {
-                let mut allocator = self.allocator.lock();
-                let memory = ManuallyDrop::take(&mut self.memory);
-                allocator.dealloc(AshMemoryDevice::wrap(&self.device), memory);
-            }
+            let memory = ManuallyDrop::take(&mut self.memory);
+            self.device.dealloc_memory(memory);
         }
     }
 }
@@ -461,8 +412,7 @@ pub struct HostBufferTyped<T: 'static> {
     pub buffer: vk::Buffer,
     pub memory: ManuallyDrop<MemoryBlock<DeviceMemory>>,
     pub data: &'static mut T,
-    device: Arc<RawDevice>,
-    allocator: Arc<Mutex<GpuAllocator<DeviceMemory>>>,
+    device: Arc<Device>,
 }
 
 impl<T> std::ops::Deref for HostBufferTyped<T> {
@@ -482,11 +432,8 @@ impl<T> Drop for HostBufferTyped<T> {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_buffer(self.buffer, None);
-            {
-                let mut allocator = self.allocator.lock();
-                let memory = ManuallyDrop::take(&mut self.memory);
-                allocator.dealloc(AshMemoryDevice::wrap(&self.device), memory);
-            }
+            let memory = ManuallyDrop::take(&mut self.memory);
+            self.device.dealloc_memory(memory);
         }
     }
 }

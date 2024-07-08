@@ -5,11 +5,9 @@ use ash::{
     prelude::VkResult,
     vk::{self, DeviceMemory},
 };
-use gpu_alloc::{GpuAllocator, MemoryBlock, UsageFlags};
-use gpu_alloc_ash::AshMemoryDevice;
-use parking_lot::Mutex;
+use gpu_alloc::{MemoryBlock, UsageFlags};
 
-use crate::{Device, ImageDimensions, RawDevice, COLOR_SUBRESOURCE_MASK};
+use crate::{Device, ImageDimensions, COLOR_SUBRESOURCE_MASK};
 
 pub const LINEAR_SAMPLER_IDX: usize = 0;
 pub const NEAREST_SAMPLER_IDX: usize = 1;
@@ -31,14 +29,13 @@ pub struct Image {
 
 impl Image {
     pub fn new(
-        device: &RawDevice,
-        allocator: &mut GpuAllocator<DeviceMemory>,
+        device: &Device,
         info: &vk::ImageCreateInfo,
         usage: gpu_alloc::UsageFlags,
     ) -> Result<Self> {
         let image = unsafe { device.create_image(info, None)? };
         let memory_reqs = unsafe { device.get_image_memory_requirements(image) };
-        let memory = device.alloc_memory(allocator, memory_reqs, usage)?;
+        let memory = device.alloc_memory(memory_reqs, usage)?;
         unsafe { device.bind_image_memory(image, *memory.memory(), memory.offset()) }?;
         let image_dimensions = ImageDimensions::new(
             info.extent.width as _,
@@ -52,10 +49,10 @@ impl Image {
         })
     }
 
-    fn desctroy(&mut self, device: &ash::Device, allocator: &mut GpuAllocator<DeviceMemory>) {
+    fn desctroy(&mut self, device: &Device) {
         unsafe {
             let memory = ManuallyDrop::take(&mut self.memory);
-            allocator.dealloc(AshMemoryDevice::wrap(device), memory);
+            device.dealloc_memory(memory);
             device.destroy_image(self.image, None)
         }
     }
@@ -72,8 +69,7 @@ pub struct TextureArena {
     descriptor_pool: vk::DescriptorPool,
     pub images_set: vk::DescriptorSet,
     pub images_set_layout: vk::DescriptorSetLayout,
-    device: Arc<RawDevice>,
-    allocator: Arc<Mutex<GpuAllocator<DeviceMemory>>>,
+    device: Arc<Device>,
 }
 
 impl TextureArena {
@@ -81,7 +77,7 @@ impl TextureArena {
         self.images.len()
     }
 
-    pub fn new(device: &Device, extent: vk::Extent2D) -> Result<Self> {
+    pub fn new(device: &Arc<Device>, extent: vk::Extent2D) -> Result<Self> {
         let pool_sizes = [
             vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::SAMPLED_IMAGE)
@@ -167,15 +163,7 @@ impl TextureArena {
 
         let images = image_infos
             .iter()
-            .map(|info| {
-                let mut allocator = device.allocator.lock();
-                Image::new(
-                    device,
-                    &mut allocator,
-                    info,
-                    gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
-                )
-            })
+            .map(|info| Image::new(device, info, gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS))
             .collect::<Result<Vec<_>>>()?;
 
         let views = images
@@ -234,27 +222,18 @@ impl TextureArena {
             descriptor_pool,
             images_set,
             images_set_layout,
-            device: device.device.clone(),
-            allocator: device.allocator.clone(),
+            device: device.clone(),
         })
     }
 
     pub fn push_image(
         &mut self,
-        device: &Device,
+        device: &Arc<Device>,
         queue: &vk::Queue,
         info: vk::ImageCreateInfo,
         data: &[u8],
     ) -> Result<u32> {
-        let image = {
-            let mut allocator = device.allocator.lock();
-            Image::new(
-                device,
-                &mut allocator,
-                &info,
-                UsageFlags::FAST_DEVICE_ACCESS,
-            )?
-        };
+        let image = { Image::new(device, &info, UsageFlags::FAST_DEVICE_ACCESS)? };
         let mut staging = device.create_host_buffer(
             image.memory.size(),
             vk::BufferUsageFlags::TRANSFER_SRC,
@@ -314,16 +293,12 @@ impl TextureArena {
     }
 
     pub fn update_images(&mut self, indices: &[usize]) -> Result<()> {
-        let mut allocator = self.allocator.lock();
         for (i, info) in indices.iter().map(|&i| (i, &self.image_infos[i])) {
-            let image = {
-                Image::new(
-                    &self.device,
-                    &mut allocator,
-                    info,
-                    gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
-                )?
-            };
+            let image = Image::new(
+                &self.device,
+                info,
+                gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
+            )?;
             let view = self.device.create_2d_view(&image.image, info.format)?;
 
             let image_info = vk::DescriptorImageInfo::default()
@@ -337,7 +312,7 @@ impl TextureArena {
                 .dst_array_element(i as _);
             unsafe { self.device.update_descriptor_sets(&[write], &[]) };
 
-            self.images[i].desctroy(&self.device, &mut allocator);
+            self.images[i].desctroy(&self.device);
             unsafe { self.device.destroy_image_view(self.views[i], None) };
             self.images[i] = image;
             self.views[i] = view;
@@ -350,12 +325,10 @@ impl TextureArena {
 impl Drop for TextureArena {
     fn drop(&mut self) {
         unsafe {
-            {
-                let mut allocator = self.allocator.lock();
-                self.images.iter_mut().for_each(|image| {
-                    image.desctroy(&self.device, &mut allocator);
-                });
-            }
+            self.images.iter_mut().for_each(|image| {
+                image.desctroy(&self.device);
+            });
+
             self.views
                 .iter()
                 .for_each(|&view| self.device.destroy_image_view(view, None));

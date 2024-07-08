@@ -1,10 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
-use crate::{
-    device::{Device, DeviceExt},
-    surface::Surface,
-    RawDevice,
-};
+use crate::{device::Device, surface::Surface};
 
 use anyhow::{Context, Result};
 use ash::{ext, khr, vk, Entry};
@@ -206,8 +202,8 @@ impl Instance {
             command_pool,
             memory_properties,
             allocator: Arc::new(Mutex::new(allocator)),
-            device: Arc::new(RawDevice::new(device)),
-            ext: Arc::new(DeviceExt { dynamic_rendering }),
+            device,
+            dynamic_rendering,
         };
         let main_queue = unsafe { device.get_device_queue(main_queue_family_idx, 0) };
         let transfer_queue = unsafe { device.get_device_queue(transfer_queue_family_idx, 0) };

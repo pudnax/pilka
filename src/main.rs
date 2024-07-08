@@ -2,6 +2,7 @@ use core::panic;
 use std::{
     io::Write,
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -56,7 +57,7 @@ struct AppInit {
 
     swapchain: Swapchain,
     surface: Surface,
-    device: Device,
+    device: Arc<Device>,
     instance: Instance,
 }
 
@@ -74,6 +75,7 @@ impl AppInit {
         let instance = Instance::new(Some(&window))?;
         let surface = instance.create_surface(&window)?;
         let (device, queue, transfer_queue) = instance.create_device_and_queues(&surface)?;
+        let device = Arc::new(device);
 
         let swapchain_loader = khr::swapchain::Device::new(&instance, &device);
         let swapchain = Swapchain::new(&device, &surface, swapchain_loader)?;

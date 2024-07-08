@@ -24,7 +24,7 @@ use std::{
 };
 
 pub use self::{
-    device::{Device, HostBufferTyped, RawDevice},
+    device::{Device, HostBufferTyped},
     input::Input,
     instance::Instance,
     pipeline_arena::*,
@@ -277,13 +277,13 @@ pub struct ManagedImage {
     pub image_dimensions: ImageDimensions,
     pub data: Option<&'static mut [u8]>,
     pub format: vk::Format,
-    device: Arc<RawDevice>,
+    device: Arc<Device>,
     allocator: Arc<Mutex<GpuAllocator<DeviceMemory>>>,
 }
 
 impl ManagedImage {
     pub fn new(
-        device: &Device,
+        device: &Arc<Device>,
         info: &vk::ImageCreateInfo,
         usage: gpu_alloc::UsageFlags,
     ) -> anyhow::Result<Self> {
@@ -302,7 +302,7 @@ impl ManagedImage {
             image_dimensions,
             format: info.format,
             data: None,
-            device: device.device.clone(),
+            device: device.clone(),
             allocator: device.allocator.clone(),
         })
     }

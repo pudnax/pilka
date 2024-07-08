@@ -12,13 +12,13 @@ use ash::{
     vk::{self},
 };
 
-use crate::{Device, RawDevice, ShaderCompiler, ShaderKind, ShaderSource, Watcher};
+use crate::{Device, ShaderCompiler, ShaderKind, ShaderSource, Watcher};
 
 pub struct ComputePipeline {
     pub layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,
     shader_path: PathBuf,
-    device: RawDevice,
+    device: Arc<Device>,
 }
 
 impl Drop for ComputePipeline {
@@ -32,7 +32,7 @@ impl Drop for ComputePipeline {
 
 impl ComputePipeline {
     fn new(
-        device: &RawDevice,
+        device: &Arc<Device>,
         shader_compiler: &ShaderCompiler,
         shader_path: impl AsRef<Path>,
         push_constant_ranges: &[vk::PushConstantRange],
@@ -162,12 +162,12 @@ pub struct RenderPipeline {
     vertex_shader_lib: vk::Pipeline,
     fragment_shader_lib: vk::Pipeline,
     fragment_output_lib: vk::Pipeline,
-    device: RawDevice,
+    device: Arc<Device>,
 }
 
 impl RenderPipeline {
     pub fn new(
-        device: &RawDevice,
+        device: &Arc<Device>,
         shader_compiler: &ShaderCompiler,
         vertex_input_desc: &VertexInputDesc,
         vertex_shader_desc: &VertexShaderDesc,
@@ -453,11 +453,11 @@ pub struct PipelineArena {
     pub path_mapping: AHashMap<PathBuf, AHashSet<Either<RenderHandle, ComputeHandle>>>,
     pub shader_compiler: ShaderCompiler,
     file_watcher: Watcher,
-    device: Arc<RawDevice>,
+    device: Arc<Device>,
 }
 
 impl PipelineArena {
-    pub fn new(device: &Device, file_watcher: Watcher) -> Result<Self> {
+    pub fn new(device: &Arc<Device>, file_watcher: Watcher) -> Result<Self> {
         Ok(Self {
             render: RenderArena {
                 pipelines: SlotMap::with_key(),
@@ -468,7 +468,7 @@ impl PipelineArena {
             shader_compiler: ShaderCompiler::new(&file_watcher)?,
             file_watcher,
             path_mapping: AHashMap::new(),
-            device: device.device.clone(),
+            device: device.clone(),
         })
     }
 

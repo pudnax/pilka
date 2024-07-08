@@ -6,18 +6,14 @@ use ash::{
     vk::{self, CompositeAlphaFlagsKHR},
 };
 
-use crate::{
-    device::{Device, DeviceExt},
-    surface::Surface,
-    ImageDimensions, RawDevice,
-};
+use crate::{device::Device, surface::Surface, ImageDimensions};
 
 pub struct Frame {
     command_buffer: vk::CommandBuffer,
     image_available_semaphore: vk::Semaphore,
     render_finished_semaphore: vk::Semaphore,
     pub present_finished: vk::Fence,
-    device: Arc<RawDevice>,
+    device: Arc<Device>,
 }
 
 impl Frame {
@@ -35,7 +31,7 @@ impl Frame {
 }
 
 impl Frame {
-    fn new(device: &Arc<RawDevice>, command_pool: &vk::CommandPool) -> VkResult<Self> {
+    fn new(device: &Arc<Device>, command_pool: &vk::CommandPool) -> VkResult<Self> {
         let present_finished = unsafe {
             device.create_fence(
                 &vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::default()),
@@ -65,8 +61,7 @@ pub struct FrameGuard {
     frame: Frame,
     extent: vk::Extent2D,
     image_idx: usize,
-    device: Arc<RawDevice>,
-    ext: Arc<DeviceExt>,
+    device: Arc<Device>,
 }
 
 pub struct Swapchain {
@@ -80,8 +75,7 @@ pub struct Swapchain {
     pub image_dimensions: ImageDimensions,
     inner: vk::SwapchainKHR,
     loader: khr::swapchain::Device,
-    device: Arc<RawDevice>,
-    ext: Arc<DeviceExt>,
+    device: Arc<Device>,
 }
 
 impl Swapchain {
@@ -102,7 +96,7 @@ impl Swapchain {
     }
 
     pub fn new(
-        device: &Device,
+        device: &Arc<Device>,
         surface: &Surface,
         swapchain_loader: khr::swapchain::Device,
     ) -> VkResult<Self> {
@@ -182,8 +176,7 @@ impl Swapchain {
             extent,
             inner: swapchain,
             loader: swapchain_loader,
-            device: device.device.clone(),
-            ext: device.ext.clone(),
+            device: device.clone(),
         })
     }
 
@@ -310,7 +303,6 @@ impl Swapchain {
             extent: self.extent,
             image_idx: self.current_image,
             device: self.device.clone(),
-            ext: self.ext.clone(),
         })
     }
 
@@ -400,7 +392,7 @@ impl FrameGuard {
             .layer_count(1)
             .color_attachments(&color_attachments);
         unsafe {
-            self.ext
+            self.device
                 .dynamic_rendering
                 .cmd_begin_rendering(self.frame.command_buffer, &rendering_info)
         };
@@ -541,7 +533,7 @@ impl FrameGuard {
 
     pub fn end_rendering(&mut self) {
         unsafe {
-            self.ext
+            self.device
                 .dynamic_rendering
                 .cmd_end_rendering(self.frame.command_buffer)
         };
