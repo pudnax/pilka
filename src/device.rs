@@ -132,7 +132,7 @@ impl Device {
 
     pub fn dealloc_memory(&self, block: MemoryBlock<DeviceMemory>) {
         let mut allocator = self.allocator.lock();
-        unsafe { allocator.dealloc(AshMemoryDevice::wrap(&self), block) };
+        unsafe { allocator.dealloc(AshMemoryDevice::wrap(self), block) };
     }
 
     pub fn blit_image(
@@ -287,7 +287,7 @@ impl Device {
 
         let ptr = unsafe {
             memory.map(
-                AshMemoryDevice::wrap(&self),
+                AshMemoryDevice::wrap(self),
                 memory.offset(),
                 memory.size() as usize,
             )?

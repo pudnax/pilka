@@ -251,7 +251,7 @@ impl TextureArena {
             .mip_levels(1)
             .array_layers(1)
             .tiling(vk::ImageTiling::OPTIMAL);
-        texture_arena.push_image(&device, &queue, info, dds.get_data(0)?)?;
+        texture_arena.push_image(device, queue, info, dds.get_data(0)?)?;
         texture_arena
             .device
             .name_object(texture_arena.images[DITHER_IMAGE_IDX].image, "Dither Image");
@@ -264,7 +264,7 @@ impl TextureArena {
         extent.width = dds.get_width();
         extent.height = dds.get_height();
         info.extent = extent;
-        texture_arena.push_image(&device, &queue, info, dds.get_data(0)?)?;
+        texture_arena.push_image(device, queue, info, dds.get_data(0)?)?;
         texture_arena
             .device
             .name_object(texture_arena.images[NOISE_IMAGE_IDX].image, "Noise Image");
@@ -277,7 +277,7 @@ impl TextureArena {
         extent.width = dds.get_width();
         extent.height = dds.get_height();
         info.extent = extent;
-        texture_arena.push_image(&device, &queue, info, dds.get_data(0)?)?;
+        texture_arena.push_image(device, queue, info, dds.get_data(0)?)?;
         texture_arena.device.name_object(
             texture_arena.images[BLUE_IMAGE_IDX].image,
             "Blue Noise Image",
